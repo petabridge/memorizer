@@ -1,0 +1,65 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <ContainerRepository>petabridge/memorizer</ContainerRepository>
+        <ContainerTitle>Memorizer</ContainerTitle>
+        <ContainerDescription>A .NET-based service that allows AI agents to store, retrieve, and search through memories using vector embeddings. Leverages PostgreSQL with pgvector extension for efficient similarity search capabilities.</ContainerDescription>
+        <ContainerImageTags>$(VersionPrefix);latest</ContainerImageTags>
+        <ContainerRuntimeIdentifiers>linux-x64;linux-arm64;linux-arm;</ContainerRuntimeIdentifiers>
+        <RuntimeIdentifiers>osx-x64;osx-arm64;linux-x64;linux-arm64;linux-arm;win-x64;</RuntimeIdentifiers>
+        <!-- Remove parallel builds, to avoid race conditions -->
+        <ContainerPublishInParallel>false</ContainerPublishInParallel>
+        <InternalsVisibleTo>Memorizer.IntegrationTests</InternalsVisibleTo>
+        <!-- Workaround for SDK bug with static web assets -->
+        <EnableStaticWebAssetsBuildPropsFile>false</EnableStaticWebAssetsBuildPropsFile>
+        <EnableStaticWebAssetsPackFile>false</EnableStaticWebAssetsPackFile>
+    </PropertyGroup>
+
+    <!-- Container Labels for DockerHub -->
+    <ItemGroup>
+        <ContainerLabel Include="org.opencontainers.image.title" Value="Memorizer" />
+        <ContainerLabel Include="org.opencontainers.image.description" Value="A .NET-based service that allows AI agents to store, retrieve, and search through memories using vector embeddings. Leverages PostgreSQL with pgvector extension for efficient similarity search capabilities." />
+        <ContainerLabel Include="org.opencontainers.image.vendor" Value="Petabridge" />
+        <ContainerLabel Include="org.opencontainers.image.licenses" Value="MIT" />
+        <ContainerLabel Include="org.opencontainers.image.url" Value="https://github.com/petabridge/memorizer" />
+        <ContainerLabel Include="org.opencontainers.image.documentation" Value="https://github.com/petabridge/memorizer/blob/main/README.md" />
+        <ContainerLabel Include="org.opencontainers.image.source" Value="https://github.com/petabridge/memorizer" />
+        <ContainerLabel Include="com.docker.extension.detailed-description" Value="&lt;h1&gt;Memorizer&lt;/h1&gt;&lt;p&gt;Memorizer is a .NET-based service that allows AI agents to store, retrieve, and search through memories using vector embeddings. It leverages PostgreSQL with the pgvector extension to provide efficient similarity search capabilities.&lt;/p&gt;&lt;h2&gt;Key Features&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;Store structured memories with vector embeddings&lt;/li&gt;&lt;li&gt;Retrieve memories by ID&lt;/li&gt;&lt;li&gt;Semantic search through memories using vector similarity&lt;/li&gt;&lt;li&gt;Filter search results using tags&lt;/li&gt;&lt;li&gt;MCP (Model Context Protocol) integration for easy use with AI agents&lt;/li&gt;&lt;/ul&gt;&lt;h2&gt;Technologies&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;.NET 9.0&lt;/li&gt;&lt;li&gt;PostgreSQL with pgvector extension&lt;/li&gt;&lt;li&gt;Model Context Protocol (MCP)&lt;/li&gt;&lt;li&gt;ASP.NET Core&lt;/li&gt;&lt;li&gt;Npgsql for PostgreSQL connectivity&lt;/li&gt;&lt;/ul&gt;" />
+        <ContainerLabel Include="com.docker.extension.publisher-url" Value="https://petabridge.com" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Akka.Hosting" />
+        <PackageReference Include="Akka.Persistence.Sql.Hosting" />
+        <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
+        <PackageReference Include="Configuration.Extensions.EnvironmentFile" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" />
+        <PackageReference Include="Microsoft.Extensions.Hosting" />
+        <PackageReference Include="Microsoft.Extensions.Http" />
+        <PackageReference Include="ModelContextProtocol" />
+        <PackageReference Include="ModelContextProtocol.AspNetCore" />
+        <PackageReference Include="Npgsql" />
+        <PackageReference Include="OllamaSharp" />
+        <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+        <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+        <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+        <PackageReference Include="pgvector" />
+        <PackageReference Include="Registrator.Net" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Update="migrations\**\*.sql">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+</Project>

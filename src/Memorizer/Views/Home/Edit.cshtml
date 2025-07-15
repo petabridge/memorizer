@@ -1,0 +1,276 @@
+@{
+    ViewData["Title"] = "Edit Memory";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-edit me-2"></i>
+                    Edit Memory
+                </h4>
+            </div>
+            <div class="card-body" id="editContent">
+                <!-- Loading state -->
+                <div class="d-flex justify-content-center py-5" id="loadingSpinner">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading memory...</span>
+                    </div>
+                </div>
+                
+                <!-- Edit form (hidden initially) -->
+                <form id="editMemoryForm" style="display: none;">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="title" placeholder="Title for this memory" required>
+                        <div class="form-text">A descriptive title is required for organization and search</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="type" class="form-label">Type <span class="text-danger">*</span></label>
+                                <select class="form-select" id="type" required>
+                                    <option value="">Select type...</option>
+                                    <option value="reference">Reference Material</option>
+                                    <option value="procedure">Procedure/How-to</option>
+                                    <option value="preference">User Preference</option>
+                                    <option value="project_note">Project Note</option>
+                                    <option value="example">Example/Pattern</option>
+                                    <option value="todo">Action Item</option>
+                                    <option value="reflection">Reflection/Lesson</option>
+                                    <option value="conversation">Conversation</option>
+                                    <option value="document">Document</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="source" class="form-label">Source <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="source" placeholder="e.g., user, system, LLM, documentation" required>
+                                <div class="form-text">Who or what created this memory</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Content <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="content" rows="8" placeholder="Enter the memory content (supports markdown, JSON, or plain text)" required></textarea>
+                        <div class="form-text">The main content that will be vectorized and searchable</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="tags" class="form-label">Tags</label>
+                                <input type="text" class="form-control" id="tags" placeholder="tag1, tag2, tag3">
+                                <div class="form-text">Comma-separated tags for better organization</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="confidence" class="form-label">Confidence</label>
+                                <input type="range" class="form-range" id="confidence" min="0" max="1" step="0.1" value="1.0" oninput="updateConfidenceValue()">
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">0.0</small>
+                                    <small class="text-muted" id="confidenceValue">1.0</small>
+                                    <small class="text-muted">1.0</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Note:</strong> Updating this memory will regenerate its vector embedding for improved search accuracy.
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>
+                            Back to List
+                        </a>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="fas fa-save me-2"></i>
+                            Update Memory
+                        </button>
+                    </div>
+                </form>
+                
+                <!-- Related Memories Section -->
+                <div id="relatedMemoriesSection" style="display:none;">
+                    <h5 class="mt-4"><i class="fas fa-link me-2"></i>Related Memories</h5>
+                    <ul class="list-group" id="relatedMemoriesList"></ul>
+                </div>
+                
+                <!-- Error state (hidden initially) -->
+                <div id="errorState" style="display: none;" class="text-center py-5">
+                    <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                    <h5 class="text-muted">Memory Not Found</h5>
+                    <p class="text-muted">The memory you're trying to edit could not be found.</p>
+                    <a asp-controller="Home" asp-action="Index" class="btn btn-primary">
+                        <i class="fas fa-arrow-left me-2"></i>
+                        Back to List
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+let memoryId = '@(ViewBag.MemoryId?.ToString() ?? "")';
+
+function updateConfidenceValue() {
+    const confidence = document.getElementById('confidence').value;
+    document.getElementById('confidenceValue').textContent = parseFloat(confidence).toFixed(1);
+}
+
+// Load memory data on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Memory ID:', memoryId);
+    if (memoryId && memoryId !== '') {
+        loadMemory();
+        
+        // Fallback: Force hide spinner after 5 seconds
+        setTimeout(function() {
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner && spinner.style.display !== 'none') {
+                console.warn('Spinner still visible after 5 seconds, forcing hide');
+                spinner.style.display = 'none';
+                spinner.style.visibility = 'hidden';
+                spinner.classList.add('d-none');
+            }
+        }, 5000);
+    } else {
+        showError();
+    }
+});
+
+async function loadMemory() {
+    try {
+        console.log('Loading memory with ID:', memoryId);
+        const response = await fetch(`/api/memory/${memoryId}`);
+        
+        if (!response.ok) {
+            throw new Error('Memory not found');
+        }
+        
+        const memory = await response.json();
+        console.log('Memory loaded:', memory);
+        
+        populateForm(memory);
+        console.log('Form populated');
+        
+        // Hide loading spinner and show form
+        const spinner = document.getElementById('loadingSpinner');
+        const form = document.getElementById('editMemoryForm');
+        
+        console.log('Spinner element:', spinner);
+        console.log('Form element:', form);
+        
+        if (spinner) {
+            spinner.style.display = 'none';
+            spinner.style.visibility = 'hidden';  // Extra insurance
+            spinner.classList.add('d-none');      // Bootstrap class
+            console.log('Spinner hidden');
+        } else {
+            console.error('Spinner element not found!');
+        }
+        
+        if (form) {
+            form.style.display = 'block';
+            console.log('Form shown');
+        } else {
+            console.error('Form element not found!');
+        }
+        
+    } catch (error) {
+        console.error('Error loading memory:', error);
+        showError();
+    }
+}
+
+function populateForm(memory) {
+    try {
+        document.getElementById('title').value = memory.title || '';
+        document.getElementById('type').value = memory.type || '';
+        document.getElementById('source').value = memory.source || '';
+        document.getElementById('content').value = memory.text || '';
+        document.getElementById('tags').value = memory.tags ? memory.tags.join(', ') : '';
+        document.getElementById('confidence').value = memory.confidence || 1.0;
+        updateConfidenceValue();
+        // Related memories UI
+        if (memory.relationships && memory.relationships.length > 0) {
+            const section = document.getElementById('relatedMemoriesSection');
+            const list = document.getElementById('relatedMemoriesList');
+            list.innerHTML = '';
+            memory.relationships.forEach(rel => {
+                const title = rel.relatedMemoryTitle || 'Untitled';
+                const type = rel.relatedMemoryType || '';
+                const li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                li.innerHTML = `<a href='/ui/view/${rel.toMemoryId}'><i class='fas fa-link me-1'></i>${escapeHtml(title)}</a> <span class='badge bg-secondary'>${escapeHtml(type)}</span>`;
+                list.appendChild(li);
+            });
+            section.style.display = '';
+        } else {
+            document.getElementById('relatedMemoriesSection').style.display = 'none';
+        }
+        console.log('All form fields populated successfully');
+    } catch (error) {
+        console.error('Error in populateForm:', error);
+        throw error; // Re-throw to be caught by loadMemory
+    }
+}
+
+function showError() {
+    document.getElementById('loadingSpinner').style.display = 'none';
+    document.getElementById('editMemoryForm').style.display = 'none';
+    document.getElementById('errorState').style.display = 'block';
+}
+
+document.getElementById('editMemoryForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = setButtonLoading(submitBtn, 'Updating...');
+    
+    try {
+        const tags = parseTagsFromString(document.getElementById('tags').value);
+        
+        const requestData = {
+            title: document.getElementById('title').value || null,
+            type: document.getElementById('type').value,
+            content: document.getElementById('content').value,
+            source: document.getElementById('source').value,
+            tags: tags.length > 0 ? tags : null,
+            confidence: parseFloat(document.getElementById('confidence').value)
+        };
+        
+        const response = await fetch(`/api/memory/${memoryId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+        
+        if (response.ok) {
+            // Success - redirect to the memory list
+            window.location.href = '/ui';
+        } else {
+            await handleApiError(response, 'Failed to update memory');
+        }
+    } catch (error) {
+        console.error('Error updating memory:', error);
+        alert('Error updating memory: ' + error.message);
+    } finally {
+        restoreButton(submitBtn, originalText);
+    }
+});
+</script>
+} 

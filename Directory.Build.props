@@ -1,48 +1,16 @@
 <Project>
   <PropertyGroup>
-    <Copyright>Copyright © 2015-$([System.DateTime]::Now.Year) Akka.NET Team</Copyright>
-    <Authors>Akka.NET Team</Authors>
-    <Tags>akka, akka.streams, kafka, akkadotnet, akka streams, akka.streams.kafka</Tags>
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
+    <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/dariogriffo/postg-mem</PackageProjectUrl>
+    <VersionPrefix>1.5.4</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <VersionPrefix>1.0.0</VersionPrefix>
-    <PackageReleaseNotes>Example release notes</PackageReleaseNotes>
-  </PropertyGroup>
-  <PropertyGroup>
-    <!-- Visual Studio C# settings -->
-    <NetStandardLibVersion>netstandard2.0</NetStandardLibVersion>
-    <NetLibVersion>net6.0</NetLibVersion>
-    <NetCoreTestVersion>net9.0</NetCoreTestVersion>
-  </PropertyGroup>
-  <ItemGroup>
-    <Using Include="Akka.Event" />
-  </ItemGroup>
-  <!-- GitHub SourceLink -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
-  </ItemGroup>
-  <!-- NuGet package properties -->
-    <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)\akkalogo.png" Pack="true" PackagePath="\" />
-    <None Include="$(MSBuildThisFileDirectory)\README.md" Pack="true" PackagePath="\" />
-  </ItemGroup>
-  <!-- NuGet .nupkg options -->
-  <PropertyGroup>
-    <PackageReleaseNotes>1.5.25 June 17 2024
-
-* [Updated Akka.NET to 1.5.25](https://github.com/akkadotnet/akka.net/releases/tag/1.5.25)</PackageReleaseNotes>
-    <PackageTags>akka;actors;actor model;Akka;concurrency;test</PackageTags>
-    <PackageProjectUrl>https://github.com/akkadotnet/Akka.MultiNodeTestRunner</PackageProjectUrl>
-    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageIcon>akkalogo.png</PackageIcon>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
+    <Deterministic>true</Deterministic>
+    <PackageReleaseNotes>- [UI: display relationship data](https://github.com/petabridge/memory-mcp/pull/66)
+- [UI: fix canonical url display bug](https://github.com/petabridge/memory-mcp/pull/64)
+- [UI: Remove rule memory functionality](https://github.com/petabridge/memory-mcp/pull/65)
+- [UI: resolve fluctuating memory types count on Statistics page](https://github.com/petabridge/memory-mcp/pull/68)</PackageReleaseNotes>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>

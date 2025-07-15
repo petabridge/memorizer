@@ -1,70 +1,118 @@
-# build-system-template
-Akka.NET project build system template that provides standardized build and CI/CD configuration for all Akka.NET projects.
+# Memorizer
 
-## Build System Overview
-This repository contains our standardized build system setup that can be used across all Akka.NET projects. Here are the key components and practices we follow:
+Memorizer is a .NET-based service that allows AI agents to store, retrieve, and search through memories using vector embeddings. It leverages PostgreSQL with the pgvector extension to provide efficient similarity search capabilities.
 
-### CI/CD Configuration
-We primarily use GitHub Actions for our CI/CD pipelines, but also maintain Azure DevOps pipeline examples. You can find the configuration examples in:
-- `.github/workflows/` - GitHub Actions pipeline examples
-- `.azuredevops/` - Azure DevOps pipeline examples
+Key features:
+- Store structured memories with vector embeddings
+- Retrieve memories by ID
+- Semantic search through memories using vector similarity
+- Filter search results using tags
+- MCP (Model Context Protocol) integration for easy use with AI agents
 
-### SDK Version Management
-We use `global.json` to pin the .NET SDK version for both CI/CD environments and local development. This ensures consistent builds across all environments and developers.
+## Technologies
 
-### .NET Tools
-We use local .NET tools to enhance our build and documentation process. The tools are configured in `.config/dotnet-tools.json` and include:
+- .NET 9.0
+- PostgreSQL with pgvector extension
+- Model Context Protocol (MCP)
+- ASP.NET Core
+- Npgsql for PostgreSQL connectivity
 
-- [Incrementalist](https://github.com/petabridge/Incrementalist) (v1.0.0-beta4) - Used for determining which projects need to be rebuilt based on Git changes
-- [DocFx](https://dotnet.github.io/docfx/) (v2.78.3) - Used for generating documentation
+---
 
-To restore these tools in your local environment, run:
-```powershell
-dotnet tool restore
+## 🚀 Local Deployment (Recommended)
+
+### Prerequisites
+- Docker and Docker Compose
+- .NET 9.0 SDK
+
+### 1. Start Infrastructure and Application
+
+```bash
+# From solution root directory
+# Build and publish the .NET container
+
+dotnet publish -c Release /t:PublishContainer
 ```
 
-This command is automatically executed in our CI/CD pipelines (both GitHub Actions and Azure DevOps) to ensure tools are available during builds.
+This creates a container image named `memorizer:latest`.
 
-### Centralized Package and Build Management
-We utilize two key MSBuild files for centralized configuration:
-
-1. `Directory.Packages.props` - Implements [Central Package Version Management](https://learn.microsoft.com/nuget/consume-packages/Central-Package-Management) for consistent NuGet package versions across all projects in the solution.
-
-2. `Directory.Build.props` - Defines common build properties, including:
-   - Copyright and author information
-   - Source linking configuration
-   - NuGet package metadata
-   - Common compiler settings
-   - Target framework definitions
-
-### Code Coverage Configuration
-The `coverlet.runsettings` file configures code coverage collection using Coverlet, with settings for:
-- Multiple coverage report formats (JSON, Cobertura, LCOV, TeamCity, OpenCover)
-- Test assembly exclusions
-- Source linking integration
-- Performance optimizations
-
-### Release Management
-Our release process is streamlined through:
-- `RELEASE_NOTES.md` - Contains version history and release notes
-- `build.ps1` - PowerShell script that processes release notes and updates version information
-- Supporting scripts in `/scripts`:
-  - `bumpVersion.ps1` - Updates version numbers
-  - `getReleaseNotes.ps1` - Parses release notes
-
-The build system primarily relies on standard `dotnet` CLI commands, with the PowerShell scripts mainly handling release note processing and version management.
-
-### Solution Format
-We prefer the new `.slnx` XML-based solution format over the traditional `.sln` format. This requires .NET 9 SDK or later. The new format is more concise and easier to work with. You can migrate existing solutions using:
-
-```powershell
-dotnet sln migrate
+```bash
+docker-compose up -d
 ```
 
-For more information about the new `.slnx` format, see the [official announcement](https://devblogs.microsoft.com/dotnet/introducing-slnx-support-dotnet-cli/).
+This starts:
+- PostgreSQL with pgvector (port 5432)
+- PgAdmin (port 5050)
+- Ollama (port 11434)
+- Memorizer API (port 5000)
 
-## Getting Started
-1. Ensure you have the correct .NET SDK version installed (check `global.json`)
-2. Clone this repository
-3. Run `dotnet build` to verify the build system
-4. Customize the configuration files for your specific project needs
+---
+
+## 🔌 MCP Configuration Example
+
+To use Memorizer with any MCP-compatible client, add the following to your configuration (e.g., `mcp.json`):
+
+```json
+{
+  "memorizer": {
+    "url": "http://localhost:5000/sse"
+  }
+}
+```
+
+---
+
+## 🖥️ Web UI
+
+Memorizer includes a web-based user interface for managing memories through your browser.
+
+### Access the Web UI
+
+Once the application is running (via `docker-compose up -d`), you can access the Web UI at:
+
+**http://localhost:5000/ui/**
+
+### Features
+
+- **Memory Management**: Create, view, edit, and delete memories
+- **Search & Filter**: Search memories using semantic similarity and filter by tags
+- **Statistics Dashboard**: View memory counts, tag distributions, and system statistics
+- **MCP Configuration**: Get the MCP configuration JSON for connecting clients at `/ui/mcp-config`
+
+The Web UI provides a user-friendly interface for all Memorizer functionality, making it easy to manage your AI agent's memory without needing to use the MCP tools directly.
+
+---
+
+## 🧠 Example System Prompt for LLMs
+
+> You have access to a long-term memory system via the Model Context Protocol (MCP) at the endpoint `memorizer`. Use the following tools:
+>
+> - `store`: Store a new memory. Parameters: `type`, `content` (JSON), `source`, `tags`, `confidence`, `relatedTo` (optional, memory ID), `relationshipType` (optional).
+> - `search`: Search for similar memories. Parameters: `query`, `limit`, `minSimilarity`, `filterTags`.
+> - `get`: Retrieve a memory by ID. Parameter: `id`.
+> - `getMany`: Retrieve multiple memories by their IDs. Parameter: `ids` (list of IDs).
+> - `delete`: Delete a memory by ID. Parameter: `id`.
+> - `createRelationship`: Create a relationship between two memories. Parameters: `fromId`, `toId`, `type`.
+>
+> Use these tools to remember, recall, relate, and manage information as needed to assist the user. You can also manually retrieve or relate memories by their IDs when necessary.
+
+---
+
+## 📖 Documentation
+
+- [Configuration & Advanced Setup](docs/configuration.md)
+- [Local Development](docs/local-development.md)
+- [Schema Migrations](docs/schema-migrations.md)
+- [Architecture Decision Records](docs/adr/README.md)
+
+## License
+
+MIT
+
+---
+
+## 💖 Attribution
+
+Made with ❤️ by [Petabridge](https://petabridge.com/)
+
+Originally forked from [Dario Griffo](https://dario.griffo.io/)'s [`postg-mem`](https://github.com/dariogriffo/postg-mem) server

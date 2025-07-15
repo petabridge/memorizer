@@ -1,0 +1,24 @@
+/* Tools Page Specific Styling */
+
+/* Tools page card icon coloring */
+.tools-page .card .fas {
+    color: #0d6efd;
+}
+
+.tools-page .card-title .fas {
+    color: #495057;
+}
+
+.tools-page .btn .fas {
+    color: inherit;
+}
+
+/* Title Generation Page Specific Styling */
+.title-generation-page .progress {
+    height: 1.2rem;
+}
+
+.title-generation-page .breadcrumb {
+    background-color: transparent;
+    padding: 0;
+} 

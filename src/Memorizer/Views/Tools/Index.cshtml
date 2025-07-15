@@ -1,0 +1,127 @@
+@{
+    ViewData["Title"] = "Tools";
+}
+
+<div class="container-fluid tools-page">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Memory Management Tools</h1>
+            <p class="lead">Tools to maintain and improve your memory database.</p>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-heading me-2"></i>
+                        Title Generation
+                    </h5>
+                    <p class="card-text">
+                        Automatically generate descriptive titles for memories that don't have them using AI.
+                    </p>
+                    <p class="text-muted small">
+                        This tool will scan your memory database for entries without titles and use the configured LLM to generate meaningful titles based on the content.
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <a href="@Url.Action("TitleGeneration", "Tools")" class="btn btn-primary">
+                        <i class="fas fa-magic me-1"></i>
+                        Generate Titles
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-vector-square me-2"></i>
+                        Metadata Embedding
+                    </h5>
+                    <p class="card-text">
+                        Generate or regenerate metadata embeddings for improved search performance.
+                    </p>
+                    <p class="text-muted small">
+                        This tool creates embeddings from memory titles and tags to enable better semantic search and organization.
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <a href="@Url.Action("MetadataEmbedding", "Tools")" class="btn btn-primary">
+                        <i class="fas fa-rocket me-1"></i>
+                        Manage Embeddings
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Performance Analytics
+                    </h5>
+                    <p class="card-text">
+                        View analytics and performance metrics for automated tools.
+                    </p>
+                    <p class="text-muted small">
+                        Coming soon: Track how tools perform, success rates, and processing times.
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-secondary" disabled>
+                        <i class="fas fa-clock me-1"></i>
+                        Coming Soon
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="fas fa-search me-2"></i>
+                        Memory Maintenance
+                    </h5>
+                    <p class="card-text">
+                        Find and fix issues with your memory database.
+                    </p>
+                    <p class="text-muted small">
+                        Coming soon: Detect orphaned chunks, broken relationships, and other data quality issues.
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-secondary" disabled>
+                        <i class="fas fa-clock me-1"></i>
+                        Coming Soon
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <h6><i class="fas fa-info-circle me-2"></i>About These Tools</h6>
+                <p class="mb-0">
+                    These tools run in the background using Akka.NET actors to process your memory database safely and efficiently. 
+                    All operations are logged and can be monitored for progress and results.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Auto-refresh status indicators if needed
+        $(document).ready(function() {
+            console.log('Tools page loaded');
+        });
+    </script>
+} 
