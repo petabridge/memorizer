@@ -1,0 +1,331 @@
+@{
+    ViewData["Title"] = "Metadata Embedding Tool";
+}
+
+<div class="container-fluid metadata-embedding-page">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="@Url.Action("Index", "Tools")">Tools</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Metadata Embedding</li>
+                </ol>
+            </nav>
+            
+            <h1 class="mb-4">
+                <i class="fas fa-vector-square me-2"></i>
+                Metadata Embedding Tool
+            </h1>
+            <p class="lead">Generate or regenerate metadata embeddings for improved search performance.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Run Metadata Embedding</h5>
+                </div>
+                <div class="card-body">
+                    <form id="metadataEmbeddingForm">
+                        <div class="mb-3">
+                            <label for="batchSize" class="form-label">Batch Size</label>
+                            <input type="number" class="form-control" id="batchSize" name="batchSize" 
+                                   value="100" min="1" max="1000" required>
+                            <div class="form-text">
+                                Number of memories to process in this batch (1-1000). Start with smaller batches to test.
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Processing Mode</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="processingMode" id="regenerateAll" value="all" checked>
+                                <label class="form-check-label" for="regenerateAll">
+                                    Regenerate ALL embeddings (paginated)
+                                </label>
+                                <div class="form-text">
+                                    Process ALL memories using pagination, regardless of existing embeddings. Use this when changing embedding models.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+                            <button type="submit" class="btn btn-primary" id="startButton">
+                                <i class="fas fa-play me-1"></i>
+                                Start Embedding Generation
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="statusButton">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Check Status
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Progress and Results -->
+            <div class="card mt-4" id="progressCard" style="display: none;">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Progress</h6>
+                </div>
+                <div class="card-body">
+                    <div class="progress mb-3">
+                        <div class="progress-bar" role="progressbar" style="width: 0%" 
+                             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="progressBar">
+                            0%
+                        </div>
+                    </div>
+                    <div id="progressText">Initializing...</div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="card mt-4" id="resultsCard" style="display: none;">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Results</h6>
+                </div>
+                <div class="card-body">
+                    <div id="resultsContent">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">How It Works</h6>
+                </div>
+                <div class="card-body">
+                    <ol class="list-group list-group-numbered list-group-flush">
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Scan Database</strong><br>
+                            <small class="text-muted">Find memories without metadata embeddings</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Create Metadata</strong><br>
+                            <small class="text-muted">Combine memory titles and tags into searchable text</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Generate Embeddings</strong><br>
+                            <small class="text-muted">Use embedding service to create vector representations</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Update Records</strong><br>
+                            <small class="text-muted">Store embeddings for improved search performance</small>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Important Notes</h6>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info" role="alert">
+                        <small>
+                            <i class="fas fa-info-circle me-1"></i>
+                            <strong>Embedding Service:</strong> This tool uses the configured embedding service to generate vector representations.
+                        </small>
+                    </div>
+                    <div class="alert alert-warning" role="alert">
+                        <small>
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            <strong>Batch Processing:</strong> Large batches may take significant time. Monitor progress and start small.
+                        </small>
+                    </div>
+                    <div class="alert alert-success" role="alert">
+                        <small>
+                            <i class="fas fa-rocket me-1"></i>
+                            <strong>Performance:</strong> Metadata embeddings improve search quality and speed for filtering by titles and tags.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('metadataEmbeddingForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                startMetadataEmbedding();
+            });
+
+            document.getElementById('statusButton').addEventListener('click', function() {
+                checkStatus();
+            });
+        });
+
+        function startMetadataEmbedding() {
+            const batchSize = document.getElementById('batchSize').value;
+            // Only 'all' mode is available now
+            const processingMode = 'all';
+            const startButton = document.getElementById('startButton');
+            const progressCard = document.getElementById('progressCard');
+            
+            // Disable form and show progress
+            startButton.disabled = true;
+            progressCard.style.display = 'block';
+            updateProgress(0, 'Starting metadata embedding generation...');
+            
+            let url, formData;
+            
+            // Always use paginated regeneration for all memories
+            url = '@Url.Action("StartMetadataEmbeddingAll", "Tools")';
+            formData = new FormData();
+            formData.append('pageSize', batchSize);
+            
+            fetch(url, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('success', data.message);
+                    updateProgress(10, 'Metadata embedding generation started. Processing...');
+                    // Start polling for status
+                    startStatusPolling();
+                } else {
+                    if (data.status === 'running') {
+                        showAlert('warning', 'A batch job is already running. Please wait for it to finish. ' + progressDetails(data));
+                        startButton.disabled = true;
+                        progressCard.style.display = 'block';
+                        updateProgress(10, 'Batch already in progress...');
+                        startStatusPolling();
+                    } else {
+                        showAlert('danger', data.message);
+                        startButton.disabled = false;
+                        progressCard.style.display = 'none';
+                    }
+                }
+            })
+            .catch(error => {
+                showAlert('danger', 'Failed to start metadata embedding generation. Please try again.');
+                startButton.disabled = false;
+                progressCard.style.display = 'none';
+            });
+        }
+
+        function checkStatus() {
+            fetch('@Url.Action("GetMetadataEmbeddingStatus", "Tools")')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        let msg = 'Status: ' + data.status;
+                        if (data.isRunning) {
+                            msg += ' (Job in progress) ' + progressDetails(data);
+                            document.getElementById('startButton').disabled = true;
+                        } else {
+                            msg += ' (Idle)';
+                            document.getElementById('startButton').disabled = false;
+                        }
+                        showAlert('info', msg);
+                    } else {
+                        showAlert('warning', data.message);
+                    }
+                })
+                .catch(error => {
+                    showAlert('danger', 'Failed to get status.');
+                });
+        }
+
+        function startStatusPolling() {
+            // Poll the backend for real-time status every 2 seconds
+            let interval = setInterval(function() {
+                fetch('@Url.Action("GetMetadataEmbeddingStatus", "Tools")')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success && data.isRunning) {
+                            updateProgress(
+                                calculateProgressPercent(data),
+                                'Processing... ' + progressDetails(data)
+                            );
+                        } else {
+                            clearInterval(interval);
+                            updateProgress(100, 'Metadata embedding generation completed!');
+                            document.getElementById('startButton').disabled = false;
+                            showResults('Embedding generation completed successfully');
+                        }
+                    })
+                    .catch(error => {
+                        clearInterval(interval);
+                        showAlert('danger', 'Failed to poll status.');
+                        document.getElementById('startButton').disabled = false;
+                    });
+            }, 2000);
+        }
+
+        function calculateProgressPercent(data) {
+            if (data.totalProcessed && data.outstanding !== undefined && data.totalProcessed + data.outstanding > 0) {
+                const total = data.totalProcessed + data.outstanding;
+                return Math.round((data.totalProcessed / total) * 100);
+            }
+            return 10; // fallback
+        }
+
+        function progressDetails(data) {
+            let details = '';
+            if (data.totalProcessed !== undefined && data.outstanding !== undefined) {
+                details += `Processed: ${data.totalProcessed}, Outstanding: ${data.outstanding}`;
+            }
+            if (data.totalSuccessful !== undefined && data.totalFailed !== undefined) {
+                details += `, Success: ${data.totalSuccessful}, Failed: ${data.totalFailed}`;
+            }
+            if (data.requestedBy) {
+                details += `, Requested by: ${data.requestedBy}`;
+            }
+            if (data.duration !== undefined) {
+                details += `, Duration: ${Math.round(data.duration)}s`;
+            }
+            return details;
+        }
+
+        function updateProgress(percent, text) {
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = percent + '%';
+            progressBar.setAttribute('aria-valuenow', percent);
+            progressBar.textContent = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        function showResults(content) {
+            document.getElementById('resultsContent').innerHTML = content;
+            document.getElementById('resultsCard').style.display = 'block';
+        }
+
+        function showAlert(type, message) {
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            `;
+            
+            // Remove existing alerts
+            const existingAlerts = document.querySelectorAll('.alert');
+            existingAlerts.forEach(alert => alert.remove());
+            
+            // Add new alert at the top of the form
+            const form = document.getElementById('metadataEmbeddingForm');
+            form.insertAdjacentHTML('afterbegin', alertHtml);
+            
+            // Auto-dismiss after 5 seconds for non-danger alerts
+            if (type !== 'danger') {
+                setTimeout(function() {
+                    const alert = document.querySelector('.alert');
+                    if (alert) {
+                        const bsAlert = new bootstrap.Alert(alert);
+                        bsAlert.close();
+                    }
+                }, 5000);
+            }
+        }
+    </script>
+}

@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    container_name: postgmem-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgmem
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    container_name: postgmem-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    container_name: postgmem-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+  # Initialize Ollama with the required models
+  ollama-init:
+    image: curlimages/curl:latest
+    container_name: postgmem-ollama-init
+    entrypoint: ["/bin/sh", "-c"]
+    depends_on:
+      - ollama
+    command: >
+      "
+      echo 'Waiting for Ollama service to start...' &&
+      sleep 15 &&
+      
+      echo 'Pulling embedding model...' &&
+      for i in 1 2 3 4 5; do
+        echo 'Attempting to pull embedding model (try $i/5)...' &&
+        if curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"all-minilm:33m-l12-v2-fp16\"}'; then
+          echo 'Embedding model pull initiated successfully' &&
+          break
+        fi &&
+        echo 'Ollama not ready yet for embedding model, waiting...' &&
+        sleep 10
+      done &&
+      
+      echo 'Pulling lightweight LLM model...' &&
+      for i in 1 2 3 4 5; do
+        echo 'Attempting to pull LLM model (try $i/5)...' &&
+        if curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2:0.5b\"}'; then
+          echo 'LLM model pull initiated successfully' &&
+          echo 'All models pulled successfully' &&
+          exit 0
+        fi &&
+        echo 'Failed to pull LLM model, retrying...' &&
+        sleep 10
+      done &&
+      echo 'Failed to pull models after multiple attempts' &&
+      exit 1
+      "
+
+  # PostgMem application
+  postg-mem:
+    image: memorizer:latest
+    restart: unless-stopped
+    container_name: postgmem-api
+    environment:
+      - ConnectionStrings__Storage=Host=postgres;Port=5432;Database=postgmem;Username=postgres;Password=postgres
+      - MEMORIZER_Embeddings__ApiUrl=http://ollama:11434
+      - MEMORIZER_Embeddings__Model=all-minilm:33m-l12-v2-fp16
+      - MEMORIZER_LLM__ApiUrl=http://ollama:11434
+      - MEMORIZER_LLM__Model=qwen2:0.5b
+      - MEMORIZER_LLM__Timeout=00:02:00
+      - MEMORIZER_LLM__Chunking__MinCharactersForChunking=2000
+      - MEMORIZER_LLM__Chunking__TargetChunkSize=1500
+      - MEMORIZER_Server__CanonicalUrl=http://memorizer-test.local:5000
+      - ASPNETCORE_ENVIRONMENT=Development
+    ports:
+      - "5000:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:
+  ollama-data: 

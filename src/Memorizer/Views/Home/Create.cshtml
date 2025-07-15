@@ -1,0 +1,198 @@
+@{
+    ViewData["Title"] = "Create Memory";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">
+                    <i class="fas fa-plus me-2"></i>
+                    Create New Memory
+                </h4>
+            </div>
+            <div class="card-body">
+                <form id="createMemoryForm">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="title" placeholder="Title for this memory" required>
+                        <div class="form-text">A descriptive title is required for organization and search</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="type" class="form-label">Type <span class="text-danger">*</span></label>
+                                <select class="form-select" id="type" required>
+                                    <option value="">Select type...</option>
+                                    <option value="reference">Reference Material</option>
+                                    <option value="procedure">Procedure/How-to</option>
+                                    <option value="preference">User Preference</option>
+                                    <option value="project_note">Project Note</option>
+                                    <option value="example">Example/Pattern</option>
+                                    <option value="todo">Action Item</option>
+                                    <option value="reflection">Reflection/Lesson</option>
+                                    <option value="conversation">Conversation</option>
+                                    <option value="document">Document</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="source" class="form-label">Source <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="source" placeholder="e.g., user, system, LLM, documentation" required>
+                                <div class="form-text">Who or what created this memory</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Content <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="content" rows="8" placeholder="Enter the memory content (supports markdown, JSON, or plain text)" required></textarea>
+                        <div class="form-text">The main content that will be vectorized and searchable</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="tags" class="form-label">Tags</label>
+                                <input type="text" class="form-control" id="tags" placeholder="tag1, tag2, tag3">
+                                <div class="form-text">Comma-separated tags for better organization</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="confidence" class="form-label">Confidence</label>
+                                <input type="range" class="form-range" id="confidence" min="0" max="1" step="0.1" value="1.0" oninput="updateConfidenceValue()">
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-muted">0.0</small>
+                                    <small class="text-muted" id="confidenceValue">1.0</small>
+                                    <small class="text-muted">1.0</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                                                <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">                            <i class="fas fa-arrow-left me-2"></i>                            Back to List                        </a>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <i class="fas fa-save me-2"></i>
+                            Create Memory
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+function updateConfidenceValue() {
+    const confidence = document.getElementById('confidence').value;
+    document.getElementById('confidenceValue').textContent = parseFloat(confidence).toFixed(1);
+}
+
+function addTag(tagName) {
+    const tagsField = document.getElementById('tags');
+    const currentTags = tagsField.value.trim();
+    
+    // Parse existing tags
+    const existingTags = currentTags.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    
+    // Check if tag already exists - if so, remove it (toggle behavior)
+    if (existingTags.includes(tagName)) {
+        // Remove the tag
+        const updatedTags = existingTags.filter(t => t !== tagName);
+        tagsField.value = updatedTags.join(', ');
+        return;
+    }
+    
+    // Add the tag
+    if (currentTags === '') {
+        tagsField.value = tagName;
+    } else {
+        tagsField.value = currentTags + ', ' + tagName;
+    }
+}
+
+document.getElementById('createMemoryForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Creating...';
+    submitBtn.disabled = true;
+    
+    try {
+        const tags = document.getElementById('tags').value
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(tag => tag.length > 0);
+        
+        const requestData = {
+            title: document.getElementById('title').value || null,
+            type: document.getElementById('type').value,
+            content: document.getElementById('content').value,
+            source: document.getElementById('source').value,
+            tags: tags.length > 0 ? tags : null,
+            confidence: parseFloat(document.getElementById('confidence').value)
+        };
+        
+        const response = await fetch('/api/memory', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        });
+        
+        if (response.ok) {
+            // Success - redirect to the memory list
+            window.location.href = '/ui';
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.title || 'Failed to create memory');
+        }
+    } catch (error) {
+        console.error('Error creating memory:', error);
+        alert('Error creating memory: ' + error.message);
+    } finally {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+});
+
+// Add some helpful example content based on type selection
+document.getElementById('type').addEventListener('change', function() {
+    const contentField = document.getElementById('content');
+    const sourceField = document.getElementById('source');
+    const type = this.value;
+    
+    if (contentField.value === '') {
+        switch(type) {
+            case 'reference':
+                contentField.placeholder = 'Example: Memorizer uses PostgreSQL with pgvector extension for storing and searching vectorized memories. Key tables: memories, memory_relationships.';
+                sourceField.value = 'documentation';
+                break;
+            case 'procedure':
+                contentField.placeholder = 'Example: To update a memory: 1. Fetch existing memory, 2. Modify content, 3. Re-vectorize with embedding service, 4. Update database record.';
+                sourceField.value = 'system';
+                break;
+            case 'preference':
+                contentField.placeholder = 'Example: User prefers pagination with 20 items per page by default.';
+                sourceField.value = 'user';
+                break;
+            case 'todo':
+                contentField.placeholder = 'Example: Implement memory search filters by date range and confidence score.';
+                sourceField.value = 'user';
+                break;
+            default:
+                contentField.placeholder = 'Enter the memory content (supports markdown, JSON, or plain text)';
+                sourceField.value = '';
+        }
+    }
+});
+</script>
+} 

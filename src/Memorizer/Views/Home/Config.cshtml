@@ -1,0 +1,240 @@
+@{
+    ViewData["Title"] = "System Configuration";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h3 mb-1">
+                    <i class="fas fa-cogs me-2 text-primary"></i>
+                    System Configuration
+                </h1>
+                <p class="text-muted mb-0">Debug system settings and feature availability</p>
+            </div>
+            <div>
+                <a asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>
+                    Back to Memories
+                </a>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingSpinner" class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading configuration...</span>
+            </div>
+            <p class="text-muted mt-2">Loading system configuration...</p>
+        </div>
+
+        <!-- Configuration Content -->
+        <div id="configContent" style="display: none;">
+            <!-- Embedding Configuration -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-vector-square me-2"></i>
+                        Vector Embeddings
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>API Configured:</strong></td>
+                                    <td><span id="embeddingApiConfigured" class="badge"></span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Model:</strong></td>
+                                    <td><code id="embeddingModel"></code></td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Timeout:</strong></td>
+                                    <td><span id="embeddingTimeout"></span></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Database & Environment -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-database me-2"></i>
+                                Database
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Storage Configured:</strong></td>
+                                    <td><span id="storageConfigured" class="badge"></span></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-server me-2"></i>
+                                Environment
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Environment:</strong></td>
+                                    <td><code id="aspnetEnvironment"></code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>OTEL Configured:</strong></td>
+                                    <td><span id="otelConfigured" class="badge"></span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Service Name:</strong></td>
+                                    <td><code id="otelServiceName"></code></td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Server Configuration -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-globe me-2"></i>
+                        Server Settings
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Canonical URL Configured:</strong></td>
+                            <td><span id="canonicalUrlConfigured" class="badge"></span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Canonical URL:</strong></td>
+                            <td><code id="canonicalUrl"></code></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Feature Status Summary -->
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Feature Status Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="featureStatusSummary">
+                        <!-- Will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" style="display: none;" class="alert alert-danger">
+            <h5><i class="fas fa-exclamation-triangle me-2"></i>Configuration Load Error</h5>
+            <p class="mb-0">Unable to load system configuration. Please check the logs for details.</p>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadConfiguration();
+});
+
+async function loadConfiguration() {
+    try {
+        const response = await fetch('/api/configuration');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const config = await response.json();
+        displayConfiguration(config);
+        
+    } catch (error) {
+        console.error('Error loading configuration:', error);
+        showError();
+    }
+}
+
+function displayConfiguration(config) {
+    // Hide loading, show content
+    document.getElementById('loadingSpinner').style.display = 'none';
+    document.getElementById('configContent').style.display = 'block';
+
+    // Embedding Configuration
+    setBadge('embeddingApiConfigured', config.embeddingSettings.apiConfigured, 'Configured', 'Not Configured');
+    setText('embeddingModel', config.embeddingSettings.model);
+    setText('embeddingTimeout', config.embeddingSettings.timeout);
+
+    // Database & Environment
+    setBadge('storageConfigured', config.connectionStrings.storageConfigured, 'Configured', 'Not Configured');
+    setText('aspnetEnvironment', config.environment.aspNetCoreEnvironment || 'Not Set');
+    setBadge('otelConfigured', config.environment.otelConfigured, 'Configured', 'Not Configured');
+    setText('otelServiceName', config.environment.otelServiceName || 'Not Set');
+
+    // Server Settings
+    setBadge('canonicalUrlConfigured', config.serverSettings.canonicalUrlConfigured, 'Configured', 'Not Configured');
+    setText('canonicalUrl', config.serverSettings.canonicalUrl || 'Not Set');
+
+    // Feature Status Summary
+    displayFeatureStatusSummary(config);
+}
+
+function setBadge(elementId, condition, trueText, falseText) {
+    const element = document.getElementById(elementId);
+    element.textContent = condition ? trueText : falseText;
+    element.className = condition ? 'badge bg-success' : 'badge bg-warning';
+}
+
+function setText(elementId, text) {
+    document.getElementById(elementId).textContent = text;
+}
+
+function displayFeatureStatusSummary(config) {
+    const features = [];
+    
+    if (config.embeddingSettings.apiConfigured) {
+        features.push('<span class="badge bg-success me-2 mb-2"><i class="fas fa-check me-1"></i>Vector Embeddings Active</span>');
+    } else {
+        features.push('<span class="badge bg-danger me-2 mb-2"><i class="fas fa-times me-1"></i>Vector Embeddings Missing</span>');
+    }
+    
+    if (config.connectionStrings.storageConfigured) {
+        features.push('<span class="badge bg-success me-2 mb-2"><i class="fas fa-check me-1"></i>Database Connected</span>');
+    } else {
+        features.push('<span class="badge bg-danger me-2 mb-2"><i class="fas fa-times me-1"></i>Database Not Configured</span>');
+    }
+
+    document.getElementById('featureStatusSummary').innerHTML = features.join('\n');
+}
+
+function showError() {
+    document.getElementById('loadingSpinner').style.display = 'none';
+    document.getElementById('errorState').style.display = 'block';
+}
+</script>
+} 

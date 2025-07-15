@@ -401,3 +401,12 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# --- .devcontainer ---
+# Configuration files (devcontainer.json, docker-compose.yml) SHOULD be committed.
+# Ignore potential local runtime artifacts or user-specific state if it ever appears here.
+.devcontainer/.cache/
+.devcontainer/.history/
+.devcontainer/.persisted_credentials/
+.devcontainer/.vscode-server/
+.devcontainer/.features.temp.dockerfile

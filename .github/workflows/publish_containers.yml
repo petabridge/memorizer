@@ -1,0 +1,48 @@
+name: Publish Container Image
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  publish-container:
+    name: publish-container
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v4
+      with:
+         global-json-file: global.json
+
+    - name: "Update release notes"
+      shell: pwsh
+      run: |
+        ./build.ps1
+
+    - name: Log in to DockerHub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: "build and push docker images"
+      run: |
+        dotnet publish -p:VersionPrefix=${{ github.ref_name }} -c Release -t:PublishContainer
+
+    - name: release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: false
+        prerelease: false
+        release_name: 'Memorizer ${{ github.ref_name }}'
+        tag_name: ${{ github.ref }}
+        body_path: RELEASE_NOTES.md
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
