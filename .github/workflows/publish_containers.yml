@@ -44,7 +44,7 @@ jobs:
 
     - name: "build and push docker images"
       run: |
-        dotnet publish -p:VersionPrefix=${{ github.ref_name }} -c Release -t:PublishContainer
+        dotnet publish -p:VersionPrefix=${{ github.ref_name }} -p:ContainerRegistry=docker.io -c Release /t:PublishContainer
 
     - name: release
       uses: actions/create-release@v1
