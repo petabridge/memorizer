@@ -3,14 +3,11 @@
     <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/dariogriffo/postg-mem</PackageProjectUrl>
-    <VersionPrefix>1.5.4</VersionPrefix>
+    <VersionPrefix>1.6.0</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
-    <PackageReleaseNotes>- [UI: display relationship data](https://github.com/petabridge/memory-mcp/pull/66)
-- [UI: fix canonical url display bug](https://github.com/petabridge/memory-mcp/pull/64)
-- [UI: Remove rule memory functionality](https://github.com/petabridge/memory-mcp/pull/65)
-- [UI: resolve fluctuating memory types count on Statistics page](https://github.com/petabridge/memory-mcp/pull/68)</PackageReleaseNotes>
+    <PackageReleaseNotes>- First public release of Memorizer v1</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>
