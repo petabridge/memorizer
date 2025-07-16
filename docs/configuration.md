@@ -30,23 +30,25 @@ This document contains detailed configuration, setup, and advanced usage instruc
 
 ## Environment Configuration
 
+> **Note:** When setting configuration via environment variables (such as in Docker or cloud environments), you must prefix all variable names with `MEMORIZER_`. This is required for the application to recognize the settings. For example, use `MEMORIZER_Server__CanonicalUrl` instead of `Server__CanonicalUrl`.
+
 Configure the application settings in the `.env` file or as environment variables:
 
 ```bash
-ConnectionStrings__Storage=Host=localhost;Port=5432;Database=memorizer;Username=postgres;Password=postgres
-Embeddings__ApiUrl=http://localhost:11434
-Embeddings__Model=all-minilm:33m-l12-v2-fp16
-Server__CanonicalUrl=example.com:8080
+MEMORIZER_ConnectionStrings__Storage=Host=localhost;Port=5432;Database=memorizer;Username=postgres;Password=postgres
+MEMORIZER_Embeddings__ApiUrl=http://localhost:11434
+MEMORIZER_Embeddings__Model=all-minilm:33m-l12-v2-fp16
+MEMORIZER_Server__CanonicalUrl=example.com:8080
 ```
 
-- `ConnectionStrings__Storage`: PostgreSQL connection string
-- `Embeddings__ApiUrl`: URL of your embedding API (defaults to Ollama)
-- `Embeddings__Model`: The embedding model to use
-- `Server__CanonicalUrl`: (Optional) The canonical URL/hostname for this server. Used for generating MCP configuration. Defaults to `localhost:{port}` where port is extracted from `ASPNETCORE_URLS`
+- `MEMORIZER_ConnectionStrings__Storage`: PostgreSQL connection string
+- `MEMORIZER_Embeddings__ApiUrl`: URL of your embedding API (defaults to Ollama)
+- `MEMORIZER_Embeddings__Model`: The embedding model to use
+- `MEMORIZER_Server__CanonicalUrl`: (Optional) The canonical URL/hostname for this server. Used for generating MCP configuration. Defaults to `localhost:{port}` where port is extracted from `ASPNETCORE_URLS`
 
 ### MCP Configuration
 
-The server now provides an endpoint to get the MCP configuration JSON at `/ui/mcp-config`. This endpoint uses the `Server__CanonicalUrl` setting to generate the proper transport URL for MCP clients.
+The server now provides an endpoint to get the MCP configuration JSON at `/ui/mcp-config`. This endpoint uses the `MEMORIZER_Server__CanonicalUrl` setting to generate the proper transport URL for MCP clients.
 
 ---
 
