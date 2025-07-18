@@ -52,7 +52,7 @@ services:
       
       echo 'Pulling embedding model...' &&
       for i in 1 2 3 4 5; do
-        echo 'Attempting to pull embedding model (try $i/5)...' &&
+        echo 'Attempting to pull embedding model (try '$$i'/5)...' &&
         if curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"all-minilm:33m-l12-v2-fp16\"}'; then
           echo 'Embedding model pull initiated successfully' &&
           break
@@ -63,7 +63,7 @@ services:
       
       echo 'Pulling lightweight LLM model...' &&
       for i in 1 2 3 4 5; do
-        echo 'Attempting to pull LLM model (try $i/5)...' &&
+        echo 'Attempting to pull LLM model (try '$$i'/5)...' &&
         if curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2:0.5b\"}'; then
           echo 'LLM model pull initiated successfully' &&
           echo 'All models pulled successfully' &&
