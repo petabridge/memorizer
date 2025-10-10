@@ -104,7 +104,7 @@ public class HomeController : Controller
             {
                 memorizer = new
                 {
-                    url = $"{canonicalUrl}/sse"
+                    url = canonicalUrl
                 }
             }
         };

@@ -78,10 +78,12 @@ To use Memorizer with any MCP-compatible client, add the following to your confi
 ```json
 {
   "memorizer": {
-    "url": "http://localhost:5000/sse"
+    "url": "http://localhost:5000"
   }
 }
 ```
+
+This uses the modern Streamable HTTP transport (MCP spec 2025-03-26+).
 
 ---
 
