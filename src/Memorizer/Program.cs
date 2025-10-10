@@ -47,6 +47,7 @@ builder.Services.AddControllersWithViews();
 
 // Configure CORS for MCP SSE endpoint - always enabled with configurable settings
 var corsSettings = builder.Configuration.GetSection("Cors").Get<CorsSettings>() ?? new CorsSettings();
+corsSettings.ApplyDefaults();
 
 builder.Services.AddCors(options =>
 {
