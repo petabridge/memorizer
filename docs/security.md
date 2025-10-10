@@ -95,7 +95,7 @@ For production deployments, especially when exposed to the internet:
 
 ### CORS and MCP Clients
 
-MCP (Model Context Protocol) clients connect to the `/sse` endpoint using Server-Sent Events. This endpoint requires CORS to be properly configured to work with external clients.
+MCP (Model Context Protocol) clients connect using the Streamable HTTP transport. The MCP endpoint requires CORS to be properly configured to work with external clients.
 
 If you're experiencing connection issues with Claude Code or other MCP clients:
 

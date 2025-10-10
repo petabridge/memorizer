@@ -153,7 +153,7 @@ If you're running both your client application and Memorizer in Docker container
 ```json
 {
   "memorizer": {
-    "url": "http://memorizer-api:5000/sse"
+    "url": "http://memorizer-api:5000"
   }
 }
 ```
@@ -168,10 +168,10 @@ To test if your MCP connection is working:
 2. Send a simple curl request to verify the server is responding:
 
 ```bash
-curl http://localhost:5000/sse
+curl http://localhost:5000
 ```
 
-You should receive a response confirming the SSE endpoint is available.
+You should receive a response from the MCP endpoint.
 
 ### MCP Configuration Endpoint
 
