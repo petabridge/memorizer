@@ -48,6 +48,8 @@ MEMORIZER_Server__CanonicalUrl=example.com:8080
 - `MEMORIZER_Embeddings__Dimensions`: The dimension size for embeddings (default: 384)
 - `MEMORIZER_Server__CanonicalUrl`: (Optional) The canonical URL/hostname for this server. Used for generating MCP configuration. Defaults to `localhost:{port}` where port is extracted from `ASPNETCORE_URLS`
 
+For security-related configuration (CORS, database security, etc.), see [docs/security.md](security.md).
+
 > ⚠️ **IMPORTANT**: Changing the `Dimensions` configuration after the database has been initialized will cause runtime errors. PostgreSQL's `pgvector` extension uses fixed-dimension columns that cannot accept vectors of different sizes. If you need to change dimensions:
 > 1. For new deployments: Set the desired dimension value before first run
 > 2. For existing databases: You must manually migrate the database by either:

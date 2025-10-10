@@ -1,6 +1,7 @@
 using Configuration.Extensions.EnvironmentFile;
 using Memorizer.Extensions;
 using Memorizer.Services;
+using Memorizer.Settings;
 using Memorizer.Telemetry;
 using PostgMem.Tools;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -44,6 +45,51 @@ builder.Services.AddMcpServer().WithHttpTransport().WithTools<MemoryTools>();
 // Add MVC support for web UI
 builder.Services.AddControllersWithViews();
 
+// Configure CORS for MCP SSE endpoint - always enabled with configurable settings
+var corsSettings = builder.Configuration.GetSection("Cors").Get<CorsSettings>() ?? new CorsSettings();
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        // Configure origins
+        if (corsSettings.AllowedOrigins.Contains("*"))
+        {
+            policy.AllowAnyOrigin();
+        }
+        else
+        {
+            policy.WithOrigins(corsSettings.AllowedOrigins);
+        }
+
+        // Configure methods
+        if (corsSettings.AllowedMethods.Contains("*"))
+        {
+            policy.AllowAnyMethod();
+        }
+        else
+        {
+            policy.WithMethods(corsSettings.AllowedMethods);
+        }
+
+        // Configure headers
+        if (corsSettings.AllowedHeaders.Contains("*"))
+        {
+            policy.AllowAnyHeader();
+        }
+        else
+        {
+            policy.WithHeaders(corsSettings.AllowedHeaders);
+        }
+
+        // Configure credentials (only if not using AllowAnyOrigin)
+        if (corsSettings.AllowCredentials && !corsSettings.AllowedOrigins.Contains("*"))
+        {
+            policy.AllowCredentials();
+        }
+    });
+});
+
 // Configure routing options for lowercase URLs
 builder.Services.Configure<RouteOptions>(options =>
 {
@@ -61,6 +107,9 @@ builder.Services.AddHealthChecks()
 WebApplication app = builder.Build();
 
 app.UseStaticFiles();
+
+// Enable CORS for MCP SSE endpoint
+app.UseCors();
 
 app.MapMcp();
 

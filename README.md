@@ -127,6 +127,7 @@ The Web UI provides a user-friendly interface for all Memorizer functionality, m
 ## 📖 Documentation
 
 - [Configuration & Advanced Setup](docs/configuration.md)
+- [Security Configuration](docs/security.md)
 - [Local Development](docs/local-development.md)
 - [Schema Migrations](docs/schema-migrations.md)
 - [Architecture Decision Records](docs/adr/README.md)

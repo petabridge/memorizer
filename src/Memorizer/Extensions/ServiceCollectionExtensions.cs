@@ -18,6 +18,7 @@ public static class ServiceCollectionExtensions
         services.AddActorSystem();
         services.AddStorage();
         services.AddServerSettings();
+        services.AddCorsSettings();
         if(initialize)
             services.AddHostedService<InitializationService>();
         services.AutoRegisterTypesInAssemblies(typeof(Storage).Assembly);
@@ -127,6 +128,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ServerSettings>(sp =>
             sp.GetRequiredService<IConfiguration>().GetSection("Server").Get<ServerSettings>() ??
             new ServerSettings());
+
+        return services;
+    }
+
+    public static IServiceCollection AddCorsSettings(
+        this IServiceCollection services)
+    {
+        services.AddSingleton<CorsSettings>(sp =>
+            sp.GetRequiredService<IConfiguration>().GetSection("Cors").Get<CorsSettings>() ??
+            new CorsSettings());
 
         return services;
     }
