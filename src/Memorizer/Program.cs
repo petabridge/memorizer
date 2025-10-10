@@ -40,7 +40,9 @@ otelLogger.LogInformation("OTEL_RESOURCE_ATTRIBUTES: {ResourceAttributes}", Envi
 // Add services
 builder.Services.AddMemorizer();
 builder.Services.AddMemorizerOtel();
-builder.Services.AddMcpServer().WithHttpTransport().WithTools<MemoryTools>();
+builder.Services.AddMcpServer()
+    .WithHttpTransport(options => options.Stateless = true)
+    .WithTools<MemoryTools>();
 
 // Add MVC support for web UI
 builder.Services.AddControllersWithViews();
