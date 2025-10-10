@@ -2,9 +2,9 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
-    <PropertyGroup Label="SharedVersions">
-        <MsftVersion>9.0.9</MsftVersion>
-    </PropertyGroup>
+  <PropertyGroup Label="SharedVersions">
+    <MsftVersion>9.0.9</MsftVersion>
+  </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
     <PackageVersion Include="Configuration.Extensions.EnvironmentFile" Version="2.0.1" />
@@ -13,8 +13,8 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="$(MsftVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(MsftVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="$(MsftVersion)" />
-    <PackageVersion Include="ModelContextProtocol" Version="0.3.0-preview.4" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.3.0-preview.4" />
+    <PackageVersion Include="ModelContextProtocol" Version="0.4.0-preview.2" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.2" />
     <PackageVersion Include="Npgsql" Version="9.0.3" />
     <PackageVersion Include="OllamaSharp" Version="5.3.6" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />

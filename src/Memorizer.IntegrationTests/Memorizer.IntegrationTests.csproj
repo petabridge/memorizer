@@ -27,7 +27,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="ModelContextProtocol.AspNetCore" VersionOverride="0.3.0-preview.4" />
+      <PackageReference Include="ModelContextProtocol.AspNetCore" VersionOverride="0.4.0-preview.2" />
       <PackageReference Include="OllamaSharp" VersionOverride="5.3.6" />
         <ProjectReference Include="..\Memorizer\Memorizer.csproj" />
     </ItemGroup>
