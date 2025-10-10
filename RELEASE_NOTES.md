@@ -1,6 +1,4 @@
-#### 1.7.1-beta1 October 10th 2025 ####
-
-**🚧 BETA RELEASE - For Testing MCP Connectivity Fixes**
+#### 1.7.1 October 10th 2025 ####
 
 **Breaking Changes**
 - **MCP Endpoint Configuration Updated**: The recommended MCP endpoint has changed from `/sse` to the root path `/` to use modern Streamable HTTP transport (MCP spec 2025-03-26+)
@@ -12,9 +10,6 @@
 **Updates**
 - [Bump ModelContextProtocol from 0.3.0-preview.4 to 0.4.0-preview.2](https://github.com/petabridge/memorizer-v1/pull/56) - Fixes server notification bugs and improves protocol compatibility
 - [Bump ModelContextProtocol.AspNetCore from 0.3.0-preview.4 to 0.4.0-preview.2](https://github.com/petabridge/memorizer-v1/pull/56) - Adds Streamable HTTP transport support
-
-**Motivation**
-This beta release addresses MCP client connectivity issues, particularly with Claude Code. The updated SDK (0.4.0-preview.2) includes critical fixes for server notifications and better protocol version negotiation.
 
 #### 1.7.0 October 9th 2025 ####
 
