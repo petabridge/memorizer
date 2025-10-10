@@ -34,7 +34,7 @@ public class CorsConfigurationTests : IDisposable
     public async Task CorsEnabled_PrefightRequest_ReturnsCorrectHeaders()
     {
         // Arrange
-        await using var app = CreateTestApp(corsEnabled: true);
+        await using var app = CreateTestApp();
         await app.StartAsync();
         var client = app.GetTestClient();
 
@@ -61,7 +61,7 @@ public class CorsConfigurationTests : IDisposable
     public async Task CorsEnabled_ActualRequest_ReturnsCorrectHeaders()
     {
         // Arrange
-        await using var app = CreateTestApp(corsEnabled: true);
+        await using var app = CreateTestApp();
         await app.StartAsync();
         var client = app.GetTestClient();
 
@@ -79,34 +79,14 @@ public class CorsConfigurationTests : IDisposable
         _output.WriteLine("✓ CORS actual request returned correct headers");
     }
 
-    [Fact]
-    public async Task CorsDisabled_Request_DoesNotReturnCorsHeaders()
-    {
-        // Arrange
-        await using var app = CreateTestApp(corsEnabled: false);
-        await app.StartAsync();
-        var client = app.GetTestClient();
-
-        var request = new HttpRequestMessage(HttpMethod.Get, "/healthz");
-        request.Headers.Add("Origin", "https://example.com");
-
-        // Act
-        var response = await client.SendAsync(request);
-
-        // Assert
-        Assert.True(response.IsSuccessStatusCode);
-        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"),
-            "Response should not contain Access-Control-Allow-Origin header when CORS is disabled");
-
-        _output.WriteLine("✓ CORS disabled request does not return CORS headers");
-    }
+    // CORS is always enabled now, so this test is no longer relevant
 
     [Fact]
     public async Task CorsSettings_SpecificOrigins_OnlyAllowsConfiguredOrigins()
     {
         // Arrange - Create app with specific allowed origins
         var allowedOrigins = new[] { "https://trusted-domain.com", "https://app.example.com" };
-        await using var app = CreateTestApp(corsEnabled: true, allowedOrigins: allowedOrigins);
+        await using var app = CreateTestApp(allowedOrigins: allowedOrigins);
         await app.StartAsync();
         var client = app.GetTestClient();
 
@@ -132,7 +112,6 @@ public class CorsConfigurationTests : IDisposable
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Cors:Enabled"] = "true",
                 ["Cors:AllowedOrigins:0"] = "https://example.com",
                 ["Cors:AllowedOrigins:1"] = "https://app.example.com",
                 ["Cors:AllowedMethods:0"] = "GET",
@@ -147,7 +126,6 @@ public class CorsConfigurationTests : IDisposable
 
         // Assert
         Assert.NotNull(corsSettings);
-        Assert.True(corsSettings.Enabled);
         Assert.Equal(2, corsSettings.AllowedOrigins.Length);
         Assert.Contains("https://example.com", corsSettings.AllowedOrigins);
         Assert.Contains("https://app.example.com", corsSettings.AllowedOrigins);
@@ -168,7 +146,6 @@ public class CorsConfigurationTests : IDisposable
         var corsSettings = new CorsSettings();
 
         // Assert
-        Assert.True(corsSettings.Enabled);
         Assert.Single(corsSettings.AllowedOrigins);
         Assert.Equal("*", corsSettings.AllowedOrigins[0]);
         Assert.Single(corsSettings.AllowedMethods);
@@ -181,7 +158,6 @@ public class CorsConfigurationTests : IDisposable
     }
 
     private WebApplication CreateTestApp(
-        bool corsEnabled,
         string[]? allowedOrigins = null,
         string[]? allowedMethods = null,
         string[]? allowedHeaders = null)
@@ -196,7 +172,6 @@ public class CorsConfigurationTests : IDisposable
             ["Embeddings:Model"] = "all-minilm",
             ["Embeddings:Timeout"] = "00:01:00",
             ["Embeddings:Dimensions"] = "384",
-            ["Cors:Enabled"] = corsEnabled.ToString(),
         };
 
         // Add CORS configuration
@@ -231,53 +206,50 @@ public class CorsConfigurationTests : IDisposable
         builder.Services.AddMcpServer().WithHttpTransport().WithTools<MemoryTools>();
         builder.Services.AddControllersWithViews();
 
-        // Configure CORS using the same logic as Program.cs
+        // Configure CORS using the same logic as Program.cs - always enabled
         var corsSettings = builder.Configuration.GetSection("Cors").Get<CorsSettings>() ?? new CorsSettings();
 
-        if (corsSettings.Enabled)
+        builder.Services.AddCors(options =>
         {
-            builder.Services.AddCors(options =>
+            options.AddDefaultPolicy(policy =>
             {
-                options.AddDefaultPolicy(policy =>
+                // Configure origins
+                if (corsSettings.AllowedOrigins.Contains("*"))
                 {
-                    // Configure origins
-                    if (corsSettings.AllowedOrigins.Contains("*"))
-                    {
-                        policy.AllowAnyOrigin();
-                    }
-                    else
-                    {
-                        policy.WithOrigins(corsSettings.AllowedOrigins);
-                    }
+                    policy.AllowAnyOrigin();
+                }
+                else
+                {
+                    policy.WithOrigins(corsSettings.AllowedOrigins);
+                }
 
-                    // Configure methods
-                    if (corsSettings.AllowedMethods.Contains("*"))
-                    {
-                        policy.AllowAnyMethod();
-                    }
-                    else
-                    {
-                        policy.WithMethods(corsSettings.AllowedMethods);
-                    }
+                // Configure methods
+                if (corsSettings.AllowedMethods.Contains("*"))
+                {
+                    policy.AllowAnyMethod();
+                }
+                else
+                {
+                    policy.WithMethods(corsSettings.AllowedMethods);
+                }
 
-                    // Configure headers
-                    if (corsSettings.AllowedHeaders.Contains("*"))
-                    {
-                        policy.AllowAnyHeader();
-                    }
-                    else
-                    {
-                        policy.WithHeaders(corsSettings.AllowedHeaders);
-                    }
+                // Configure headers
+                if (corsSettings.AllowedHeaders.Contains("*"))
+                {
+                    policy.AllowAnyHeader();
+                }
+                else
+                {
+                    policy.WithHeaders(corsSettings.AllowedHeaders);
+                }
 
-                    // Configure credentials (only if not using AllowAnyOrigin)
-                    if (corsSettings.AllowCredentials && !corsSettings.AllowedOrigins.Contains("*"))
-                    {
-                        policy.AllowCredentials();
-                    }
-                });
+                // Configure credentials (only if not using AllowAnyOrigin)
+                if (corsSettings.AllowCredentials && !corsSettings.AllowedOrigins.Contains("*"))
+                {
+                    policy.AllowCredentials();
+                }
             });
-        }
+        });
 
         builder.Services.AddHealthChecks();
 
@@ -285,11 +257,8 @@ public class CorsConfigurationTests : IDisposable
 
         app.UseStaticFiles();
 
-        // Enable CORS if configured
-        if (corsSettings.Enabled)
-        {
-            app.UseCors();
-        }
+        // Enable CORS - always enabled
+        app.UseCors();
 
         app.MapMcp();
         app.MapHealthChecks("/healthz");
