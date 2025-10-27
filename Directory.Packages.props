@@ -33,7 +33,7 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
     <PackageVersion Include="Akka.Hosting" Version="1.5.53" />
     <PackageVersion Include="Akka.Hosting.TestKit" Version="1.5.53" />
-    <PackageVersion Include="Akka.Persistence.Sql.Hosting" Version="1.5.51.1" />
+    <PackageVersion Include="Akka.Persistence.Sql.Hosting" Version="1.5.55" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(MsftVersion)" />
   </ItemGroup>
 </Project>
