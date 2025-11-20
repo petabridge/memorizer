@@ -1,5 +1,8 @@
+using Akka;
 using Akka.Actor;
 using Akka.Event;
+using Akka.Streams;
+using Akka.Streams.Dsl;
 using Memorizer.Services;
 using Pgvector;
 
@@ -13,8 +16,13 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
     private readonly IStorage _storage;
     private readonly IEmbeddingService _embeddingService;
     private readonly ILoggingAdapter _logger;
+    private readonly IMaterializer _materializer;
 
     private BatchState? _batch;
+
+    // Progress source actor - only exists when running a batch
+    private IActorRef? _progressSourceActor;
+    private Source<MetadataEmbeddingProgressEvent, NotUsed>? _progressSource;
     
     private enum Status
     {
@@ -44,10 +52,43 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         _storage = storage;
         _embeddingService = embeddingService;
         _logger = Context.GetLogger();
+        _materializer = Context.System.Materializer();
 
+        // Start in Idle state
+        Idle();
+    }
+
+    private void Idle()
+    {
+        // Idle behavior - waiting for work
         ReceiveAsync<RegenerateAllMetadataEmbeddings>(HandleRegenerateAll);
+
+        // No progress available when idle
+        Receive<GetProgressSource<MetadataEmbeddingProgressEvent>>(_ =>
+        {
+            _logger.Warning("Progress source requested but no batch is running");
+            Sender.Tell(new ProgressSource<MetadataEmbeddingProgressEvent>(Source.Empty<MetadataEmbeddingProgressEvent>()));
+        });
+
+        Receive<GetMetadataEmbeddingStatus>(_ => HandleGetStatusIdle());
+    }
+
+    private void Running()
+    {
+        // Running behavior - actively processing batch
         ReceiveAsync<GenerateMetadataEmbeddingForMemory>(HandleGenerateMetadataEmbeddingForMemory);
-        Receive<GetMetadataEmbeddingStatus>(_ => HandleGetStatus());
+
+        // Return the active progress source
+        Receive<GetProgressSource<MetadataEmbeddingProgressEvent>>(_ =>
+        {
+            if (_progressSource != null)
+            {
+                _logger.Debug("Returning active progress source");
+                Sender.Tell(new ProgressSource<MetadataEmbeddingProgressEvent>(_progressSource));
+            }
+        });
+
+        Receive<GetMetadataEmbeddingStatus>(_ => HandleGetStatusRunning());
     }
 
     private async Task HandleRegenerateAll(RegenerateAllMetadataEmbeddings msg)
@@ -79,6 +120,19 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
             PageSize = msg.PageSize,
             StartTime = DateTime.UtcNow
         };
+
+        // Create progress source actor and switch to Running state
+        var (actorRef, source) = Source.ActorRef<MetadataEmbeddingProgressEvent>(100, OverflowStrategy.DropHead)
+            .PreMaterialize(_materializer);
+
+        _progressSourceActor = actorRef;
+        _progressSource = source;
+
+        Become(Running);
+
+        // Push initial progress event
+        PushProgressUpdate();
+
         await ProcessNextPage();
     }
 
@@ -88,7 +142,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         var (memories, _) = await _storage.GetMemoriesPaginated(_batch.Page, _batch.PageSize);
         if (memories.Count == 0)
         {
-            PublishBatchCompleted();
+            CompleteBatch();
             return;
         }
 
@@ -126,6 +180,8 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         finally
         {
             _batch.Outstanding--;
+            PushProgressUpdate();
+
             if (_batch.Outstanding == 0)
             {
                 await ProcessNextPage();
@@ -133,30 +189,31 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         }
     }
 
-    private void HandleGetStatus()
+    private void PushProgressUpdate()
     {
-        if (_batch != null)
-        {
-            Sender.Tell(new MetadataEmbeddingStatus(
-                IsRunning: _batch.CurrentStatus == Status.Running,
-                Status: _batch.CurrentStatus.ToString(),
-                TotalProcessed: _batch.Success + _batch.Failure,
-                TotalSuccessful: _batch.Success,
-                TotalFailed: _batch.Failure,
-                Outstanding: _batch.Outstanding,
-                FailedMemoryIds: _batch.FailedIds.ToList(),
-                StartTime: _batch.StartTime,
-                Duration: DateTime.UtcNow - _batch.StartTime,
-                RequestedBy: _batch.RequestedBy
-            ));
-        }
-        else
-        {
-            Sender.Tell(new MetadataEmbeddingStatus(
-                IsRunning: false,
-                Status: "idle"
-            ));
-        }
+        if (_progressSourceActor == null || _batch == null) return;
+
+        var progressEvent = new MetadataEmbeddingProgressEvent(
+            TotalProcessed: _batch.Success + _batch.Failure,
+            TotalSuccessful: _batch.Success,
+            TotalFailed: _batch.Failure,
+            Outstanding: _batch.Outstanding,
+            Status: "Running",
+            RequestedBy: _batch.RequestedBy,
+            Duration: DateTime.UtcNow - _batch.StartTime,
+            FailedMemoryIds: _batch.FailedIds.ToList()
+        );
+
+        _progressSourceActor.Tell(progressEvent);
+    }
+
+    private void CompleteBatch()
+    {
+        PublishBatchCompleted();
+        _progressSourceActor?.Tell(new Akka.Actor.Status.Success("Complete"));
+        _progressSourceActor = null;
+        _progressSource = null;
+        Become(Idle);
     }
 
     private void PublishBatchCompleted()
@@ -173,6 +230,32 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         );
         _logger.Info("Metadata embedding completed: {0} successful, {1} failed, duration: {2}ms", _batch.Success, _batch.Failure, duration.TotalMilliseconds);
         Context.System.EventStream.Publish(batchCompleted);
+    }
+
+    private void HandleGetStatusIdle()
+    {
+        Sender.Tell(new MetadataEmbeddingStatus(
+            IsRunning: false,
+            Status: "idle"
+        ));
+    }
+
+    private void HandleGetStatusRunning()
+    {
+        if (_batch == null) return;
+
+        Sender.Tell(new MetadataEmbeddingStatus(
+            IsRunning: _batch.CurrentStatus == Status.Running,
+            Status: _batch.CurrentStatus.ToString(),
+            TotalProcessed: _batch.Success + _batch.Failure,
+            TotalSuccessful: _batch.Success,
+            TotalFailed: _batch.Failure,
+            Outstanding: _batch.Outstanding,
+            FailedMemoryIds: _batch.FailedIds.ToList(),
+            StartTime: _batch.StartTime,
+            Duration: DateTime.UtcNow - _batch.StartTime,
+            RequestedBy: _batch.RequestedBy
+        ));
     }
 
     private static string CreateMetadataText(string title, string[] tags)

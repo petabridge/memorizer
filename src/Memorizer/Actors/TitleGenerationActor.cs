@@ -1,12 +1,17 @@
+using Akka;
 using Akka.Actor;
 using Akka.Event;
+using Akka.Streams;
+using Akka.Streams.Dsl;
 using Memorizer.Services;
 using Memorizer.Settings;
 
 namespace Memorizer.Actors;
 
 /// <summary>
-/// Actor responsible for generating titles for memories that don't have them
+/// Actor responsible for generating titles for memories that don't have them.
+/// Uses Become/Unbecome to switch between Idle and Running states,
+/// and pushes progress events to a SourceQueue when running.
 /// </summary>
 public sealed class TitleGenerationActor : ReceiveActor
 {
@@ -14,8 +19,9 @@ public sealed class TitleGenerationActor : ReceiveActor
     private readonly ILlmService _llmService;
     private readonly LlmSettings _settings;
     private readonly ILoggingAdapter _logger;
+    private readonly IMaterializer _materializer;
 
-    // State for batch processing
+    // State for batch processing (only used when Running)
     private DateTime _batchStartTime;
     private string _currentRequestedBy = string.Empty;
     private int _totalToProcess;
@@ -23,6 +29,10 @@ public sealed class TitleGenerationActor : ReceiveActor
     private int _successCount;
     private int _failureCount;
     private readonly List<Guid> _failedMemoryIds = [];
+
+    // Progress source actor - only exists when running a batch
+    private IActorRef? _progressSourceActor;
+    private Source<TitleGenerationProgressEvent, NotUsed>? _progressSource;
 
     public TitleGenerationActor(
         IStorage storage,
@@ -33,24 +43,50 @@ public sealed class TitleGenerationActor : ReceiveActor
         _llmService = llmService;
         _settings = settings;
         _logger = Context.GetLogger();
+        _materializer = Context.System.Materializer();
 
-        // Handle batch title generation requests
+        // Start in Idle state
+        Idle();
+    }
+
+    private void Idle()
+    {
+        // Idle behavior - waiting for work
         ReceiveAsync<GenerateTitlesForUntitled>(HandleGenerateTitlesForUntitled);
 
-        // Handle individual title generation requests
-        ReceiveAsync<GenerateTitleForMemory>(HandleGenerateTitleForMemory);
+        // No progress available when idle
+        Receive<GetProgressSource<TitleGenerationProgressEvent>>(_ =>
+        {
+            _logger.Warning("Progress source requested but no batch is running");
+            Sender.Tell(new ProgressSource<TitleGenerationProgressEvent>(Source.Empty<TitleGenerationProgressEvent>()));
+        });
 
-        // Handle completion and failure messages from child actors
+        Receive<GetTitleGenerationStatus>(_ => HandleGetStatusIdle());
+    }
+
+    private void Running()
+    {
+        // Running behavior - actively processing batch
+        ReceiveAsync<GenerateTitleForMemory>(HandleGenerateTitleForMemory);
         Receive<TitleGenerationCompleted>(HandleTitleGenerationCompleted);
         Receive<TitleGenerationFailed>(HandleTitleGenerationFailed);
 
-        // Handle status query requests
-        Receive<GetTitleGenerationStatus>(_ => HandleGetStatus());
+        // Return the active progress source
+        Receive<GetProgressSource<TitleGenerationProgressEvent>>(_ =>
+        {
+            if (_progressSource != null)
+            {
+                _logger.Debug("Returning active progress source");
+                Sender.Tell(new ProgressSource<TitleGenerationProgressEvent>(_progressSource));
+            }
+        });
+
+        Receive<GetTitleGenerationStatus>(_ => HandleGetStatusRunning());
     }
 
     private async Task HandleGenerateTitlesForUntitled(GenerateTitlesForUntitled message)
     {
-        _logger.Info("Starting batch title generation for up to {0} untitled memories, requested by {1}", 
+        _logger.Info("Starting batch title generation for up to {0} untitled memories, requested by {1}",
             message.BatchSize, message.RequestedBy);
 
         try
@@ -76,6 +112,18 @@ public sealed class TitleGenerationActor : ReceiveActor
 
             _logger.Info("Found {0} untitled memories to process", _totalToProcess);
 
+            // Create progress source actor and switch to Running state
+            var (actorRef, source) = Source.ActorRef<TitleGenerationProgressEvent>(100, OverflowStrategy.DropHead)
+                .PreMaterialize(_materializer);
+
+            _progressSourceActor = actorRef;
+            _progressSource = source;
+
+            Become(Running);
+
+            // Push initial progress event
+            PushProgressUpdate();
+
             // Process each memory
             foreach (var memory in untitledMemories)
             {
@@ -88,14 +136,14 @@ public sealed class TitleGenerationActor : ReceiveActor
                     RequestedBy = message.RequestedBy
                 };
 
-                // Send to self for processing (could be enhanced to use child actors for parallel processing)
+                // Send to self for processing
                 Self.Tell(generateMessage);
             }
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error starting batch title generation: {0}", ex.Message);
-            PublishBatchCompleted();
+            CompleteBatch();
         }
     }
 
@@ -154,10 +202,11 @@ public sealed class TitleGenerationActor : ReceiveActor
     {
         _processedCount++;
         _successCount++;
-        
-        _logger.Debug("Title generation completed for memory {0} ({1}/{2})", 
+
+        _logger.Debug("Title generation completed for memory {0} ({1}/{2})",
             message.MemoryId, _processedCount, _totalToProcess);
 
+        PushProgressUpdate();
         CheckBatchCompletion();
     }
 
@@ -166,10 +215,11 @@ public sealed class TitleGenerationActor : ReceiveActor
         _processedCount++;
         _failureCount++;
         _failedMemoryIds.Add(message.MemoryId);
-        
-        _logger.Warning("Title generation failed for memory {0} ({1}/{2}): {3}", 
+
+        _logger.Warning("Title generation failed for memory {0} ({1}/{2}): {3}",
             message.MemoryId, _processedCount, _totalToProcess, message.ErrorMessage);
 
+        PushProgressUpdate();
         CheckBatchCompletion();
     }
 
@@ -177,8 +227,36 @@ public sealed class TitleGenerationActor : ReceiveActor
     {
         if (_processedCount >= _totalToProcess)
         {
-            PublishBatchCompleted();
+            CompleteBatch();
         }
+    }
+
+    private void PushProgressUpdate()
+    {
+        if (_progressSourceActor == null) return;
+
+        var outstanding = _totalToProcess - _processedCount;
+        var progressEvent = new TitleGenerationProgressEvent(
+            TotalProcessed: _processedCount,
+            TotalSuccessful: _successCount,
+            TotalFailed: _failureCount,
+            Outstanding: outstanding,
+            Status: "Running",
+            RequestedBy: _currentRequestedBy,
+            Duration: DateTime.UtcNow - _batchStartTime,
+            FailedMemoryIds: _failedMemoryIds.ToList()
+        );
+
+        _progressSourceActor.Tell(progressEvent);
+    }
+
+    private void CompleteBatch()
+    {
+        PublishBatchCompleted();
+        _progressSourceActor?.Tell(new Akka.Actor.Status.Success("Complete"));
+        _progressSourceActor = null;
+        _progressSource = null;
+        Become(Idle);
     }
 
     private void PublishBatchCompleted()
@@ -200,33 +278,29 @@ public sealed class TitleGenerationActor : ReceiveActor
         Context.System.EventStream.Publish(batchCompleted);
     }
 
-    private void HandleGetStatus()
+    private void HandleGetStatusIdle()
+    {
+        Sender.Tell(new TitleGenerationStatus(
+            IsRunning: false,
+            Status: "idle"
+        ));
+    }
+
+    private void HandleGetStatusRunning()
     {
         var outstanding = _totalToProcess - _processedCount;
-        var isRunning = outstanding > 0;
-
-        if (isRunning)
-        {
-            Sender.Tell(new TitleGenerationStatus(
-                IsRunning: true,
-                Status: "Running",
-                TotalProcessed: _processedCount,
-                TotalSuccessful: _successCount,
-                TotalFailed: _failureCount,
-                Outstanding: outstanding,
-                FailedMemoryIds: _failedMemoryIds.ToList(),
-                StartTime: _batchStartTime,
-                Duration: DateTime.UtcNow - _batchStartTime,
-                RequestedBy: _currentRequestedBy
-            ));
-        }
-        else
-        {
-            Sender.Tell(new TitleGenerationStatus(
-                IsRunning: false,
-                Status: "idle"
-            ));
-        }
+        Sender.Tell(new TitleGenerationStatus(
+            IsRunning: true,
+            Status: "Running",
+            TotalProcessed: _processedCount,
+            TotalSuccessful: _successCount,
+            TotalFailed: _failureCount,
+            Outstanding: outstanding,
+            FailedMemoryIds: _failedMemoryIds.ToList(),
+            StartTime: _batchStartTime,
+            Duration: DateTime.UtcNow - _batchStartTime,
+            RequestedBy: _currentRequestedBy
+        ));
     }
 
     public static Props Props(IStorage storage, ILlmService llmService, LlmSettings settings)

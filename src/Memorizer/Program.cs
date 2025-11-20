@@ -1,4 +1,8 @@
+using Akka.Actor;
+using Akka.Hosting;
+using Akka.Streams;
 using Configuration.Extensions.EnvironmentFile;
+using Memorizer.Actors;
 using Memorizer.Extensions;
 using Memorizer.Services;
 using Memorizer.Settings;
@@ -136,23 +140,35 @@ app.MapGet("/otel-test", () =>
 
 // Add SSE endpoint for title generation progress
 app.MapGet("/ui/tools/title-generation-progress",
-    (ProgressStreamService progressService, CancellationToken ct) =>
+    async (IActorRegistry actorRegistry, CancellationToken ct) =>
 {
-    async IAsyncEnumerable<SseItem<object>> StreamProgress()
+    var materializer = app.Services.GetRequiredService<ActorSystem>().Materializer();
+    var titleGenActor = await actorRegistry.GetAsync<TitleGenerationActor>();
+
+    // Ask the actor for its progress source
+    var progressSource = await titleGenActor.Ask<ProgressSource<TitleGenerationProgressEvent>>(
+        new GetProgressSource<TitleGenerationProgressEvent>(),
+        ct);
+
+    async IAsyncEnumerable<SseItem<ProgressSseData>> StreamProgress()
     {
-        await foreach (var progress in progressService.GetTitleGenerationProgressStream(ct))
+        // Materialize the Akka.Streams source as an IAsyncEnumerable
+        await foreach (var progress in progressSource.Source.RunAsAsyncEnumerable(materializer).WithCancellation(ct))
         {
-            yield return new SseItem<object>(
-                new {
-                    percentComplete = progress.PercentComplete,
-                    totalProcessed = progress.TotalProcessed,
-                    totalSuccessful = progress.TotalSuccessful,
-                    totalFailed = progress.TotalFailed,
-                    outstanding = progress.Outstanding,
-                    status = progress.Status,
-                    requestedBy = progress.RequestedBy,
-                    duration = progress.Duration?.TotalSeconds
-                },
+            var total = progress.TotalProcessed + progress.Outstanding;
+            var percentComplete = total > 0 ? (int)((progress.TotalProcessed / (double)total) * 100) : 0;
+
+            yield return new SseItem<ProgressSseData>(
+                new ProgressSseData(
+                    PercentComplete: percentComplete,
+                    TotalProcessed: progress.TotalProcessed,
+                    TotalSuccessful: progress.TotalSuccessful,
+                    TotalFailed: progress.TotalFailed,
+                    Outstanding: progress.Outstanding,
+                    Status: progress.Status,
+                    RequestedBy: progress.RequestedBy,
+                    Duration: progress.Duration?.TotalSeconds
+                ),
                 "progress")
             {
                 EventId = Guid.NewGuid().ToString()
@@ -165,23 +181,35 @@ app.MapGet("/ui/tools/title-generation-progress",
 
 // Add SSE endpoint for metadata embedding progress
 app.MapGet("/ui/tools/metadata-embedding-progress",
-    (ProgressStreamService progressService, CancellationToken ct) =>
+    async (IActorRegistry actorRegistry, CancellationToken ct) =>
 {
-    async IAsyncEnumerable<SseItem<object>> StreamProgress()
+    var materializer = app.Services.GetRequiredService<ActorSystem>().Materializer();
+    var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActor>();
+
+    // Ask the actor for its progress source
+    var progressSource = await metadataEmbeddingActor.Ask<ProgressSource<MetadataEmbeddingProgressEvent>>(
+        new GetProgressSource<MetadataEmbeddingProgressEvent>(),
+        ct);
+
+    async IAsyncEnumerable<SseItem<ProgressSseData>> StreamProgress()
     {
-        await foreach (var progress in progressService.GetMetadataEmbeddingProgressStream(ct))
+        // Materialize the Akka.Streams source as an IAsyncEnumerable
+        await foreach (var progress in progressSource.Source.RunAsAsyncEnumerable(materializer).WithCancellation(ct))
         {
-            yield return new SseItem<object>(
-                new {
-                    percentComplete = progress.PercentComplete,
-                    totalProcessed = progress.TotalProcessed,
-                    totalSuccessful = progress.TotalSuccessful,
-                    totalFailed = progress.TotalFailed,
-                    outstanding = progress.Outstanding,
-                    status = progress.Status,
-                    requestedBy = progress.RequestedBy,
-                    duration = progress.Duration?.TotalSeconds
-                },
+            var total = progress.TotalProcessed + progress.Outstanding;
+            var percentComplete = total > 0 ? (int)((progress.TotalProcessed / (double)total) * 100) : 0;
+
+            yield return new SseItem<ProgressSseData>(
+                new ProgressSseData(
+                    PercentComplete: percentComplete,
+                    TotalProcessed: progress.TotalProcessed,
+                    TotalSuccessful: progress.TotalSuccessful,
+                    TotalFailed: progress.TotalFailed,
+                    Outstanding: progress.Outstanding,
+                    Status: progress.Status,
+                    RequestedBy: progress.RequestedBy,
+                    Duration: progress.Duration?.TotalSeconds
+                ),
                 "progress")
             {
                 EventId = Guid.NewGuid().ToString()

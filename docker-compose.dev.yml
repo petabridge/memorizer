@@ -1,0 +1,92 @@
+# Docker Compose configuration for development dependencies only
+# Use this when running the Memorizer application from your IDE
+#
+# Usage: docker-compose -f docker-compose.dev.yml up -d
+#
+# This starts:
+# - PostgreSQL with pgvector extension (port 5432)
+# - pgAdmin web UI (port 5050)
+# - Ollama LLM service (port 11434)
+# - Automatic model downloads for embeddings and LLM
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    container_name: postgmem-postgres-dev
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgmem
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    container_name: postgmem-pgadmin-dev
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    container_name: postgmem-ollama-dev
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data-dev:/root/.ollama
+
+  # Initialize Ollama with the required models
+  ollama-init:
+    image: curlimages/curl:latest
+    container_name: postgmem-ollama-init-dev
+    entrypoint: ["/bin/sh", "-c"]
+    depends_on:
+      - ollama
+    command: >
+      "
+      echo 'Waiting for Ollama service to start...' &&
+      sleep 15 &&
+
+      echo 'Pulling embedding model...' &&
+      for i in 1 2 3 4 5; do
+        echo 'Attempting to pull embedding model (try $i/5)...' &&
+        if curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"all-minilm:33m-l12-v2-fp16\"}'; then
+          echo 'Embedding model pull initiated successfully' &&
+          break
+        fi &&
+        echo 'Ollama not ready yet for embedding model, waiting...' &&
+        sleep 10
+      done &&
+
+      echo 'Pulling lightweight LLM model...' &&
+      for i in 1 2 3 4 5; do
+        echo 'Attempting to pull LLM model (try $i/5)...' &&
+        if curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2:0.5b\"}'; then
+          echo 'LLM model pull initiated successfully' &&
+          echo 'All models pulled successfully' &&
+          exit 0
+        fi &&
+        echo 'Failed to pull LLM model, retrying...' &&
+        sleep 10
+      done &&
+      echo 'Failed to pull models after multiple attempts' &&
+      exit 1
+      "
+
+volumes:
+  postgres-data-dev:
+  ollama-data-dev:

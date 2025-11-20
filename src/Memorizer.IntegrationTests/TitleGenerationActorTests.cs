@@ -1,5 +1,8 @@
+using Akka.Actor;
 using Akka.Hosting;
 using Akka.Hosting.TestKit;
+using Akka.Streams;
+using Akka.Streams.Dsl;
 using Memorizer.Actors;
 using Memorizer.Models;
 using Memorizer.Services;
@@ -73,6 +76,135 @@ public class TitleGenerationActorTests : TestKit
         Assert.Contains("title-generation", titleGenerationActor.Path.ToString());
         
         _output.WriteLine($"✅ Actor resolved correctly: {titleGenerationActor.Path}");
+    }
+
+    [Fact]
+    public async Task TitleGenerationActor_ProgressStream_ShouldCompleteGracefully()
+    {
+        // Arrange
+        var titleGenerationActor = ActorRegistry.Get<TitleGenerationActorKey>();
+        var materializer = Sys.Materializer();
+
+        // Create a test storage that returns a small list of untitled memories
+        var mockStorage = new MockStorageWithMemories();
+        var mockLlm = new MockLlmService();
+        var settings = new LlmSettings
+        {
+            ApiUrl = new Uri("http://localhost:11434"),
+            Model = "test-model",
+            Timeout = TimeSpan.FromMinutes(1)
+        };
+
+        // Create a new actor for this test
+        var testActor = Sys.ActorOf(TitleGenerationActor.Props(mockStorage, mockLlm, settings), "title-generation-test");
+
+        // Act - Get progress source BEFORE starting the batch (should be empty)
+        var emptyProgressSource = await testActor.Ask<ProgressSource<TitleGenerationProgressEvent>>(
+            new GetProgressSource<TitleGenerationProgressEvent>(),
+            TimeSpan.FromSeconds(5));
+
+        // Collect empty source events (should complete immediately)
+        var emptyEvents = await emptyProgressSource.Source
+            .RunWith(Sink.Seq<TitleGenerationProgressEvent>(), materializer);
+
+        Assert.Empty(emptyEvents);
+        _output.WriteLine("✅ Empty source completed immediately when no batch is running");
+
+        // Start a batch and immediately get the progress source
+        testActor.Tell(new GenerateTitlesForUntitled { BatchSize = 3, RequestedBy = "test" });
+
+        // Get progress source while batch is running
+        var activeProgressSource = await testActor.Ask<ProgressSource<TitleGenerationProgressEvent>>(
+            new GetProgressSource<TitleGenerationProgressEvent>(),
+            TimeSpan.FromSeconds(5));
+
+        // Materialize the stream and collect events
+        // The stream should emit progress events as the batch processes and then complete
+        var progressEventsList = new List<TitleGenerationProgressEvent>();
+        await activeProgressSource.Source
+            .RunForeach(evt =>
+            {
+                progressEventsList.Add(evt);
+                _output.WriteLine($"Progress: {evt.TotalProcessed}/{evt.TotalProcessed + evt.Outstanding} processed");
+            }, materializer);
+
+        // Assert
+        Assert.NotEmpty(progressEventsList);
+        _output.WriteLine($"✅ Progress stream emitted {progressEventsList.Count} events");
+
+        // Verify we got progress updates
+        var lastEvent = progressEventsList.Last();
+        Assert.Equal(3, lastEvent.TotalProcessed);
+        Assert.Equal(3, lastEvent.TotalSuccessful);
+        _output.WriteLine("✅ Progress stream completed gracefully after batch finished");
+    }
+
+    /// <summary>
+    /// Mock storage that returns a small list of untitled memories for testing
+    /// </summary>
+    private class MockStorageWithMemories : IStorage
+    {
+        public Task<List<Memory>> GetMemoriesWithoutTitles(int limit, CancellationToken cancellationToken = default)
+        {
+            var memories = new List<Memory>
+            {
+                new() { Id = Guid.NewGuid(), Text = "Test memory 1", Type = "test", Tags = [] },
+                new() { Id = Guid.NewGuid(), Text = "Test memory 2", Type = "test", Tags = [] },
+                new() { Id = Guid.NewGuid(), Text = "Test memory 3", Type = "test", Tags = [] }
+            };
+            return Task.FromResult(memories);
+        }
+
+        public Task UpdateMemoryTitle(Guid memoryId, string title, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<Memory> StoreMemory(string type, string text, string source, string[]? tags = null, double confidence = 1, string? title = null, Guid? relatedToId = null, string? relationshipType = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<Memory?> Get(Guid id, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<List<Memory>> GetMany(IEnumerable<Guid> ids, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<bool> Delete(Guid id, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<List<Memory>> Search(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<(List<Memory> Memories, int TotalCount)> GetMemoriesPaginated(int page, int pageSize, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<Memory?> UpdateMemory(Guid id, string type, string text, string source, string[]? tags = null, double confidence = 1, string? title = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string relationshipType, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<List<MemoryRelationship>> GetRelationships(Guid memoryId, string? relationshipType = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        Task<List<string>> IStorage.GetDistinctMemoryTypes(CancellationToken cancellationToken)
+            => Task.FromResult(new List<string> { "test", "mock" });
+
+        public Task<int> CountMemoriesWithoutMetadataEmbeddings(CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<List<Memory>> GetMemoriesWithoutMetadataEmbeddings(int limit, bool includeExisting = false, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<Memory>());
+
+        public Task UpdateMemoryMetadataEmbedding(Guid memoryId, Vector embedding, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<List<Memory>> SearchWithFullEmbedding(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<List<Memory>> SearchWithMetadataEmbedding(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<(List<Memory> FullResults, List<Memory> MetadataResults)> CompareSearchMethods(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
     }
 
     /// <summary>
