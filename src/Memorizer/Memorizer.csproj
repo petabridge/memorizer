@@ -18,6 +18,8 @@
         <!-- Workaround for SDK bug with static web assets -->
         <EnableStaticWebAssetsBuildPropsFile>false</EnableStaticWebAssetsBuildPropsFile>
         <EnableStaticWebAssetsPackFile>false</EnableStaticWebAssetsPackFile>
+        <!-- Suppress CVE warnings for System.Private.Uri 4.3.0 - only used for netstandard2.0 compatibility, not in net10.0 -->
+        <NoWarn>$(NoWarn);NU1902;NU1903</NoWarn>
     </PropertyGroup>
 
     <!-- Container Labels for DockerHub -->

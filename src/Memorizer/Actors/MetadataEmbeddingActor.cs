@@ -210,7 +210,26 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
     private void CompleteBatch()
     {
         PublishBatchCompleted();
-        _progressSourceActor?.Tell(new Akka.Actor.Status.Success("Complete"));
+
+        // Push final completion event before completing the stream
+        if (_progressSourceActor != null && _batch != null)
+        {
+            var completionEvent = new MetadataEmbeddingProgressEvent(
+                TotalProcessed: _batch.Success + _batch.Failure,
+                TotalSuccessful: _batch.Success,
+                TotalFailed: _batch.Failure,
+                Outstanding: 0,
+                Status: _batch.Failure > 0 ? "Completed with errors" : "Completed",
+                RequestedBy: _batch.RequestedBy,
+                Duration: DateTime.UtcNow - _batch.StartTime,
+                FailedMemoryIds: _batch.FailedIds.ToList()
+            );
+            _progressSourceActor.Tell(completionEvent);
+
+            // Now complete the stream
+            _progressSourceActor.Tell(new Akka.Actor.Status.Success("Complete"));
+        }
+
         _progressSourceActor = null;
         _progressSource = null;
         Become(Idle);

@@ -103,16 +103,8 @@ public sealed class TitleGenerationActor : ReceiveActor
             var untitledMemories = await _storage.GetMemoriesWithoutTitles(message.BatchSize);
             _totalToProcess = untitledMemories.Count;
 
-            if (_totalToProcess == 0)
-            {
-                _logger.Info("No untitled memories found");
-                PublishBatchCompleted();
-                return;
-            }
-
-            _logger.Info("Found {0} untitled memories to process", _totalToProcess);
-
-            // Create progress source actor and switch to Running state
+            // Create progress source actor and switch to Running state BEFORE checking count
+            // This ensures SSE clients get progress events even if there's nothing to process
             var (actorRef, source) = Source.ActorRef<TitleGenerationProgressEvent>(100, OverflowStrategy.DropHead)
                 .PreMaterialize(_materializer);
 
@@ -123,6 +115,15 @@ public sealed class TitleGenerationActor : ReceiveActor
 
             // Push initial progress event
             PushProgressUpdate();
+
+            if (_totalToProcess == 0)
+            {
+                _logger.Info("No untitled memories found");
+                CompleteBatch();
+                return;
+            }
+
+            _logger.Info("Found {0} untitled memories to process", _totalToProcess);
 
             // Process each memory
             foreach (var memory in untitledMemories)
@@ -253,7 +254,26 @@ public sealed class TitleGenerationActor : ReceiveActor
     private void CompleteBatch()
     {
         PublishBatchCompleted();
-        _progressSourceActor?.Tell(new Akka.Actor.Status.Success("Complete"));
+
+        // Push final completion event before completing the stream
+        if (_progressSourceActor != null)
+        {
+            var completionEvent = new TitleGenerationProgressEvent(
+                TotalProcessed: _processedCount,
+                TotalSuccessful: _successCount,
+                TotalFailed: _failureCount,
+                Outstanding: 0,
+                Status: _failureCount > 0 ? "Completed with errors" : "Completed",
+                RequestedBy: _currentRequestedBy,
+                Duration: DateTime.UtcNow - _batchStartTime,
+                FailedMemoryIds: _failedMemoryIds.ToList()
+            );
+            _progressSourceActor.Tell(completionEvent);
+
+            // Now complete the stream
+            _progressSourceActor.Tell(new Akka.Actor.Status.Success("Complete"));
+        }
+
         _progressSourceActor = null;
         _progressSource = null;
         Become(Idle);
