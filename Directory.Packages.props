@@ -3,7 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <PropertyGroup Label="SharedVersions">
-    <MsftVersion>9.0.9</MsftVersion>
+    <MsftVersion>10.0.0</MsftVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
@@ -34,6 +34,7 @@
     <PackageVersion Include="Akka.Hosting" Version="1.5.55.1" />
     <PackageVersion Include="Akka.Hosting.TestKit" Version="1.5.53" />
     <PackageVersion Include="Akka.Persistence.Sql.Hosting" Version="1.5.51.1" />
+    <PackageVersion Include="Akka.Streams" Version="1.5.55" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(MsftVersion)" />
   </ItemGroup>
 </Project>

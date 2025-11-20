@@ -36,13 +36,16 @@ public sealed class TitleGenerationActor : ReceiveActor
 
         // Handle batch title generation requests
         ReceiveAsync<GenerateTitlesForUntitled>(HandleGenerateTitlesForUntitled);
-        
+
         // Handle individual title generation requests
         ReceiveAsync<GenerateTitleForMemory>(HandleGenerateTitleForMemory);
-        
+
         // Handle completion and failure messages from child actors
         Receive<TitleGenerationCompleted>(HandleTitleGenerationCompleted);
         Receive<TitleGenerationFailed>(HandleTitleGenerationFailed);
+
+        // Handle status query requests
+        Receive<GetTitleGenerationStatus>(_ => HandleGetStatus());
     }
 
     private async Task HandleGenerateTitlesForUntitled(GenerateTitlesForUntitled message)
@@ -190,11 +193,40 @@ public sealed class TitleGenerationActor : ReceiveActor
             Duration: duration
         );
 
-        _logger.Info("Batch title generation completed: {0}/{1} successful, {2} failed, duration: {3}ms", 
-            _successCount, _totalToProcess, _failureCount, 
+        _logger.Info("Batch title generation completed: {0}/{1} successful, {2} failed, duration: {3}ms",
+            _successCount, _totalToProcess, _failureCount,
             duration.TotalMilliseconds);
 
         Context.System.EventStream.Publish(batchCompleted);
+    }
+
+    private void HandleGetStatus()
+    {
+        var outstanding = _totalToProcess - _processedCount;
+        var isRunning = outstanding > 0;
+
+        if (isRunning)
+        {
+            Sender.Tell(new TitleGenerationStatus(
+                IsRunning: true,
+                Status: "Running",
+                TotalProcessed: _processedCount,
+                TotalSuccessful: _successCount,
+                TotalFailed: _failureCount,
+                Outstanding: outstanding,
+                FailedMemoryIds: _failedMemoryIds.ToList(),
+                StartTime: _batchStartTime,
+                Duration: DateTime.UtcNow - _batchStartTime,
+                RequestedBy: _currentRequestedBy
+            ));
+        }
+        else
+        {
+            Sender.Tell(new TitleGenerationStatus(
+                IsRunning: false,
+                Status: "idle"
+            ));
+        }
     }
 
     public static Props Props(IStorage storage, ILlmService llmService, LlmSettings settings)

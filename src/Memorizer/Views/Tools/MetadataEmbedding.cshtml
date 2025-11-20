@@ -236,55 +236,45 @@
                 });
         }
 
+        let eventSource = null;
+
         function startStatusPolling() {
-            // Poll the backend for real-time status every 2 seconds
-            let interval = setInterval(function() {
-                fetch('@Url.Action("GetMetadataEmbeddingStatus", "Tools")')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success && data.isRunning) {
-                            updateProgress(
-                                calculateProgressPercent(data),
-                                'Processing... ' + progressDetails(data)
-                            );
-                        } else {
-                            clearInterval(interval);
-                            updateProgress(100, 'Metadata embedding generation completed!');
-                            document.getElementById('startButton').disabled = false;
-                            showResults('Embedding generation completed successfully');
-                        }
-                    })
-                    .catch(error => {
-                        clearInterval(interval);
-                        showAlert('danger', 'Failed to poll status.');
-                        document.getElementById('startButton').disabled = false;
-                    });
-            }, 2000);
-        }
+            // Use Server-Sent Events for real-time progress updates
+            if (eventSource) {
+                eventSource.close();
+            }
 
-        function calculateProgressPercent(data) {
-            if (data.totalProcessed && data.outstanding !== undefined && data.totalProcessed + data.outstanding > 0) {
-                const total = data.totalProcessed + data.outstanding;
-                return Math.round((data.totalProcessed / total) * 100);
-            }
-            return 10; // fallback
-        }
+            eventSource = new EventSource('/ui/tools/metadata-embedding-progress');
 
-        function progressDetails(data) {
-            let details = '';
-            if (data.totalProcessed !== undefined && data.outstanding !== undefined) {
-                details += `Processed: ${data.totalProcessed}, Outstanding: ${data.outstanding}`;
-            }
-            if (data.totalSuccessful !== undefined && data.totalFailed !== undefined) {
-                details += `, Success: ${data.totalSuccessful}, Failed: ${data.totalFailed}`;
-            }
-            if (data.requestedBy) {
-                details += `, Requested by: ${data.requestedBy}`;
-            }
-            if (data.duration !== undefined) {
-                details += `, Duration: ${Math.round(data.duration)}s`;
-            }
-            return details;
+            eventSource.addEventListener('progress', function(event) {
+                const progress = JSON.parse(event.data);
+                const percentComplete = progress.percentComplete;
+                const statusText = `Processing... ${progress.totalProcessed} processed (${progress.totalSuccessful} successful, ${progress.totalFailed} failed), ${progress.outstanding} remaining`;
+
+                updateProgress(percentComplete, statusText);
+
+                // Check if complete (no outstanding items)
+                if (progress.outstanding === 0 && progress.totalProcessed > 0) {
+                    eventSource.close();
+                    updateProgress(100, `Metadata embedding completed! ${progress.totalSuccessful} successful, ${progress.totalFailed} failed`);
+                    document.getElementById('startButton').disabled = false;
+                    showResults(`<p><strong>Batch completed:</strong></p>
+                                <ul>
+                                    <li>Total processed: ${progress.totalProcessed}</li>
+                                    <li>Successful: ${progress.totalSuccessful}</li>
+                                    <li>Failed: ${progress.totalFailed}</li>
+                                    <li>Duration: ${progress.duration?.toFixed(2)} seconds</li>
+                                    <li>Requested by: ${progress.requestedBy}</li>
+                                </ul>`);
+                }
+            });
+
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                eventSource.close();
+                showAlert('danger', 'Lost connection to progress stream. Metadata embedding may still be running in the background.');
+                document.getElementById('startButton').disabled = false;
+            };
         }
 
         function updateProgress(percent, text) {

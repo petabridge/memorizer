@@ -120,6 +120,27 @@ public record BatchTitleGenerationCompleted(
 );
 
 /// <summary>
+/// Request the current status of the title generation batch job
+/// </summary>
+public record GetTitleGenerationStatus();
+
+/// <summary>
+/// Response containing the current status of the title generation batch job
+/// </summary>
+public record TitleGenerationStatus(
+    bool IsRunning,
+    string Status,
+    int? TotalProcessed = null,
+    int? TotalSuccessful = null,
+    int? TotalFailed = null,
+    int? Outstanding = null,
+    List<Guid>? FailedMemoryIds = null,
+    DateTime? StartTime = null,
+    TimeSpan? Duration = null,
+    string? RequestedBy = null
+);
+
+/// <summary>
 /// Actor registry key for the TitleGenerationActor
 /// Used for dependency injection with IRequiredActor<TitleGenerationActorKey>
 /// </summary>

@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddStorage();
         services.AddServerSettings();
         services.AddCorsSettings();
+        services.AddSingleton<ProgressStreamService>();
         if(initialize)
             services.AddHostedService<InitializationService>();
         services.AutoRegisterTypesInAssemblies(typeof(Storage).Assembly);

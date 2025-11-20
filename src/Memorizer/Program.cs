@@ -8,6 +8,8 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Resources;
+using Microsoft.AspNetCore.Http.HttpResults;
+using System.Net.ServerSentEvents;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -125,11 +127,69 @@ app.MapGet("/otel-test", () =>
     using var activity = TelemetryConfig.ActivitySource.StartActivity("test-activity");
     activity?.SetTag("test.tag", "test-value");
     activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
-    
+
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OtelTest");
     logger.LogInformation("OTEL test endpoint called - this should appear in collector logs");
-    
+
     return Results.Ok(new { message = "OTEL test completed", activityId = activity?.Id });
+});
+
+// Add SSE endpoint for title generation progress
+app.MapGet("/ui/tools/title-generation-progress",
+    (ProgressStreamService progressService, CancellationToken ct) =>
+{
+    async IAsyncEnumerable<SseItem<object>> StreamProgress()
+    {
+        await foreach (var progress in progressService.GetTitleGenerationProgressStream(ct))
+        {
+            yield return new SseItem<object>(
+                new {
+                    percentComplete = progress.PercentComplete,
+                    totalProcessed = progress.TotalProcessed,
+                    totalSuccessful = progress.TotalSuccessful,
+                    totalFailed = progress.TotalFailed,
+                    outstanding = progress.Outstanding,
+                    status = progress.Status,
+                    requestedBy = progress.RequestedBy,
+                    duration = progress.Duration?.TotalSeconds
+                },
+                "progress")
+            {
+                EventId = Guid.NewGuid().ToString()
+            };
+        }
+    }
+
+    return TypedResults.ServerSentEvents(StreamProgress());
+});
+
+// Add SSE endpoint for metadata embedding progress
+app.MapGet("/ui/tools/metadata-embedding-progress",
+    (ProgressStreamService progressService, CancellationToken ct) =>
+{
+    async IAsyncEnumerable<SseItem<object>> StreamProgress()
+    {
+        await foreach (var progress in progressService.GetMetadataEmbeddingProgressStream(ct))
+        {
+            yield return new SseItem<object>(
+                new {
+                    percentComplete = progress.PercentComplete,
+                    totalProcessed = progress.TotalProcessed,
+                    totalSuccessful = progress.TotalSuccessful,
+                    totalFailed = progress.TotalFailed,
+                    outstanding = progress.Outstanding,
+                    status = progress.Status,
+                    requestedBy = progress.RequestedBy,
+                    duration = progress.Duration?.TotalSeconds
+                },
+                "progress")
+            {
+                EventId = Guid.NewGuid().ToString()
+            };
+        }
+    }
+
+    return TypedResults.ServerSentEvents(StreamProgress());
 });
 
 // Configure default MVC routing

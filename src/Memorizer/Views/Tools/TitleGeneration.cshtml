@@ -287,21 +287,45 @@
                 });
         }
 
+        let eventSource = null;
+
         function startStatusPolling() {
-            // TODO: Implement real-time status polling
-            // For now, simulate progress
-            let progress = 10;
-            const interval = setInterval(function() {
-                progress += 10;
-                updateProgress(progress, `Processing... ${progress}% complete`);
-                
-                if (progress >= 100) {
-                    clearInterval(interval);
-                    updateProgress(100, 'Title generation completed!');
+            // Use Server-Sent Events for real-time progress updates
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource('/ui/tools/title-generation-progress');
+
+            eventSource.addEventListener('progress', function(event) {
+                const progress = JSON.parse(event.data);
+                const percentComplete = progress.percentComplete;
+                const statusText = `Processing... ${progress.totalProcessed} processed (${progress.totalSuccessful} successful, ${progress.totalFailed} failed), ${progress.outstanding} remaining`;
+
+                updateProgress(percentComplete, statusText);
+
+                // Check if complete (no outstanding items)
+                if (progress.outstanding === 0 && progress.totalProcessed > 0) {
+                    eventSource.close();
+                    updateProgress(100, `Title generation completed! ${progress.totalSuccessful} successful, ${progress.totalFailed} failed`);
                     document.getElementById('startButton').disabled = false;
-                    showResults('Sample results would appear here');
+                    showResults(`<p><strong>Batch completed:</strong></p>
+                                <ul>
+                                    <li>Total processed: ${progress.totalProcessed}</li>
+                                    <li>Successful: ${progress.totalSuccessful}</li>
+                                    <li>Failed: ${progress.totalFailed}</li>
+                                    <li>Duration: ${progress.duration?.toFixed(2)} seconds</li>
+                                    <li>Requested by: ${progress.requestedBy}</li>
+                                </ul>`);
                 }
-            }, 2000);
+            });
+
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                eventSource.close();
+                showAlert('danger', 'Lost connection to progress stream. Title generation may still be running in the background.');
+                document.getElementById('startButton').disabled = false;
+            };
         }
 
         function updateProgress(percent, text) {
