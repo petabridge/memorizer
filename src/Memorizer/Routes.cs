@@ -47,14 +47,14 @@ public static class Routes
             }
         });
 
-        // SSE endpoint for metadata embedding progress
-        app.MapGet("/ui/tools/metadata-embedding-progress",
+        // SSE endpoint for embedding regeneration progress
+        app.MapGet("/ui/tools/embedding-regeneration-progress",
             async (IActorRegistry actorRegistry, CancellationToken ct) =>
         {
-            var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActorKey>(ct);
+            var embeddingRegenerationActor = await actorRegistry.GetAsync<EmbeddingRegenerationActorKey>(ct);
             var subscriberId = Guid.NewGuid().ToString();
 
-            var subscription = await metadataEmbeddingActor.Ask<ProgressSubscription>(
+            var subscription = await embeddingRegenerationActor.Ask<ProgressSubscription>(
                 new SubscribeToProgress(subscriberId),
                 ct);
 
@@ -74,7 +74,7 @@ public static class Routes
                 }
                 finally
                 {
-                    metadataEmbeddingActor.Tell(new UnsubscribeFromProgress(subscriberId), ActorRefs.NoSender);
+                    embeddingRegenerationActor.Tell(new UnsubscribeFromProgress(subscriberId), ActorRefs.NoSender);
                 }
             }
         });

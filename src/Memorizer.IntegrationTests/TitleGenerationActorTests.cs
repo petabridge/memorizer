@@ -195,6 +195,9 @@ public class TitleGenerationActorTests : TestKit
         public Task UpdateMemoryMetadataEmbedding(Guid memoryId, Vector embedding, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
+        public Task UpdateMemoryEmbeddings(Guid memoryId, Vector contentEmbedding, Vector metadataEmbedding, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
         public Task<List<Memory>> SearchWithFullEmbedding(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
 
@@ -253,6 +256,9 @@ public class TitleGenerationActorTests : TestKit
             => Task.FromResult(new List<Memory>());
 
         public Task UpdateMemoryMetadataEmbedding(Guid memoryId, Vector embedding, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task UpdateMemoryEmbeddings(Guid memoryId, Vector contentEmbedding, Vector metadataEmbedding, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
         public Task<List<Memory>> SearchWithFullEmbedding(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)

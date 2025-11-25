@@ -131,21 +131,21 @@ Remove a memory by its ID";
         {
             var storage = _services.GetRequiredService<IStorage>();
             var countWithoutMetadata = await storage.CountMemoriesWithoutMetadataEmbeddings(ct);
-            
+
             if (countWithoutMetadata > 0)
             {
                 _logger.LogInformation("Found {Count} memories without metadata embeddings, triggering background processing", countWithoutMetadata);
-                
-                // Get the MetadataEmbeddingActor using IRequiredActor
-                var metadataActor = _services.GetRequiredService<IRequiredActor<MetadataEmbeddingActorKey>>();
-                
-                var message = new RegenerateAllMetadataEmbeddings(
+
+                // Get the EmbeddingRegenerationActor using IRequiredActor
+                var embeddingActor = _services.GetRequiredService<IRequiredActor<EmbeddingRegenerationActorKey>>();
+
+                var message = new RegenerateAllEmbeddings(
                     PageSize: 50, // Smaller batches during migration
                     RequestedBy: "startup-migration"
                 );
-                
-                metadataActor.ActorRef.Tell(message, ActorRefs.NoSender);
-                _logger.LogInformation("Metadata embeddings migration background task started");
+
+                embeddingActor.ActorRef.Tell(message, ActorRefs.NoSender);
+                _logger.LogInformation("Embedding regeneration migration background task started");
             }
             else
             {
@@ -154,7 +154,7 @@ Remove a memory by its ID";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to check or trigger metadata embedding migration: {Message}", ex.Message);
+            _logger.LogError(ex, "Failed to check or trigger embedding migration: {Message}", ex.Message);
         }
     }
 }

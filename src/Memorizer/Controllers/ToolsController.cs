@@ -11,18 +11,18 @@ namespace Memorizer.Controllers;
 public class ToolsController : Controller
 {
     private readonly IActorRef _titleGenerationActor;
-    private readonly IActorRef _metadataEmbeddingActor;
+    private readonly IActorRef _embeddingRegenerationActor;
     private readonly LlmSettings _llmSettings;
     private readonly ILogger<ToolsController> _logger;
 
     public ToolsController(
         IRequiredActor<TitleGenerationActorKey> titleGenerationActor,
-        IRequiredActor<MetadataEmbeddingActorKey> metadataEmbeddingActor,
+        IRequiredActor<EmbeddingRegenerationActorKey> embeddingRegenerationActor,
         LlmSettings llmSettings,
         ILogger<ToolsController> logger)
     {
         _titleGenerationActor = titleGenerationActor.ActorRef;
-        _metadataEmbeddingActor = metadataEmbeddingActor.ActorRef;
+        _embeddingRegenerationActor = embeddingRegenerationActor.ActorRef;
         _llmSettings = llmSettings;
         _logger = logger;
     }
@@ -48,11 +48,11 @@ public class ToolsController : Controller
     }
 
     /// <summary>
-    /// Display the metadata embedding tool page
+    /// Display the embedding regeneration tool page
     /// </summary>
     [HttpGet]
-    [Route("metadata-embedding")]
-    public IActionResult MetadataEmbedding()
+    [Route("embedding-regeneration")]
+    public IActionResult EmbeddingRegeneration()
     {
         return View();
     }
@@ -173,62 +173,15 @@ public class ToolsController : Controller
     }
 
     /// <summary>
-    /// Start metadata embedding generation/regeneration for missing embeddings only
-    /// </summary>
-    [HttpPost]
-    [Route("start-metadata-embedding")]
-    public async Task<IActionResult> StartMetadataEmbedding(int batchSize = 100, bool forceRegenerate = false)
-    {
-        try
-        {
-            // Check if a batch is already running
-            var status = await _metadataEmbeddingActor.Ask<MetadataEmbeddingStatus>(new GetMetadataEmbeddingStatus(), TimeSpan.FromSeconds(5));
-            if (status.IsRunning)
-            {
-                return Json(new {
-                    success = false,
-                    message = "A metadata embedding batch job is already in progress. Please wait for it to complete before starting a new one.",
-                    status = status.Status,
-                    outstanding = status.Outstanding,
-                    totalProcessed = status.TotalProcessed,
-                    totalSuccessful = status.TotalSuccessful,
-                    totalFailed = status.TotalFailed,
-                    requestedBy = status.RequestedBy
-                });
-            }
-
-            _logger.LogInformation("Starting metadata embedding {Mode} for batch size {BatchSize}", 
-                forceRegenerate ? "regeneration" : "generation", batchSize);
-
-            var generateMessage = new RegenerateAllMetadataEmbeddings(
-                PageSize: batchSize,
-                RequestedBy: User.Identity?.Name ?? "Anonymous"
-            );
-
-            _metadataEmbeddingActor.Tell(generateMessage);
-
-            return Json(new { 
-                success = true, 
-                message = $"Metadata embedding {(forceRegenerate ? "regeneration" : "generation")} started for up to {batchSize} memories" 
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error starting metadata embedding: {Error}", ex.Message);
-            return Json(new { success = false, message = $"Error: {ex.Message}" });
-        }
-    }
-
-    /// <summary>
-    /// Get the status of metadata embedding operations
+    /// Get the status of embedding regeneration operations
     /// </summary>
     [HttpGet]
-    [Route("metadata-embedding-status")]
-    public async Task<IActionResult> GetMetadataEmbeddingStatus()
+    [Route("embedding-regeneration-status")]
+    public async Task<IActionResult> GetEmbeddingRegenerationStatus()
     {
         try
         {
-            var status = await _metadataEmbeddingActor.Ask<MetadataEmbeddingStatus>(new GetMetadataEmbeddingStatus(), TimeSpan.FromSeconds(5));
+            var status = await _embeddingRegenerationActor.Ask<EmbeddingRegenerationStatus>(new GetEmbeddingRegenerationStatus(), TimeSpan.FromSeconds(5));
             return Json(new {
                 success = true,
                 status = status.Status,
@@ -245,28 +198,29 @@ public class ToolsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting metadata embedding status: {Error}", ex.Message);
+            _logger.LogError(ex, "Error getting embedding regeneration status: {Error}", ex.Message);
             return Json(new { success = false, message = $"Error: {ex.Message}" });
         }
     }
 
     /// <summary>
-    /// Start metadata embedding regeneration for ALL memories using pagination
+    /// Start embedding regeneration for ALL memories using pagination.
+    /// Regenerates both content embeddings and metadata embeddings.
     /// </summary>
     [HttpPost]
-    [Route("start-metadata-embedding-all")]
-    public async Task<IActionResult> StartMetadataEmbeddingAll(int pageSize = 100)
+    [Route("start-embedding-regeneration")]
+    public async Task<IActionResult> StartEmbeddingRegeneration(int pageSize = 100)
     {
         try
         {
             // Check if a batch is already running
-            var status = await _metadataEmbeddingActor.Ask<MetadataEmbeddingStatus>(new GetMetadataEmbeddingStatus(), TimeSpan.FromSeconds(5));
+            var status = await _embeddingRegenerationActor.Ask<EmbeddingRegenerationStatus>(new GetEmbeddingRegenerationStatus(), TimeSpan.FromSeconds(5));
             if (status.IsRunning)
             {
                 return Json(new {
                     success = false,
-                    message = "A metadata embedding batch job is already in progress. Please wait for it to complete before starting a new one.",
-                    status = status.Status,
+                    message = "An embedding regeneration batch job is already in progress. Please wait for it to complete before starting a new one.",
+                    status = "running",
                     outstanding = status.Outstanding,
                     totalProcessed = status.TotalProcessed,
                     totalSuccessful = status.TotalSuccessful,
@@ -275,23 +229,23 @@ public class ToolsController : Controller
                 });
             }
 
-            _logger.LogInformation("Starting paginated metadata embedding regeneration for ALL memories with page size {PageSize}", pageSize);
+            _logger.LogInformation("Starting embedding regeneration for ALL memories with page size {PageSize}", pageSize);
 
-            var generateMessage = new RegenerateAllMetadataEmbeddings(
+            var generateMessage = new RegenerateAllEmbeddings(
                 PageSize: pageSize,
                 RequestedBy: User.Identity?.Name ?? "Anonymous"
             );
 
-            _metadataEmbeddingActor.Tell(generateMessage);
+            _embeddingRegenerationActor.Tell(generateMessage);
 
-            return Json(new { 
-                success = true, 
-                message = $"Paginated metadata embedding regeneration started for ALL memories with page size {pageSize}" 
+            return Json(new {
+                success = true,
+                message = $"Embedding regeneration started for ALL memories with page size {pageSize}"
             });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error starting paginated metadata embedding regeneration: {Error}", ex.Message);
+            _logger.LogError(ex, "Error starting embedding regeneration: {Error}", ex.Message);
             return Json(new { success = false, message = $"Error: {ex.Message}" });
         }
     }

@@ -93,10 +93,10 @@ public static class ServiceCollectionExtensions
                 var titleGenerationActor = system.ActorOf(titleGenerationActorProps, "title-generation");
                 registry.Register<TitleGenerationActorKey>(titleGenerationActor);
 
-                // Create and register the MetadataEmbeddingActor
-                var metadataEmbeddingActorProps = resolver.Props<MetadataEmbeddingActor>();
-                var metadataEmbeddingActor = system.ActorOf(metadataEmbeddingActorProps, "metadata-embedding");
-                registry.Register<MetadataEmbeddingActorKey>(metadataEmbeddingActor);
+                // Create and register the EmbeddingRegenerationActor
+                var embeddingRegenerationActorProps = resolver.Props<EmbeddingRegenerationActor>();
+                var embeddingRegenerationActor = system.ActorOf(embeddingRegenerationActorProps, "embedding-regeneration");
+                registry.Register<EmbeddingRegenerationActorKey>(embeddingRegenerationActor);
             });
 
             // TODO: Configure Akka.Persistence.Sql with PostgreSQL

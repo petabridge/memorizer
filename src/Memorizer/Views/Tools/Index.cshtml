@@ -38,20 +38,20 @@
             <div class="card h-100">
                 <div class="card-body">
                     <h5 class="card-title">
-                        <i class="fas fa-vector-square me-2"></i>
-                        Metadata Embedding
+                        <i class="fas fa-sync-alt me-2"></i>
+                        Embedding Regeneration
                     </h5>
                     <p class="card-text">
-                        Generate or regenerate metadata embeddings for improved search performance.
+                        Regenerate all embeddings when dimensions or embedding model changes.
                     </p>
                     <p class="text-muted small">
-                        This tool creates embeddings from memory titles and tags to enable better semantic search and organization.
+                        This tool regenerates both content and metadata embeddings for all memories. Use after changing embedding dimensions or switching models.
                     </p>
                 </div>
                 <div class="card-footer">
-                    <a href="@Url.Action("MetadataEmbedding", "Tools")" class="btn btn-primary">
-                        <i class="fas fa-rocket me-1"></i>
-                        Manage Embeddings
+                    <a href="@Url.Action("EmbeddingRegeneration", "Tools")" class="btn btn-primary">
+                        <i class="fas fa-sync me-1"></i>
+                        Regenerate Embeddings
                     </a>
                 </div>
             </div>

@@ -7,11 +7,12 @@ using Pgvector;
 namespace Memorizer.Actors;
 
 /// <summary>
-/// Actor responsible for generating metadata embeddings for all memories using offset/limit pagination.
+/// Actor responsible for regenerating ALL embeddings (content + metadata) for all memories.
+/// Used when embedding dimensions or model configuration changes.
 /// Uses Become/Unbecome to switch between Idle and Running states.
 /// Progress is managed via ProgressJobManager which supports multiple SSE subscribers.
 /// </summary>
-public sealed class MetadataEmbeddingActor : ReceiveActor
+public sealed class EmbeddingRegenerationActor : ReceiveActor
 {
     private readonly IStorage _storage;
     private readonly IEmbeddingService _embeddingService;
@@ -26,7 +27,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
     private int _pageSize;
     private int _outstandingOnCurrentPage;
 
-    public MetadataEmbeddingActor(
+    public EmbeddingRegenerationActor(
         IStorage storage,
         IEmbeddingService embeddingService)
     {
@@ -42,7 +43,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
     private void Idle()
     {
         // Idle behavior - waiting for work
-        ReceiveAsync<RegenerateAllMetadataEmbeddings>(HandleRegenerateAll);
+        ReceiveAsync<RegenerateAllEmbeddings>(HandleRegenerateAll);
 
         // Handle subscription requests - return idle status that completes immediately
         Receive<SubscribeToProgress>(msg =>
@@ -60,13 +61,13 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
             // No active job manager, nothing to clean up
         });
 
-        Receive<GetMetadataEmbeddingStatus>(_ => HandleGetStatusIdle());
+        Receive<GetEmbeddingRegenerationStatus>(_ => HandleGetStatusIdle());
     }
 
     private void Running()
     {
         // Running behavior - actively processing batch
-        ReceiveAsync<GenerateMetadataEmbeddingForMemory>(HandleGenerateMetadataEmbeddingForMemory);
+        ReceiveAsync<RegenerateEmbeddingsForMemory>(HandleRegenerateEmbeddingsForMemory);
 
         // Handle subscription requests - add to active job
         Receive<SubscribeToProgress>(msg =>
@@ -85,16 +86,16 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
             _jobManager?.RemoveSubscriber(msg.SubscriberId);
         });
 
-        Receive<GetMetadataEmbeddingStatus>(_ => HandleGetStatusRunning());
+        Receive<GetEmbeddingRegenerationStatus>(_ => HandleGetStatusRunning());
     }
 
-    private async Task HandleRegenerateAll(RegenerateAllMetadataEmbeddings msg)
+    private async Task HandleRegenerateAll(RegenerateAllEmbeddings msg)
     {
         if (_jobManager != null)
         {
             // Already running a batch, decline new request
-            _logger.Warning("Metadata embedding regeneration already in progress, declining new request from {0}", msg.RequestedBy);
-            Sender.Tell(new MetadataEmbeddingStatus(
+            _logger.Warning("Embedding regeneration already in progress, declining new request from {0}", msg.RequestedBy);
+            Sender.Tell(new EmbeddingRegenerationStatus(
                 IsRunning: true,
                 Status: "Running",
                 TotalProcessed: _jobManager.ProcessedCount,
@@ -109,7 +110,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
             return;
         }
 
-        _logger.Info("Starting metadata embedding regeneration for ALL memories, page size {0}, requested by {1}",
+        _logger.Info("Starting embedding regeneration for ALL memories, page size {0}, requested by {1}",
             msg.PageSize, msg.RequestedBy);
 
         try
@@ -140,7 +141,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error starting metadata embedding regeneration: {0}", ex.Message);
+            _logger.Error(ex, "Error starting embedding regeneration: {0}", ex.Message);
             _jobManager?.Fail(ex.Message);
             _jobManager = null;
             Become(Idle);
@@ -167,9 +168,10 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
 
             foreach (var memory in memories)
             {
-                Self.Tell(new GenerateMetadataEmbeddingForMemory(
+                Self.Tell(new RegenerateEmbeddingsForMemory(
                     memory.Id,
                     memory.Title ?? "Untitled",
+                    memory.Text,
                     memory.Tags ?? [],
                     _jobManager.RequestedBy
                 ));
@@ -186,23 +188,31 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         }
     }
 
-    private async Task HandleGenerateMetadataEmbeddingForMemory(GenerateMetadataEmbeddingForMemory msg)
+    private async Task HandleRegenerateEmbeddingsForMemory(RegenerateEmbeddingsForMemory msg)
     {
         if (_jobManager == null) return;
 
         try
         {
+            // Generate content embedding (title + text)
+            var contentText = CreateContentText(msg.Title, msg.Text);
+            var contentEmbeddingArray = await _embeddingService.Generate(contentText);
+            var contentEmbedding = new Vector(contentEmbeddingArray);
+
+            // Generate metadata embedding (title + tags)
             var metadataText = CreateMetadataText(msg.Title, msg.Tags);
-            var embeddingArray = await _embeddingService.Generate(metadataText);
-            var embedding = new Vector(embeddingArray);
-            await _storage.UpdateMemoryMetadataEmbedding(msg.MemoryId, embedding);
+            var metadataEmbeddingArray = await _embeddingService.Generate(metadataText);
+            var metadataEmbedding = new Vector(metadataEmbeddingArray);
+
+            // Update both embeddings in a single DB call
+            await _storage.UpdateMemoryEmbeddings(msg.MemoryId, contentEmbedding, metadataEmbedding);
 
             _jobManager.RecordSuccess();
-            _logger.Debug("Successfully generated metadata embedding for memory {0}", msg.MemoryId);
+            _logger.Debug("Successfully regenerated embeddings for memory {0}", msg.MemoryId);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error generating metadata embedding for memory {0}: {1}", msg.MemoryId, ex.Message);
+            _logger.Error(ex, "Error regenerating embeddings for memory {0}: {1}", msg.MemoryId, ex.Message);
             _jobManager.RecordFailure(msg.MemoryId);
         }
         finally
@@ -239,7 +249,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
     {
         if (_jobManager == null) return;
 
-        var batchCompleted = new BatchMetadataEmbeddingCompleted(
+        var batchCompleted = new BatchEmbeddingRegenerationCompleted(
             RequestedBy: _jobManager.RequestedBy,
             StartTime: _jobManager.StartTime,
             TotalProcessed: _jobManager.ProcessedCount,
@@ -248,7 +258,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
             Duration: DateTime.UtcNow - _jobManager.StartTime
         );
 
-        _logger.Info("Metadata embedding completed: {0}/{1} successful, {2} failed, duration: {3}ms",
+        _logger.Info("Embedding regeneration completed: {0}/{1} successful, {2} failed, duration: {3}ms",
             _jobManager.SuccessCount, _jobManager.TotalItems, _jobManager.FailureCount,
             batchCompleted.Duration.TotalMilliseconds);
 
@@ -257,7 +267,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
 
     private void HandleGetStatusIdle()
     {
-        Sender.Tell(new MetadataEmbeddingStatus(
+        Sender.Tell(new EmbeddingRegenerationStatus(
             IsRunning: false,
             Status: "idle"
         ));
@@ -271,7 +281,7 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
             return;
         }
 
-        Sender.Tell(new MetadataEmbeddingStatus(
+        Sender.Tell(new EmbeddingRegenerationStatus(
             IsRunning: true,
             Status: "Running",
             TotalProcessed: _jobManager.ProcessedCount,
@@ -285,6 +295,17 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         ));
     }
 
+    /// <summary>
+    /// Creates content text for embedding: title + full text content
+    /// </summary>
+    private static string CreateContentText(string title, string text)
+    {
+        return string.IsNullOrWhiteSpace(title) ? text : $"{title} {text}";
+    }
+
+    /// <summary>
+    /// Creates metadata text for embedding: title + tags
+    /// </summary>
     private static string CreateMetadataText(string title, string[] tags)
     {
         var parts = new List<string> { title };
@@ -297,6 +318,6 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
 
     public static Props Props(IStorage storage, IEmbeddingService embeddingService)
     {
-        return Akka.Actor.Props.Create(() => new MetadataEmbeddingActor(storage, embeddingService));
+        return Akka.Actor.Props.Create(() => new EmbeddingRegenerationActor(storage, embeddingService));
     }
 }

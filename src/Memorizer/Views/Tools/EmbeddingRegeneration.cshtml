@@ -1,22 +1,22 @@
 @{
-    ViewData["Title"] = "Metadata Embedding Tool";
+    ViewData["Title"] = "Embedding Regeneration Tool";
 }
 
-<div class="container-fluid metadata-embedding-page">
+<div class="container-fluid embedding-regeneration-page">
     <div class="row">
         <div class="col-12">
             <nav aria-label="breadcrumb">
                 <ol class="breadcrumb">
                     <li class="breadcrumb-item"><a href="@Url.Action("Index", "Tools")">Tools</a></li>
-                    <li class="breadcrumb-item active" aria-current="page">Metadata Embedding</li>
+                    <li class="breadcrumb-item active" aria-current="page">Embedding Regeneration</li>
                 </ol>
             </nav>
-            
+
             <h1 class="mb-4">
-                <i class="fas fa-vector-square me-2"></i>
-                Metadata Embedding Tool
+                <i class="fas fa-sync-alt me-2"></i>
+                Embedding Regeneration Tool
             </h1>
-            <p class="lead">Generate or regenerate metadata embeddings for improved search performance.</p>
+            <p class="lead">Regenerate all embeddings (content + metadata) for all memories when embedding dimensions or model changes.</p>
         </div>
     </div>
 
@@ -24,36 +24,23 @@
         <div class="col-lg-8">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Run Metadata Embedding</h5>
+                    <h5 class="card-title mb-0">Run Embedding Regeneration</h5>
                 </div>
                 <div class="card-body">
-                    <form id="metadataEmbeddingForm">
+                    <form id="embeddingRegenerationForm">
                         <div class="mb-3">
-                            <label for="batchSize" class="form-label">Batch Size</label>
-                            <input type="number" class="form-control" id="batchSize" name="batchSize" 
+                            <label for="pageSize" class="form-label">Page Size</label>
+                            <input type="number" class="form-control" id="pageSize" name="pageSize"
                                    value="100" min="1" max="1000" required>
                             <div class="form-text">
-                                Number of memories to process in this batch (1-1000). Start with smaller batches to test.
+                                Number of memories to process per page (1-1000). Larger pages may use more memory but process faster.
                             </div>
                         </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Processing Mode</label>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="processingMode" id="regenerateAll" value="all" checked>
-                                <label class="form-check-label" for="regenerateAll">
-                                    Regenerate ALL embeddings (paginated)
-                                </label>
-                                <div class="form-text">
-                                    Process ALL memories using pagination, regardless of existing embeddings. Use this when changing embedding models.
-                                </div>
-                            </div>
-                        </div>
-                        
+
                         <div class="d-grid gap-2 d-md-flex justify-content-md-start">
                             <button type="submit" class="btn btn-primary" id="startButton">
                                 <i class="fas fa-play me-1"></i>
-                                Start Embedding Generation
+                                Start Embedding Regeneration
                             </button>
                             <button type="button" class="btn btn-secondary" id="statusButton">
                                 <i class="fas fa-info-circle me-1"></i>
@@ -71,7 +58,7 @@
                 </div>
                 <div class="card-body">
                     <div class="progress mb-3">
-                        <div class="progress-bar" role="progressbar" style="width: 0%" 
+                        <div class="progress-bar" role="progressbar" style="width: 0%"
                              aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="progressBar">
                             0%
                         </div>
@@ -101,20 +88,20 @@
                 <div class="card-body">
                     <ol class="list-group list-group-numbered list-group-flush">
                         <li class="list-group-item border-0 px-0">
-                            <strong>Scan Database</strong><br>
-                            <small class="text-muted">Find memories without metadata embeddings</small>
+                            <strong>Paginate Memories</strong><br>
+                            <small class="text-muted">Process all memories in configurable page sizes</small>
                         </li>
                         <li class="list-group-item border-0 px-0">
-                            <strong>Create Metadata</strong><br>
-                            <small class="text-muted">Combine memory titles and tags into searchable text</small>
+                            <strong>Regenerate Content Embedding</strong><br>
+                            <small class="text-muted">Re-embed title + text content for semantic search</small>
                         </li>
                         <li class="list-group-item border-0 px-0">
-                            <strong>Generate Embeddings</strong><br>
-                            <small class="text-muted">Use embedding service to create vector representations</small>
+                            <strong>Regenerate Metadata Embedding</strong><br>
+                            <small class="text-muted">Re-embed title + tags for metadata search</small>
                         </li>
                         <li class="list-group-item border-0 px-0">
                             <strong>Update Records</strong><br>
-                            <small class="text-muted">Store embeddings for improved search performance</small>
+                            <small class="text-muted">Store both new embeddings in a single DB transaction</small>
                         </li>
                     </ol>
                 </div>
@@ -122,25 +109,25 @@
 
             <div class="card mt-4">
                 <div class="card-header">
-                    <h6 class="card-title mb-0">Important Notes</h6>
+                    <h6 class="card-title mb-0">When to Use</h6>
                 </div>
                 <div class="card-body">
+                    <div class="alert alert-primary" role="alert">
+                        <small>
+                            <i class="fas fa-ruler me-1"></i>
+                            <strong>Dimensions Changed:</strong> Use this tool after changing the <code>Embeddings:Dimensions</code> configuration value.
+                        </small>
+                    </div>
                     <div class="alert alert-info" role="alert">
                         <small>
-                            <i class="fas fa-info-circle me-1"></i>
-                            <strong>Embedding Service:</strong> This tool uses the configured embedding service to generate vector representations.
+                            <i class="fas fa-brain me-1"></i>
+                            <strong>Model Changed:</strong> Use after switching to a different embedding model that produces different vector representations.
                         </small>
                     </div>
                     <div class="alert alert-warning" role="alert">
                         <small>
-                            <i class="fas fa-exclamation-triangle me-1"></i>
-                            <strong>Batch Processing:</strong> Large batches may take significant time. Monitor progress and start small.
-                        </small>
-                    </div>
-                    <div class="alert alert-success" role="alert">
-                        <small>
-                            <i class="fas fa-rocket me-1"></i>
-                            <strong>Performance:</strong> Metadata embeddings improve search quality and speed for filtering by titles and tags.
+                            <i class="fas fa-clock me-1"></i>
+                            <strong>Time Warning:</strong> This operation processes ALL memories and may take significant time for large databases.
                         </small>
                     </div>
                 </div>
@@ -151,23 +138,23 @@
 
 @section Scripts {
     <script>
-        // Create progress stream client for metadata embedding
+        // Create progress stream client for embedding regeneration
         const progressClient = new ProgressStreamClient({
-            sseUrl: '/ui/tools/metadata-embedding-progress',
+            sseUrl: '/ui/tools/embedding-regeneration-progress',
             progressBarId: 'progressBar',
             progressTextId: 'progressText',
             progressCardId: 'progressCard',
             resultsCardId: 'resultsCard',
             resultsContentId: 'resultsContent',
             startButtonId: 'startButton',
-            formId: 'metadataEmbeddingForm',
-            jobName: 'Metadata embedding'
+            formId: 'embeddingRegenerationForm',
+            jobName: 'Embedding regeneration'
         });
 
         document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('metadataEmbeddingForm').addEventListener('submit', function(e) {
+            document.getElementById('embeddingRegenerationForm').addEventListener('submit', function(e) {
                 e.preventDefault();
-                startMetadataEmbedding();
+                startEmbeddingRegeneration();
             });
 
             document.getElementById('statusButton').addEventListener('click', function() {
@@ -175,18 +162,18 @@
             });
         });
 
-        function startMetadataEmbedding() {
-            const batchSize = document.getElementById('batchSize').value;
+        function startEmbeddingRegeneration() {
+            const pageSize = document.getElementById('pageSize').value;
 
             // Disable form and show progress
             progressClient.disableStartButton();
             progressClient.showProgressCard();
-            progressClient.updateProgress(0, 'Starting metadata embedding generation...');
+            progressClient.updateProgress(0, 'Starting embedding regeneration...');
 
             const formData = new FormData();
-            formData.append('pageSize', batchSize);
+            formData.append('pageSize', pageSize);
 
-            fetch('@Url.Action("StartMetadataEmbeddingAll", "Tools")', {
+            fetch('@Url.Action("StartEmbeddingRegeneration", "Tools")', {
                 method: 'POST',
                 body: formData
             })
@@ -194,7 +181,7 @@
             .then(data => {
                 if (data.success) {
                     progressClient.showAlert('success', data.message);
-                    progressClient.updateProgress(10, 'Metadata embedding generation started. Processing...');
+                    progressClient.updateProgress(10, 'Embedding regeneration started. Processing...');
                     // Start SSE progress stream
                     progressClient.start();
                 } else {
@@ -212,14 +199,14 @@
                 }
             })
             .catch(error => {
-                progressClient.showAlert('danger', 'Failed to start metadata embedding generation. Please try again.');
+                progressClient.showAlert('danger', 'Failed to start embedding regeneration. Please try again.');
                 progressClient.enableStartButton();
                 progressClient.hideProgressCard();
             });
         }
 
         function checkStatus() {
-            fetch('@Url.Action("GetMetadataEmbeddingStatus", "Tools")')
+            fetch('@Url.Action("GetEmbeddingRegenerationStatus", "Tools")')
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {

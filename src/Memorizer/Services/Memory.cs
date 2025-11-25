@@ -81,7 +81,10 @@ public interface IStorage
     Task<int> CountMemoriesWithoutMetadataEmbeddings(CancellationToken cancellationToken = default);
     Task<List<Memorizer.Models.Memory>> GetMemoriesWithoutMetadataEmbeddings(int limit, bool includeExisting = false, CancellationToken cancellationToken = default);
     Task UpdateMemoryMetadataEmbedding(Guid memoryId, Vector embedding, CancellationToken cancellationToken = default);
-    
+
+    // Combined embedding update (for re-embedding when dimensions change)
+    Task UpdateMemoryEmbeddings(Guid memoryId, Vector contentEmbedding, Vector metadataEmbedding, CancellationToken cancellationToken = default);
+
     // Dual embedding comparison methods for PoC
     Task<List<Memorizer.Models.Memory>> SearchWithFullEmbedding(
         string query,
@@ -1015,15 +1018,31 @@ public class Storage : IStorage
     public async Task UpdateMemoryMetadataEmbedding(Guid memoryId, Vector embedding, CancellationToken cancellationToken = default)
     {
         const string sql = @"
-            UPDATE memories 
-            SET embedding_metadata = @embedding, updated_at = NOW() 
+            UPDATE memories
+            SET embedding_metadata = @embedding, updated_at = NOW()
             WHERE id = @id";
-        
+
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("id", memoryId);
         command.Parameters.AddWithValue("embedding", embedding);
-        
+
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task UpdateMemoryEmbeddings(Guid memoryId, Vector contentEmbedding, Vector metadataEmbedding, CancellationToken cancellationToken = default)
+    {
+        const string sql = @"
+            UPDATE memories
+            SET embedding = @contentEmbedding, embedding_metadata = @metadataEmbedding, updated_at = NOW()
+            WHERE id = @id";
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("id", memoryId);
+        command.Parameters.AddWithValue("contentEmbedding", contentEmbedding);
+        command.Parameters.AddWithValue("metadataEmbedding", metadataEmbedding);
+
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
