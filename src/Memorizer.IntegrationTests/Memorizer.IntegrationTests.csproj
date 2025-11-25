@@ -28,8 +28,8 @@
 
     <ItemGroup>
       <PackageReference Include="Akka.Persistence.Sql.Hosting" />
-      <PackageReference Include="ModelContextProtocol.AspNetCore" VersionOverride="0.4.0-preview.2" />
-      <PackageReference Include="OllamaSharp" VersionOverride="5.3.6" />
+      <PackageReference Include="ModelContextProtocol.AspNetCore" />
+      <PackageReference Include="OllamaSharp" />
         <ProjectReference Include="..\Memorizer\Memorizer.csproj" />
     </ItemGroup>
 

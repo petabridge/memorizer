@@ -13,8 +13,8 @@
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.Abstractions" Version="$(MsftVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="$(MsftVersion)" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="$(MsftVersion)" />
-    <PackageVersion Include="ModelContextProtocol" Version="0.4.0-preview.2" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.2" />
+    <PackageVersion Include="ModelContextProtocol" Version="0.4.0-preview.3" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
     <PackageVersion Include="Npgsql" Version="9.0.4" />
     <PackageVersion Include="OllamaSharp" Version="5.3.6" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.12.0" />
