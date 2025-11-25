@@ -1,15 +1,15 @@
-using Akka;
 using Akka.Actor;
 using Akka.Event;
 using Akka.Streams;
-using Akka.Streams.Dsl;
 using Memorizer.Services;
 using Pgvector;
 
 namespace Memorizer.Actors;
 
 /// <summary>
-/// Actor responsible for generating metadata embeddings for all memories using offset/limit pagination
+/// Actor responsible for generating metadata embeddings for all memories using offset/limit pagination.
+/// Uses Become/Unbecome to switch between Idle and Running states.
+/// Progress is managed via ProgressJobManager which supports multiple SSE subscribers.
 /// </summary>
 public sealed class MetadataEmbeddingActor : ReceiveActor
 {
@@ -18,32 +18,13 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
     private readonly ILoggingAdapter _logger;
     private readonly IMaterializer _materializer;
 
-    private BatchState? _batch;
+    // Progress manager - handles subscriber management and job state
+    private ProgressJobManager? _jobManager;
 
-    // Progress source actor - only exists when running a batch
-    private IActorRef? _progressSourceActor;
-    private Source<MetadataEmbeddingProgressEvent, NotUsed>? _progressSource;
-    
-    private enum Status
-    {
-        Idle,
-        Running,
-        Completed
-    }
-
-    private class BatchState
-    {
-        public int Outstanding { get; set; }
-        public int Success { get; set; }
-        public int Failure { get; set; }
-        
-        public Status CurrentStatus => Outstanding > 0 ? Status.Running : Status.Completed;
-        public List<Guid> FailedIds { get; } = new();
-        public string RequestedBy { get; set; } = string.Empty;
-        public int Page { get; set; } // Start at 1
-        public int PageSize { get; set; }
-        public DateTime StartTime { get; set; }
-    }
+    // Pagination state
+    private int _currentPage;
+    private int _pageSize;
+    private int _outstandingOnCurrentPage;
 
     public MetadataEmbeddingActor(
         IStorage storage,
@@ -63,11 +44,20 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         // Idle behavior - waiting for work
         ReceiveAsync<RegenerateAllMetadataEmbeddings>(HandleRegenerateAll);
 
-        // No progress available when idle
-        Receive<GetProgressSource<MetadataEmbeddingProgressEvent>>(_ =>
+        // Handle subscription requests - return idle status that completes immediately
+        Receive<SubscribeToProgress>(msg =>
         {
-            _logger.Warning("Progress source requested but no batch is running");
-            Sender.Tell(new ProgressSource<MetadataEmbeddingProgressEvent>(Source.Empty<MetadataEmbeddingProgressEvent>()));
+            _logger.Debug("Subscription requested while idle, subscriber: {0}", msg.SubscriberId);
+            // Create a temporary job manager just to create an idle subscription
+            var tempManager = new ProgressJobManager(_logger, _materializer);
+            var reader = tempManager.CreateIdleSubscription(msg.SubscriberId);
+            Sender.Tell(new ProgressSubscription(msg.SubscriberId, reader));
+        });
+
+        Receive<UnsubscribeFromProgress>(msg =>
+        {
+            _logger.Debug("Unsubscribe requested while idle, subscriber: {0}", msg.SubscriberId);
+            // No active job manager, nothing to clean up
         });
 
         Receive<GetMetadataEmbeddingStatus>(_ => HandleGetStatusIdle());
@@ -78,14 +68,21 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
         // Running behavior - actively processing batch
         ReceiveAsync<GenerateMetadataEmbeddingForMemory>(HandleGenerateMetadataEmbeddingForMemory);
 
-        // Return the active progress source
-        Receive<GetProgressSource<MetadataEmbeddingProgressEvent>>(_ =>
+        // Handle subscription requests - add to active job
+        Receive<SubscribeToProgress>(msg =>
         {
-            if (_progressSource != null)
+            if (_jobManager != null)
             {
-                _logger.Debug("Returning active progress source");
-                Sender.Tell(new ProgressSource<MetadataEmbeddingProgressEvent>(_progressSource));
+                _logger.Debug("Adding subscriber to running job: {0}", msg.SubscriberId);
+                var reader = _jobManager.AddSubscriber(msg.SubscriberId);
+                Sender.Tell(new ProgressSubscription(msg.SubscriberId, reader));
             }
+        });
+
+        Receive<UnsubscribeFromProgress>(msg =>
+        {
+            _logger.Debug("Removing subscriber: {0}", msg.SubscriberId);
+            _jobManager?.RemoveSubscriber(msg.SubscriberId);
         });
 
         Receive<GetMetadataEmbeddingStatus>(_ => HandleGetStatusRunning());
@@ -93,161 +90,168 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
 
     private async Task HandleRegenerateAll(RegenerateAllMetadataEmbeddings msg)
     {
-        if (_batch is { CurrentStatus: Status.Running })
+        if (_jobManager != null)
         {
             // Already running a batch, decline new request
+            _logger.Warning("Metadata embedding regeneration already in progress, declining new request from {0}", msg.RequestedBy);
             Sender.Tell(new MetadataEmbeddingStatus(
                 IsRunning: true,
-                Status: _batch.CurrentStatus.ToString(),
-                TotalProcessed: _batch.Success + _batch.Failure,
-                TotalSuccessful: _batch.Success,
-                TotalFailed: _batch.Failure,
-                Outstanding: _batch.Outstanding,
-                FailedMemoryIds: _batch.FailedIds.ToList(),
-                StartTime: _batch.StartTime,
-                Duration: DateTime.UtcNow - _batch.StartTime,
-                RequestedBy: _batch.RequestedBy
+                Status: "Running",
+                TotalProcessed: _jobManager.ProcessedCount,
+                TotalSuccessful: _jobManager.SuccessCount,
+                TotalFailed: _jobManager.FailureCount,
+                Outstanding: _jobManager.TotalItems - _jobManager.ProcessedCount,
+                FailedMemoryIds: _jobManager.FailedIds.ToList(),
+                StartTime: _jobManager.StartTime,
+                Duration: DateTime.UtcNow - _jobManager.StartTime,
+                RequestedBy: _jobManager.RequestedBy
             ));
             return;
         }
-        
-        // Clear last completed batch status when starting a new batch
-        _logger.Info("Starting metadata embedding regeneration for ALL memories, page size {0}, requested by {1}", msg.PageSize, msg.RequestedBy);
-        _batch = new BatchState
+
+        _logger.Info("Starting metadata embedding regeneration for ALL memories, page size {0}, requested by {1}",
+            msg.PageSize, msg.RequestedBy);
+
+        try
         {
-            RequestedBy = msg.RequestedBy,
-            Page = 1, // Start at page 1
-            PageSize = msg.PageSize,
-            StartTime = DateTime.UtcNow
-        };
+            // Get total count first to size the job
+            var (_, totalCount) = await _storage.GetMemoriesPaginated(1, 1);
 
-        // Create progress source actor and switch to Running state
-        var (actorRef, source) = Source.ActorRef<MetadataEmbeddingProgressEvent>(100, OverflowStrategy.DropHead)
-            .PreMaterialize(_materializer);
+            // Create job manager and start job
+            _jobManager = new ProgressJobManager(_logger, _materializer);
+            _jobManager.StartJob(totalCount, msg.RequestedBy);
 
-        _progressSourceActor = actorRef;
-        _progressSource = source;
+            // Initialize pagination state
+            _currentPage = 1;
+            _pageSize = msg.PageSize;
 
-        Become(Running);
+            Become(Running);
 
-        // Push initial progress event
-        PushProgressUpdate();
+            if (totalCount == 0)
+            {
+                _logger.Info("No memories found to process");
+                CompleteBatch();
+                return;
+            }
 
-        await ProcessNextPage();
+            _logger.Info("Found {0} memories to process in pages of {1}", totalCount, _pageSize);
+
+            await ProcessNextPage();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error starting metadata embedding regeneration: {0}", ex.Message);
+            _jobManager?.Fail(ex.Message);
+            _jobManager = null;
+            Become(Idle);
+        }
     }
 
     private async Task ProcessNextPage()
     {
-        if (_batch == null) return;
-        var (memories, _) = await _storage.GetMemoriesPaginated(_batch.Page, _batch.PageSize);
-        if (memories.Count == 0)
-        {
-            CompleteBatch();
-            return;
-        }
+        if (_jobManager == null) return;
 
-        _logger.Info("Processing {0} memories at page {1}", memories.Count, _batch.Page);
-        _batch.Outstanding = memories.Count;
-        foreach (var memory in memories)
+        try
         {
-            Self.Tell(new GenerateMetadataEmbeddingForMemory(
-                memory.Id,
-                memory.Title ?? "Untitled",
-                memory.Tags ?? [],
-                _batch.RequestedBy
-            ));
+            var (memories, _) = await _storage.GetMemoriesPaginated(_currentPage, _pageSize);
+
+            if (memories.Count == 0)
+            {
+                // No more pages
+                CompleteBatch();
+                return;
+            }
+
+            _logger.Info("Processing {0} memories at page {1}", memories.Count, _currentPage);
+            _outstandingOnCurrentPage = memories.Count;
+
+            foreach (var memory in memories)
+            {
+                Self.Tell(new GenerateMetadataEmbeddingForMemory(
+                    memory.Id,
+                    memory.Title ?? "Untitled",
+                    memory.Tags ?? [],
+                    _jobManager.RequestedBy
+                ));
+            }
+
+            _currentPage++; // Move to next page for next call
         }
-        _batch.Page++; // Move to next page for next call
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error fetching page {0}: {1}", _currentPage, ex.Message);
+            _jobManager.Fail($"Error fetching page {_currentPage}: {ex.Message}");
+            _jobManager = null;
+            Become(Idle);
+        }
     }
 
     private async Task HandleGenerateMetadataEmbeddingForMemory(GenerateMetadataEmbeddingForMemory msg)
     {
-        if (_batch == null) return;
+        if (_jobManager == null) return;
+
         try
         {
             var metadataText = CreateMetadataText(msg.Title, msg.Tags);
             var embeddingArray = await _embeddingService.Generate(metadataText);
             var embedding = new Vector(embeddingArray);
             await _storage.UpdateMemoryMetadataEmbedding(msg.MemoryId, embedding);
-            _batch.Success++;
+
+            _jobManager.RecordSuccess();
+            _logger.Debug("Successfully generated metadata embedding for memory {0}", msg.MemoryId);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error generating metadata embedding for memory {0}: {1}", msg.MemoryId, ex.Message);
-            _batch.Failure++;
-            _batch.FailedIds.Add(msg.MemoryId);
+            _jobManager.RecordFailure(msg.MemoryId);
         }
         finally
         {
-            _batch.Outstanding--;
-            PushProgressUpdate();
+            _outstandingOnCurrentPage--;
 
-            if (_batch.Outstanding == 0)
+            if (_outstandingOnCurrentPage == 0)
             {
-                await ProcessNextPage();
+                // Current page complete, check if we should continue
+                if (_jobManager.ProcessedCount >= _jobManager.TotalItems)
+                {
+                    CompleteBatch();
+                }
+                else
+                {
+                    await ProcessNextPage();
+                }
             }
         }
-    }
-
-    private void PushProgressUpdate()
-    {
-        if (_progressSourceActor == null || _batch == null) return;
-
-        var progressEvent = new MetadataEmbeddingProgressEvent(
-            TotalProcessed: _batch.Success + _batch.Failure,
-            TotalSuccessful: _batch.Success,
-            TotalFailed: _batch.Failure,
-            Outstanding: _batch.Outstanding,
-            Status: "Running",
-            RequestedBy: _batch.RequestedBy,
-            Duration: DateTime.UtcNow - _batch.StartTime,
-            FailedMemoryIds: _batch.FailedIds.ToList()
-        );
-
-        _progressSourceActor.Tell(progressEvent);
     }
 
     private void CompleteBatch()
     {
         PublishBatchCompleted();
 
-        // Push final completion event before completing the stream
-        if (_progressSourceActor != null && _batch != null)
-        {
-            var completionEvent = new MetadataEmbeddingProgressEvent(
-                TotalProcessed: _batch.Success + _batch.Failure,
-                TotalSuccessful: _batch.Success,
-                TotalFailed: _batch.Failure,
-                Outstanding: 0,
-                Status: _batch.Failure > 0 ? "Completed with errors" : "Completed",
-                RequestedBy: _batch.RequestedBy,
-                Duration: DateTime.UtcNow - _batch.StartTime,
-                FailedMemoryIds: _batch.FailedIds.ToList()
-            );
-            _progressSourceActor.Tell(completionEvent);
+        // Complete the job - this broadcasts final event and auto-completes all subscriber streams
+        _jobManager?.Complete();
+        _jobManager = null;
 
-            // Now complete the stream
-            _progressSourceActor.Tell(new Akka.Actor.Status.Success("Complete"));
-        }
-
-        _progressSourceActor = null;
-        _progressSource = null;
         Become(Idle);
     }
 
     private void PublishBatchCompleted()
     {
-        if (_batch == null) return;
-        var duration = DateTime.UtcNow - _batch.StartTime;
+        if (_jobManager == null) return;
+
         var batchCompleted = new BatchMetadataEmbeddingCompleted(
-            RequestedBy: _batch.RequestedBy,
-            StartTime: _batch.StartTime,
-            TotalProcessed: _batch.Success + _batch.Failure,
-            TotalSuccessful: _batch.Success,
-            FailedMemoryIds: _batch.FailedIds.ToList(),
-            Duration: duration
+            RequestedBy: _jobManager.RequestedBy,
+            StartTime: _jobManager.StartTime,
+            TotalProcessed: _jobManager.ProcessedCount,
+            TotalSuccessful: _jobManager.SuccessCount,
+            FailedMemoryIds: _jobManager.FailedIds.ToList(),
+            Duration: DateTime.UtcNow - _jobManager.StartTime
         );
-        _logger.Info("Metadata embedding completed: {0} successful, {1} failed, duration: {2}ms", _batch.Success, _batch.Failure, duration.TotalMilliseconds);
+
+        _logger.Info("Metadata embedding completed: {0}/{1} successful, {2} failed, duration: {3}ms",
+            _jobManager.SuccessCount, _jobManager.TotalItems, _jobManager.FailureCount,
+            batchCompleted.Duration.TotalMilliseconds);
+
         Context.System.EventStream.Publish(batchCompleted);
     }
 
@@ -261,19 +265,23 @@ public sealed class MetadataEmbeddingActor : ReceiveActor
 
     private void HandleGetStatusRunning()
     {
-        if (_batch == null) return;
+        if (_jobManager == null)
+        {
+            HandleGetStatusIdle();
+            return;
+        }
 
         Sender.Tell(new MetadataEmbeddingStatus(
-            IsRunning: _batch.CurrentStatus == Status.Running,
-            Status: _batch.CurrentStatus.ToString(),
-            TotalProcessed: _batch.Success + _batch.Failure,
-            TotalSuccessful: _batch.Success,
-            TotalFailed: _batch.Failure,
-            Outstanding: _batch.Outstanding,
-            FailedMemoryIds: _batch.FailedIds.ToList(),
-            StartTime: _batch.StartTime,
-            Duration: DateTime.UtcNow - _batch.StartTime,
-            RequestedBy: _batch.RequestedBy
+            IsRunning: true,
+            Status: "Running",
+            TotalProcessed: _jobManager.ProcessedCount,
+            TotalSuccessful: _jobManager.SuccessCount,
+            TotalFailed: _jobManager.FailureCount,
+            Outstanding: _jobManager.TotalItems - _jobManager.ProcessedCount,
+            FailedMemoryIds: _jobManager.FailedIds.ToList(),
+            StartTime: _jobManager.StartTime,
+            Duration: DateTime.UtcNow - _jobManager.StartTime,
+            RequestedBy: _jobManager.RequestedBy
         ));
     }
 

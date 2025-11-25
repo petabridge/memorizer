@@ -1,8 +1,6 @@
 using Akka.Actor;
 using Akka.Hosting;
 using Akka.Hosting.TestKit;
-using Akka.Streams;
-using Akka.Streams.Dsl;
 using Memorizer.Actors;
 using Memorizer.Models;
 using Memorizer.Services;
@@ -82,10 +80,6 @@ public class TitleGenerationActorTests : TestKit
     public async Task TitleGenerationActor_ProgressStream_ShouldCompleteGracefully()
     {
         // Arrange
-        var titleGenerationActor = ActorRegistry.Get<TitleGenerationActorKey>();
-        var materializer = Sys.Materializer();
-
-        // Create a test storage that returns a small list of untitled memories
         var mockStorage = new MockStorageWithMemories();
         var mockLlm = new MockLlmService();
         var settings = new LlmSettings
@@ -98,42 +92,46 @@ public class TitleGenerationActorTests : TestKit
         // Create a new actor for this test
         var testActor = Sys.ActorOf(TitleGenerationActor.Props(mockStorage, mockLlm, settings), "title-generation-test");
 
-        // Act - Get progress source BEFORE starting the batch (should be empty)
-        var emptyProgressSource = await testActor.Ask<ProgressSource<TitleGenerationProgressEvent>>(
-            new GetProgressSource<TitleGenerationProgressEvent>(),
+        // Act - Subscribe BEFORE starting the batch (should get Idle status and complete immediately)
+        var idleSubscription = await testActor.Ask<ProgressSubscription>(
+            new SubscribeToProgress("idle-subscriber"),
             TimeSpan.FromSeconds(5));
 
-        // Collect empty source events (should complete immediately)
-        var emptyEvents = await emptyProgressSource.Source
-            .RunWith(Sink.Seq<TitleGenerationProgressEvent>(), materializer);
+        // Collect idle subscription events (should receive Idle status and complete immediately)
+        var idleEvents = new List<ProgressEvent>();
+        await foreach (var evt in idleSubscription.Reader.ReadAllAsync())
+        {
+            idleEvents.Add(evt);
+        }
 
-        Assert.Empty(emptyEvents);
-        _output.WriteLine("✅ Empty source completed immediately when no batch is running");
+        Assert.Single(idleEvents);
+        Assert.Equal(JobStatus.Idle, idleEvents[0].Status);
+        _output.WriteLine("✅ Idle subscription completed immediately with Idle status when no batch is running");
 
-        // Start a batch and immediately get the progress source
+        // Start the batch FIRST (Tell queues the message), then Subscribe
+        // Since actor processes messages in order: Batch → Running state → Subscribe → get running subscription
         testActor.Tell(new GenerateTitlesForUntitled { BatchSize = 3, RequestedBy = "test" });
 
-        // Get progress source while batch is running
-        var activeProgressSource = await testActor.Ask<ProgressSource<TitleGenerationProgressEvent>>(
-            new GetProgressSource<TitleGenerationProgressEvent>(),
+        // Subscribe - this Ask is queued after the batch Tell, so the actor will be in Running state
+        var activeSubscription = await testActor.Ask<ProgressSubscription>(
+            new SubscribeToProgress("active-subscriber"),
             TimeSpan.FromSeconds(5));
 
-        // Materialize the stream and collect events
-        // The stream should emit progress events as the batch processes and then complete
-        var progressEventsList = new List<TitleGenerationProgressEvent>();
-        await activeProgressSource.Source
-            .RunForeach(evt =>
-            {
-                progressEventsList.Add(evt);
-                _output.WriteLine($"Progress: {evt.TotalProcessed}/{evt.TotalProcessed + evt.Outstanding} processed");
-            }, materializer);
+        // Collect events from the running batch (even if they all come at once)
+        var progressEventsList = new List<ProgressEvent>();
+        await foreach (var evt in activeSubscription.Reader.ReadAllAsync())
+        {
+            progressEventsList.Add(evt);
+            _output.WriteLine($"Progress: {evt.TotalProcessed}/{evt.TotalItems} processed, Status={evt.Status}");
+        }
 
         // Assert
         Assert.NotEmpty(progressEventsList);
         _output.WriteLine($"✅ Progress stream emitted {progressEventsList.Count} events");
 
-        // Verify we got progress updates
+        // Verify we got a completion event
         var lastEvent = progressEventsList.Last();
+        Assert.True(lastEvent.IsCompleted, "Last event should be a completion status");
         Assert.Equal(3, lastEvent.TotalProcessed);
         Assert.Equal(3, lastEvent.TotalSuccessful);
         _output.WriteLine("✅ Progress stream completed gracefully after batch finished");
@@ -285,4 +283,5 @@ public class TitleGenerationActorTests : TestKit
 
         public void Dispose() { }
     }
+
 } 

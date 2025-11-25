@@ -142,37 +142,42 @@ app.MapGet("/otel-test", () =>
 app.MapGet("/ui/tools/title-generation-progress",
     async (IActorRegistry actorRegistry, CancellationToken ct) =>
 {
-    var materializer = app.Services.GetRequiredService<ActorSystem>().Materializer();
     var titleGenActor = await actorRegistry.GetAsync<TitleGenerationActor>();
+    var subscriberId = Guid.NewGuid().ToString();
 
-    // Ask the actor for its progress source
-    var progressSource = await titleGenActor.Ask<ProgressSource<TitleGenerationProgressEvent>>(
-        new GetProgressSource<TitleGenerationProgressEvent>(),
+    // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>
+    var subscription = await titleGenActor.Ask<ProgressSubscription>(
+        new SubscribeToProgress(subscriberId),
         ct);
 
     async IAsyncEnumerable<SseItem<ProgressSseData>> StreamProgress()
     {
-        // Materialize the Akka.Streams source as an IAsyncEnumerable
-        await foreach (var progress in progressSource.Source.RunAsAsyncEnumerable(materializer).WithCancellation(ct))
+        try
         {
-            var total = progress.TotalProcessed + progress.Outstanding;
-            var percentComplete = total > 0 ? (int)((progress.TotalProcessed / (double)total) * 100) : 0;
-
-            yield return new SseItem<ProgressSseData>(
-                new ProgressSseData(
-                    PercentComplete: percentComplete,
-                    TotalProcessed: progress.TotalProcessed,
-                    TotalSuccessful: progress.TotalSuccessful,
-                    TotalFailed: progress.TotalFailed,
-                    Outstanding: progress.Outstanding,
-                    Status: progress.Status,
-                    RequestedBy: progress.RequestedBy,
-                    Duration: progress.Duration?.TotalSeconds
-                ),
-                "progress")
+            // ChannelReader can be consumed directly as IAsyncEnumerable
+            await foreach (var progress in subscription.Reader.ReadAllAsync(ct))
             {
-                EventId = Guid.NewGuid().ToString()
-            };
+                yield return new SseItem<ProgressSseData>(
+                    new ProgressSseData(
+                        PercentComplete: progress.PercentComplete,
+                        TotalProcessed: progress.TotalProcessed,
+                        TotalSuccessful: progress.TotalSuccessful,
+                        TotalFailed: progress.TotalFailed,
+                        Outstanding: progress.Outstanding,
+                        Status: progress.Status.ToString(),
+                        RequestedBy: progress.RequestedBy,
+                        Duration: progress.DurationSeconds
+                    ),
+                    "progress")
+                {
+                    EventId = Guid.NewGuid().ToString()
+                };
+            }
+        }
+        finally
+        {
+            // Notify actor that this subscriber has disconnected
+            titleGenActor.Tell(new UnsubscribeFromProgress(subscriberId));
         }
     }
 
@@ -183,37 +188,42 @@ app.MapGet("/ui/tools/title-generation-progress",
 app.MapGet("/ui/tools/metadata-embedding-progress",
     async (IActorRegistry actorRegistry, CancellationToken ct) =>
 {
-    var materializer = app.Services.GetRequiredService<ActorSystem>().Materializer();
     var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActor>();
+    var subscriberId = Guid.NewGuid().ToString();
 
-    // Ask the actor for its progress source
-    var progressSource = await metadataEmbeddingActor.Ask<ProgressSource<MetadataEmbeddingProgressEvent>>(
-        new GetProgressSource<MetadataEmbeddingProgressEvent>(),
+    // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>
+    var subscription = await metadataEmbeddingActor.Ask<ProgressSubscription>(
+        new SubscribeToProgress(subscriberId),
         ct);
 
     async IAsyncEnumerable<SseItem<ProgressSseData>> StreamProgress()
     {
-        // Materialize the Akka.Streams source as an IAsyncEnumerable
-        await foreach (var progress in progressSource.Source.RunAsAsyncEnumerable(materializer).WithCancellation(ct))
+        try
         {
-            var total = progress.TotalProcessed + progress.Outstanding;
-            var percentComplete = total > 0 ? (int)((progress.TotalProcessed / (double)total) * 100) : 0;
-
-            yield return new SseItem<ProgressSseData>(
-                new ProgressSseData(
-                    PercentComplete: percentComplete,
-                    TotalProcessed: progress.TotalProcessed,
-                    TotalSuccessful: progress.TotalSuccessful,
-                    TotalFailed: progress.TotalFailed,
-                    Outstanding: progress.Outstanding,
-                    Status: progress.Status,
-                    RequestedBy: progress.RequestedBy,
-                    Duration: progress.Duration?.TotalSeconds
-                ),
-                "progress")
+            // ChannelReader can be consumed directly as IAsyncEnumerable
+            await foreach (var progress in subscription.Reader.ReadAllAsync(ct))
             {
-                EventId = Guid.NewGuid().ToString()
-            };
+                yield return new SseItem<ProgressSseData>(
+                    new ProgressSseData(
+                        PercentComplete: progress.PercentComplete,
+                        TotalProcessed: progress.TotalProcessed,
+                        TotalSuccessful: progress.TotalSuccessful,
+                        TotalFailed: progress.TotalFailed,
+                        Outstanding: progress.Outstanding,
+                        Status: progress.Status.ToString(),
+                        RequestedBy: progress.RequestedBy,
+                        Duration: progress.DurationSeconds
+                    ),
+                    "progress")
+                {
+                    EventId = Guid.NewGuid().ToString()
+                };
+            }
+        }
+        finally
+        {
+            // Notify actor that this subscriber has disconnected
+            metadataEmbeddingActor.Tell(new UnsubscribeFromProgress(subscriberId));
         }
     }
 
