@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using Akka;
 using Akka.Streams.Dsl;
@@ -7,6 +8,7 @@ namespace Memorizer.Actors;
 /// <summary>
 /// Job status enum - typed status for progress events
 /// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum JobStatus
 {
     /// <summary>No job is currently running</summary>
@@ -155,19 +157,5 @@ public sealed record GetProgressSource<TEvent>() where TEvent : IProgressEvent;
 /// Response containing a typed Akka.Streams Source
 /// </summary>
 public sealed record ProgressSource<TEvent>(Source<TEvent, NotUsed> Source) where TEvent : IProgressEvent;
-
-/// <summary>
-/// SSE-compatible progress data sent to clients
-/// </summary>
-public sealed record ProgressSseData(
-    int PercentComplete,
-    int TotalProcessed,
-    int TotalSuccessful,
-    int TotalFailed,
-    int Outstanding,
-    string Status,
-    string RequestedBy,
-    double? Duration
-);
 
 #endregion

@@ -249,7 +249,7 @@ class ProgressStreamClient {
                     <li>Total processed: ${progress.totalProcessed}</li>
                     <li>Successful: ${progress.totalSuccessful}</li>
                     <li>Failed: ${progress.totalFailed}</li>
-                    <li>Duration: ${progress.duration?.toFixed(2) || 'N/A'} seconds</li>
+                    <li>Duration: ${progress.durationSeconds?.toFixed(2) || 'N/A'} seconds</li>
                     <li>Requested by: ${progress.requestedBy || 'Unknown'}</li>
                 </ul>`;
             this.showResults(resultsHtml);

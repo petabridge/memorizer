@@ -22,32 +22,19 @@ public static class Routes
             var titleGenActor = await actorRegistry.GetAsync<TitleGenerationActorKey>(ct);
             var subscriberId = Guid.NewGuid().ToString();
 
-            // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>
             var subscription = await titleGenActor.Ask<ProgressSubscription>(
                 new SubscribeToProgress(subscriberId),
                 ct);
 
             return TypedResults.ServerSentEvents(StreamProgress());
 
-            async IAsyncEnumerable<SseItem<ProgressSseData>> StreamProgress()
+            async IAsyncEnumerable<SseItem<ProgressEvent>> StreamProgress()
             {
                 try
                 {
-                    // ChannelReader can be consumed directly as IAsyncEnumerable
                     await foreach (var progress in subscription.Reader.ReadAllAsync(ct))
                     {
-                        yield return new SseItem<ProgressSseData>(
-                            new ProgressSseData(
-                                PercentComplete: progress.PercentComplete,
-                                TotalProcessed: progress.TotalProcessed,
-                                TotalSuccessful: progress.TotalSuccessful,
-                                TotalFailed: progress.TotalFailed,
-                                Outstanding: progress.Outstanding,
-                                Status: progress.Status.ToString(),
-                                RequestedBy: progress.RequestedBy,
-                                Duration: progress.DurationSeconds
-                            ),
-                            "progress")
+                        yield return new SseItem<ProgressEvent>(progress, "progress")
                         {
                             EventId = Guid.NewGuid().ToString()
                         };
@@ -55,7 +42,6 @@ public static class Routes
                 }
                 finally
                 {
-                    // Notify actor that this subscriber has disconnected
                     titleGenActor.Tell(new UnsubscribeFromProgress(subscriberId), ActorRefs.NoSender);
                 }
             }
@@ -68,30 +54,19 @@ public static class Routes
             var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActorKey>(ct);
             var subscriberId = Guid.NewGuid().ToString();
 
-            // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>
             var subscription = await metadataEmbeddingActor.Ask<ProgressSubscription>(
                 new SubscribeToProgress(subscriberId),
                 ct);
 
-            async IAsyncEnumerable<SseItem<ProgressSseData>> StreamProgress()
+            return TypedResults.ServerSentEvents(StreamProgress());
+
+            async IAsyncEnumerable<SseItem<ProgressEvent>> StreamProgress()
             {
                 try
                 {
-                    // ChannelReader can be consumed directly as IAsyncEnumerable
                     await foreach (var progress in subscription.Reader.ReadAllAsync(ct))
                     {
-                        yield return new SseItem<ProgressSseData>(
-                            new ProgressSseData(
-                                PercentComplete: progress.PercentComplete,
-                                TotalProcessed: progress.TotalProcessed,
-                                TotalSuccessful: progress.TotalSuccessful,
-                                TotalFailed: progress.TotalFailed,
-                                Outstanding: progress.Outstanding,
-                                Status: progress.Status.ToString(),
-                                RequestedBy: progress.RequestedBy,
-                                Duration: progress.DurationSeconds
-                            ),
-                            "progress")
+                        yield return new SseItem<ProgressEvent>(progress, "progress")
                         {
                             EventId = Guid.NewGuid().ToString()
                         };
@@ -99,12 +74,9 @@ public static class Routes
                 }
                 finally
                 {
-                    // Notify actor that this subscriber has disconnected
                     metadataEmbeddingActor.Tell(new UnsubscribeFromProgress(subscriberId), ActorRefs.NoSender);
                 }
             }
-
-            return TypedResults.ServerSentEvents(StreamProgress());
         });
 
         return app;
