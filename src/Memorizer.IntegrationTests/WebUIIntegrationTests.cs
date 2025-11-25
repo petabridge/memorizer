@@ -180,16 +180,16 @@ public class WebUIIntegrationTests : IDisposable
             // Assert
             Assert.NotNull(updatedMemory);
             Assert.Equal(originalMemory.Id, updatedMemory.Id);
-            // Text field contains title + " " + content as per UpdateMemory implementation
-            Assert.Equal("Updated Title for Web UI Updated content for web UI", updatedMemory.Text);
+            // Text field contains just the content, title is stored separately
+            Assert.Equal("Updated content for web UI", updatedMemory.Text);
             Assert.Equal("Updated Title for Web UI", updatedMemory.Title);
             Assert.Equal("updated-test", updatedMemory.Type);
             Assert.Equal(0.95, updatedMemory.Confidence);
-            
+
             // Verify persistence
             var retrieved = await storage.Get(originalMemory.Id, CancellationToken.None);
             Assert.NotNull(retrieved);
-            Assert.Equal("Updated Title for Web UI Updated content for web UI", retrieved.Text);
+            Assert.Equal("Updated content for web UI", retrieved.Text);
             
             _output.WriteLine($"✓ Successfully updated memory: {originalMemory.Id}");
         }

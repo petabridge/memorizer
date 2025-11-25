@@ -266,21 +266,21 @@ public class Storage : IStorage
             query,
             cancellationToken
         );
-        
+
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
         // Always fetch up to 2x the requested limit for post-filtering/boosting
         int fetchLimit = limit * 2;
         string sql =
             @"
-            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, embedding <=> @embedding AS similarity
+            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, embedding <=> @embedding AS similarity
             FROM memories
             WHERE embedding <=> @embedding < @maxDistance
             ORDER BY embedding <=> @embedding LIMIT @limit";
 
         await using NpgsqlCommand cmd = new(sql, connection);
         cmd.Parameters.AddWithValue("embedding", new Vector(queryEmbedding));
-        cmd.Parameters.AddWithValue("maxDistance", 1 - minSimilarity); 
+        cmd.Parameters.AddWithValue("maxDistance", 1 - minSimilarity);
         cmd.Parameters.AddWithValue("limit", fetchLimit);
 
         List<Memorizer.Models.Memory> memories = [];
@@ -303,7 +303,8 @@ public class Storage : IStorage
                 CreatedAt = reader.GetDateTime(9),
                 UpdatedAt = reader.GetDateTime(10),
                 Title = reader.IsDBNull(11) ? null : reader.GetString(11),
-                Similarity = reader.IsDBNull(12) ? null : reader.GetDouble(12)
+                CurrentVersion = reader.GetInt32(12),
+                Similarity = reader.IsDBNull(13) ? null : reader.GetDouble(13)
             };
             memories.Add(memory);
             memoryIds.Add(memory.Id);
@@ -354,7 +355,7 @@ public class Storage : IStorage
 
         const string sql =
             @"
-            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title
+            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version
             FROM memories
             WHERE id = @id";
 
@@ -378,7 +379,8 @@ public class Storage : IStorage
                 Confidence = reader.GetDouble(8),
                 CreatedAt = reader.GetDateTime(9),
                 UpdatedAt = reader.GetDateTime(10),
-                Title = reader.IsDBNull(11) ? null : reader.GetString(11)
+                Title = reader.IsDBNull(11) ? null : reader.GetString(11),
+                CurrentVersion = reader.GetInt32(12)
             };
             // Fetch relationships for this memory
             memory.Relationships = await GetRelationships(memory.Id, null, cancellationToken);
@@ -408,7 +410,7 @@ public class Storage : IStorage
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         const string sql = @"
-            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title
+            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version
             FROM memories
             WHERE id = ANY(@ids)";
         await using NpgsqlCommand cmd = new(sql, connection);
@@ -431,7 +433,8 @@ public class Storage : IStorage
                 Confidence = reader.GetDouble(8),
                 CreatedAt = reader.GetDateTime(9),
                 UpdatedAt = reader.GetDateTime(10),
-                Title = reader.IsDBNull(11) ? null : reader.GetString(11)
+                Title = reader.IsDBNull(11) ? null : reader.GetString(11),
+                CurrentVersion = reader.GetInt32(12)
             };
             memories.Add(memory);
             memoryIds.Add(memory.Id);
@@ -533,18 +536,18 @@ public class Storage : IStorage
         
         // Get paginated results
         const string sql = @"
-            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title
+            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version
             FROM memories
             ORDER BY created_at DESC
             LIMIT @limit OFFSET @offset";
-            
+
         await using NpgsqlCommand cmd = new(sql, connection);
         cmd.Parameters.AddWithValue("limit", pageSize);
         cmd.Parameters.AddWithValue("offset", (page - 1) * pageSize);
-        
+
         List<Memorizer.Models.Memory> memories = [];
         await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        
+
         while (await reader.ReadAsync(cancellationToken))
         {
             var memory = new Memorizer.Models.Memory
@@ -560,13 +563,14 @@ public class Storage : IStorage
                 Confidence = reader.GetDouble(8),
                 CreatedAt = reader.GetDateTime(9),
                 UpdatedAt = reader.GetDateTime(10),
-                Title = reader.IsDBNull(11) ? null : reader.GetString(11)
+                Title = reader.IsDBNull(11) ? null : reader.GetString(11),
+                CurrentVersion = reader.GetInt32(12)
             };
             // Fetch relationships for this memory
             memory.Relationships = await GetRelationships(memory.Id, null, cancellationToken);
             memories.Add(memory);
         }
-        
+
         return (memories, (int)totalCount);
     }
 
@@ -581,16 +585,23 @@ public class Storage : IStorage
         CancellationToken cancellationToken = default
     )
     {
+        // First, get the existing memory to create a version snapshot
+        var existingMemory = await Get(id, cancellationToken);
+        if (existingMemory == null)
+        {
+            return null;
+        }
+
         // Determine whether the incoming string is JSON or plain text
         JsonDocument document;
-        string textToEmbed;
+        string bodyText;
 
         try
         {
             document = JsonDocument.Parse(content);
 
             // Attempt to extract a sensible text body from common keys; fallback to full JSON text
-            textToEmbed =
+            bodyText =
                 document.RootElement.TryGetProperty("text", out var tElem) && tElem.ValueKind == JsonValueKind.String
                     ? tElem.GetString() ?? content
                 : document.RootElement.TryGetProperty("fact", out var fElem) && fElem.ValueKind == JsonValueKind.String
@@ -605,10 +616,11 @@ public class Storage : IStorage
         {
             // Not valid JSON – treat entire string as text; store an empty JSON object for backwards compatibility
             document = JsonDocument.Parse("{}");
-            textToEmbed = content;
+            bodyText = content;
         }
 
         // Combine title and content for embedding if title is present
+        string textToEmbed = bodyText;
         if (!string.IsNullOrWhiteSpace(title))
         {
             textToEmbed = title + " " + textToEmbed;
@@ -619,50 +631,77 @@ public class Storage : IStorage
             textToEmbed,
             cancellationToken
         );
-        
+
         // Generate new metadata embedding
         string metadataText = title ?? "";
         if (tags is { Length: > 0 })
         {
             metadataText += " " + string.Join(" ", tags);
         }
-        
+
         float[] embeddingMetadata = await _embeddingService.Generate(
             metadataText,
             cancellationToken
         );
-        
+
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        const string sql = @"
-            UPDATE memories 
-            SET type = @type, content = @content, text = @text, source = @source, 
-                embedding = @embedding, embedding_metadata = @embeddingMetadata, tags = @tags, confidence = @confidence, 
-                updated_at = @updatedAt, title = @title
-            WHERE id = @id";
-
-        await using NpgsqlCommand cmd = new(sql, connection);
-        cmd.Parameters.AddWithValue("id", id);
-        cmd.Parameters.AddWithValue("type", type);
-        cmd.Parameters.AddWithValue("content", document);
-        cmd.Parameters.AddWithValue("text", textToEmbed);
-        cmd.Parameters.AddWithValue("source", source);
-        cmd.Parameters.AddWithValue("embedding", new Vector(embedding));
-        cmd.Parameters.AddWithValue("embeddingMetadata", new Vector(embeddingMetadata));
-        cmd.Parameters.AddWithValue("tags", tags ?? []);
-        cmd.Parameters.AddWithValue("confidence", confidence);
-        cmd.Parameters.AddWithValue("updatedAt", DateTime.UtcNow);
-        cmd.Parameters.AddWithValue("title", (object?)title ?? DBNull.Value);
-
-        int rowsAffected = await cmd.ExecuteNonQueryAsync(cancellationToken);
-        
-        // Return the updated memory if successful
-        if (rowsAffected > 0)
+        try
         {
-            return await Get(id, cancellationToken);
+            // Calculate new version number
+            int newVersionNumber = existingMemory.CurrentVersion + 1;
+
+            // Create version snapshot of the OLD state before updating
+            await CreateVersionSnapshot(
+                connection,
+                transaction,
+                existingMemory,
+                existingMemory.CurrentVersion,
+                "update",
+                new { old_text = existingMemory.Text, new_text = bodyText },
+                null,
+                cancellationToken);
+
+            // Update the memory with new content and increment version
+            const string sql = @"
+                UPDATE memories
+                SET type = @type, content = @content, text = @text, source = @source,
+                    embedding = @embedding, embedding_metadata = @embeddingMetadata, tags = @tags, confidence = @confidence,
+                    updated_at = @updatedAt, title = @title, current_version = @currentVersion
+                WHERE id = @id";
+
+            await using NpgsqlCommand cmd = new(sql, connection, transaction);
+            cmd.Parameters.AddWithValue("id", id);
+            cmd.Parameters.AddWithValue("type", type);
+            cmd.Parameters.AddWithValue("content", document);
+            cmd.Parameters.AddWithValue("text", bodyText); // Store original content, not the embedding text
+            cmd.Parameters.AddWithValue("source", source);
+            cmd.Parameters.AddWithValue("embedding", new Vector(embedding));
+            cmd.Parameters.AddWithValue("embeddingMetadata", new Vector(embeddingMetadata));
+            cmd.Parameters.AddWithValue("tags", tags ?? []);
+            cmd.Parameters.AddWithValue("confidence", confidence);
+            cmd.Parameters.AddWithValue("updatedAt", DateTime.UtcNow);
+            cmd.Parameters.AddWithValue("title", (object?)title ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("currentVersion", newVersionNumber);
+
+            int rowsAffected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+
+            // Return the updated memory if successful
+            if (rowsAffected > 0)
+            {
+                return await Get(id, cancellationToken);
+            }
+
+            return null;
         }
-        
-        return null;
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     // Helper to batch fetch relationships for many memory IDs
@@ -709,20 +748,20 @@ public class Storage : IStorage
     )
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        
+
         const string sql = @"
-            SELECT id, type, content, text, source, embedding, tags, confidence, created_at, updated_at, title
+            SELECT id, type, content, text, source, embedding, tags, confidence, created_at, updated_at, title, current_version
             FROM memories
             WHERE title IS NULL OR title = ''
             ORDER BY created_at DESC
             LIMIT @limit";
-            
+
         await using NpgsqlCommand cmd = new(sql, connection);
         cmd.Parameters.AddWithValue("limit", limit);
-        
+
         List<Memorizer.Models.Memory> memories = [];
         await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        
+
         while (await reader.ReadAsync(cancellationToken))
         {
             var memory = new Memorizer.Models.Memory
@@ -737,11 +776,12 @@ public class Storage : IStorage
                 Confidence = reader.GetDouble(7),
                 CreatedAt = reader.GetDateTime(8),
                 UpdatedAt = reader.GetDateTime(9),
-                Title = reader.IsDBNull(10) ? null : reader.GetString(10)
+                Title = reader.IsDBNull(10) ? null : reader.GetString(10),
+                CurrentVersion = reader.GetInt32(11)
             };
             memories.Add(memory);
         }
-        
+
         return memories;
     }
 
@@ -779,21 +819,21 @@ public class Storage : IStorage
             query,
             cancellationToken
         );
-        
+
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
         // Always fetch up to 2x the requested limit for post-filtering/boosting
         int fetchLimit = limit * 2;
         string sql =
             @"
-            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, embedding <=> @embedding AS similarity
+            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, embedding <=> @embedding AS similarity
             FROM memories
             WHERE embedding <=> @embedding < @maxDistance
             ORDER BY embedding <=> @embedding LIMIT @limit";
 
         await using NpgsqlCommand cmd = new(sql, connection);
         cmd.Parameters.AddWithValue("embedding", new Vector(queryEmbedding));
-        cmd.Parameters.AddWithValue("maxDistance", 1 - minSimilarity); 
+        cmd.Parameters.AddWithValue("maxDistance", 1 - minSimilarity);
         cmd.Parameters.AddWithValue("limit", fetchLimit);
 
         List<Memorizer.Models.Memory> memories = [];
@@ -816,7 +856,8 @@ public class Storage : IStorage
                 CreatedAt = reader.GetDateTime(9),
                 UpdatedAt = reader.GetDateTime(10),
                 Title = reader.IsDBNull(11) ? null : reader.GetString(11),
-                Similarity = reader.IsDBNull(12) ? null : reader.GetDouble(12)
+                CurrentVersion = reader.GetInt32(12),
+                Similarity = reader.IsDBNull(13) ? null : reader.GetDouble(13)
             };
             memories.Add(memory);
             memoryIds.Add(memory.Id);
@@ -871,21 +912,21 @@ public class Storage : IStorage
             query,
             cancellationToken
         );
-        
+
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
         // Always fetch up to 2x the requested limit for post-filtering/boosting
         int fetchLimit = limit * 2;
         string sql =
             @"
-            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, embedding_metadata <=> @embedding AS similarity
+            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, embedding_metadata <=> @embedding AS similarity
             FROM memories
             WHERE embedding_metadata <=> @embedding < @maxDistance
             ORDER BY embedding_metadata <=> @embedding LIMIT @limit";
 
         await using NpgsqlCommand cmd = new(sql, connection);
         cmd.Parameters.AddWithValue("embedding", new Vector(queryEmbedding));
-        cmd.Parameters.AddWithValue("maxDistance", 1 - minSimilarity); 
+        cmd.Parameters.AddWithValue("maxDistance", 1 - minSimilarity);
         cmd.Parameters.AddWithValue("limit", fetchLimit);
 
         List<Memorizer.Models.Memory> memories = [];
@@ -908,7 +949,8 @@ public class Storage : IStorage
                 CreatedAt = reader.GetDateTime(9),
                 UpdatedAt = reader.GetDateTime(10),
                 Title = reader.IsDBNull(11) ? null : reader.GetString(11),
-                Similarity = reader.IsDBNull(12) ? null : reader.GetDouble(12)
+                CurrentVersion = reader.GetInt32(12),
+                Similarity = reader.IsDBNull(13) ? null : reader.GetDouble(13)
             };
             memories.Add(memory);
             memoryIds.Add(memory.Id);
@@ -979,20 +1021,20 @@ public class Storage : IStorage
     {
         var whereClause = includeExisting ? "" : "WHERE embedding_metadata IS NULL";
         var sql = $@"
-            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title
-            FROM memories 
+            SELECT id, type, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version
+            FROM memories
             {whereClause}
-            ORDER BY created_at ASC 
+            ORDER BY created_at ASC
             LIMIT @limit";
-        
+
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("limit", limit);
-        
+
         var memories = new List<Memory>();
         var memoryIds = new List<Guid>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        
+
         while (await reader.ReadAsync(cancellationToken))
         {
             var memory = new Memory
@@ -1008,12 +1050,13 @@ public class Storage : IStorage
                 Confidence = reader.GetDouble(8),
                 CreatedAt = reader.GetDateTime(9),
                 UpdatedAt = reader.GetDateTime(10),
-                Title = reader.IsDBNull(11) ? null : reader.GetString(11)
+                Title = reader.IsDBNull(11) ? null : reader.GetString(11),
+                CurrentVersion = reader.GetInt32(12)
             };
             memories.Add(memory);
             memoryIds.Add(memory.Id);
         }
-        
+
         // Batch fetch relationships for all found memories
         if (memoryIds.Count > 0)
         {

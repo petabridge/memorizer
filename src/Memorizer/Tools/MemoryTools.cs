@@ -22,69 +22,29 @@ public class MemoryTools
         _logger = logger;
     }
 
-    [McpServerTool, Description("Store a new memory or update an existing one. For new memories: creates a new entry with provided data. For updates (when 'id' is provided): updates an existing memory with options to replace, append, or prepend content. All changes are versioned. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks.")]
+    [McpServerTool, Description("Store a new memory in the database. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. For updating existing memories, use the Edit tool instead.")]
     public async Task<string> Store(
-        [Description("The type of memory (e.g., 'conversation', 'document', 'reference', 'how-to', etc.). Use 'reference' or 'how-to' for reusable knowledge.")] string type,
-        [Description("Plain text (markdown, code, prose, etc.) to store or update.")] string text,
+        [Description("The type of memory (e.g., 'conversation', 'document', 'reference', 'how-to', 'todo-list', etc.). Use 'reference' or 'how-to' for reusable knowledge.")] string type,
+        [Description("Plain text (markdown, code, prose, etc.) to store. Include as much context as possible.")] string text,
         [Description("The source of the memory (e.g., 'user', 'system', 'LLM', etc.). Use 'LLM' if you are storing knowledge for your own future use.")] string source,
-        [Description("Title for the memory. Required for new memories.")] string title,
-        [Description("Optional tags to categorize the memory. Use tags like 'coding-standard', 'unit-test', 'reference', 'how-to', etc. to make retrieval easier.")] string[]? tags = null,
+        [Description("Title for the memory. Should be descriptive and searchable.")] string title,
+        [Description("Optional tags to categorize the memory. Use tags like 'coding-standard', 'unit-test', 'reference', 'how-to', 'todo', etc. to make retrieval easier.")] string[]? tags = null,
         [Description("Confidence score for the memory (0.0 to 1.0)")] double confidence = 1.0,
         [Description("Optionally, the ID of a related memory. Use this to link related reference materials, how-tos, or examples.")] Guid? relatedTo = null,
         [Description("Optionally, the type of relationship to create (e.g., 'example-of', 'explains', 'related-to'). Use relationships to connect related knowledge.")] string? relationshipType = null,
-        [Description("Optional: ID of an existing memory to update. If provided, updates the existing memory instead of creating a new one. Creates a new version.")] Guid? id = null,
-        [Description("Update mode when 'id' is provided: 'replace' (default) replaces all content, 'append' adds to end, 'prepend' adds to beginning, 'section' replaces content between section markers.")] string updateMode = "replace",
-        [Description("For 'section' mode: the marker to identify the section to replace (e.g., '## Notes' or '<!-- daily-log -->'). Content between this marker and the next marker of same type (or end of text) will be replaced.")] string? sectionMarker = null,
-        [Description("For 'append'/'prepend' modes: separator between existing and new content. Default is '\\n\\n'.")] string? appendSeparator = null,
         CancellationToken cancellationToken = default
     )
     {
-        Memory memory;
-        bool isUpdate = id.HasValue;
-
-        if (isUpdate && id.HasValue)
-        {
-            // Update existing memory
-            var existingMemory = await _storage.Get(id.Value, cancellationToken);
-            if (existingMemory == null)
-            {
-                return $"Memory with ID {id.Value} not found. Cannot update non-existent memory.";
-            }
-
-            // Apply update mode
-            string finalText = ApplyUpdateMode(existingMemory.Text, text, updateMode, sectionMarker, appendSeparator);
-
-            var updatedMemory = await _storage.UpdateMemory(
-                id.Value,
-                type,
-                finalText,
-                source,
-                tags,
-                confidence,
-                title,
-                cancellationToken
-            );
-
-            if (updatedMemory == null)
-            {
-                return $"Failed to update memory with ID {id.Value}.";
-            }
-
-            memory = updatedMemory;
-        }
-        else
-        {
-            // Create new memory
-            memory = await _storage.StoreMemory(
-                type,
-                text,
-                source,
-                tags,
-                confidence,
-                title: title,
-                cancellationToken: cancellationToken
-            );
-        }
+        // Create new memory
+        var memory = await _storage.StoreMemory(
+            type,
+            text,
+            source,
+            tags,
+            confidence,
+            title: title,
+            cancellationToken: cancellationToken
+        );
 
         // Handle manual relationship creation if specified
         if (relatedTo.HasValue && !string.IsNullOrWhiteSpace(relationshipType))
@@ -92,69 +52,171 @@ public class MemoryTools
             await _storage.CreateRelationship(memory.Id, relatedTo.Value, relationshipType, cancellationToken);
         }
 
-        if (isUpdate)
-        {
-            return $"Memory updated successfully. ID: {memory.Id}, Version: {memory.CurrentVersion}. Changes have been versioned and can be viewed/reverted via version history.";
-        }
-
-        return $"Memory stored successfully with ID: {memory.Id}. You might want to call `CreateRelationship` to associate this memory with another memory for better context retrieval.";
+        return $"Memory stored successfully with ID: {memory.Id}. Use Edit tool to make targeted updates, or CreateRelationship to link to other memories.";
     }
 
-    private static string ApplyUpdateMode(string existingText, string newText, string updateMode, string? sectionMarker, string? appendSeparator)
+    [McpServerTool, Description("Edit an existing memory by performing a find-and-replace operation. This is the preferred way to make targeted changes to memory content (like checking off a to-do item, updating a specific section, or fixing a typo). The edit will FAIL if old_text is not found in the memory - use Get first to see the current content. All changes are versioned.")]
+    public async Task<string> Edit(
+        [Description("The ID of the memory to edit.")] Guid id,
+        [Description("The exact text to find and replace. Must match exactly (case-sensitive). For multi-line replacements, include the full text including newlines.")] string old_text,
+        [Description("The text to replace it with. Can be different length than old_text.")] string new_text,
+        [Description("If true, replaces ALL occurrences of old_text. If false (default), only replaces the first occurrence. Use false for safety when editing unique content.")] bool replace_all = false,
+        CancellationToken cancellationToken = default
+    )
     {
-        var separator = appendSeparator ?? "\n\n";
+        using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.Edit");
 
-        return updateMode.ToLowerInvariant() switch
+        activity?.AddEvent(new ActivityEvent("edit.details", DateTimeOffset.UtcNow, new ActivityTagsCollection
         {
-            "append" => existingText + separator + newText,
-            "prepend" => newText + separator + existingText,
-            "section" when !string.IsNullOrWhiteSpace(sectionMarker) => ReplaceSectionContent(existingText, newText, sectionMarker),
-            _ => newText // "replace" or default
-        };
+            {"memory.id", id.ToString()},
+            {"old_text.length", old_text.Length.ToString()},
+            {"new_text.length", new_text.Length.ToString()},
+            {"replace_all", replace_all.ToString()}
+        }));
+
+        // Get existing memory
+        var existingMemory = await _storage.Get(id, cancellationToken);
+        if (existingMemory == null)
+        {
+            _logger.LogInformation("Edit failed: Memory not found for ID: {MemoryId}", id);
+            activity?.SetStatus(ActivityStatusCode.Ok, "Memory not found");
+            return $"Memory with ID {id} not found. Cannot edit non-existent memory.";
+        }
+
+        // Check if old_text exists in the content
+        if (!existingMemory.Text.Contains(old_text))
+        {
+            _logger.LogInformation("Edit failed: old_text not found in memory {MemoryId}", id);
+            activity?.SetStatus(ActivityStatusCode.Ok, "old_text not found");
+
+            // Provide helpful error message
+            var preview = existingMemory.Text.Length > 200
+                ? existingMemory.Text.Substring(0, 200) + "..."
+                : existingMemory.Text;
+            return $"Edit failed: The specified old_text was not found in the memory content.\n\n" +
+                   $"old_text you provided ({old_text.Length} chars):\n\"{old_text}\"\n\n" +
+                   $"Current memory content preview:\n\"{preview}\"\n\n" +
+                   "Tip: Use Get tool first to see the exact current content, then copy the exact text you want to replace.";
+        }
+
+        // Perform the replacement
+        string newContent;
+        int replacementCount;
+
+        if (replace_all)
+        {
+            replacementCount = CountOccurrences(existingMemory.Text, old_text);
+            newContent = existingMemory.Text.Replace(old_text, new_text);
+        }
+        else
+        {
+            // Replace only first occurrence
+            var index = existingMemory.Text.IndexOf(old_text, StringComparison.Ordinal);
+            newContent = existingMemory.Text.Substring(0, index) + new_text + existingMemory.Text.Substring(index + old_text.Length);
+            replacementCount = 1;
+        }
+
+        // Check if anything actually changed
+        if (newContent == existingMemory.Text)
+        {
+            return "No changes made - the replacement would result in identical content.";
+        }
+
+        // Update the memory with new content (keeps all other metadata the same)
+        var updatedMemory = await _storage.UpdateMemory(
+            id,
+            existingMemory.Type,
+            newContent,
+            existingMemory.Source,
+            existingMemory.Tags,
+            existingMemory.Confidence,
+            existingMemory.Title,
+            cancellationToken
+        );
+
+        if (updatedMemory == null)
+        {
+            _logger.LogWarning("Edit failed: Could not update memory {MemoryId}", id);
+            activity?.SetStatus(ActivityStatusCode.Error, "Update failed");
+            return $"Failed to save edit to memory {id}.";
+        }
+
+        _logger.LogInformation("Memory {MemoryId} edited successfully. Replacements: {Count}, New version: {Version}",
+            id, replacementCount, updatedMemory.CurrentVersion);
+        activity?.SetStatus(ActivityStatusCode.Ok, "Edit successful");
+
+        return $"Edit successful. Made {replacementCount} replacement(s). Memory ID: {id}, New Version: {updatedMemory.CurrentVersion}.\n" +
+               "Changes are versioned and can be reverted using RevertToVersion if needed.";
     }
 
-    private static string ReplaceSectionContent(string existingText, string newContent, string sectionMarker)
+    private static int CountOccurrences(string text, string pattern)
     {
-        var lines = existingText.Split('\n');
-        var result = new StringBuilder();
-        var inSection = false;
-        var sectionFound = false;
-
-        foreach (var line in lines)
+        int count = 0;
+        int index = 0;
+        while ((index = text.IndexOf(pattern, index, StringComparison.Ordinal)) != -1)
         {
-            if (line.TrimStart().StartsWith(sectionMarker, StringComparison.OrdinalIgnoreCase))
-            {
-                if (!inSection)
-                {
-                    // Found the start of our section
-                    inSection = true;
-                    sectionFound = true;
-                    result.AppendLine(line);
-                    result.AppendLine(newContent);
-                }
-                else
-                {
-                    // Found the next section with same marker, exit our section
-                    inSection = false;
-                    result.AppendLine(line);
-                }
-            }
-            else if (!inSection)
-            {
-                result.AppendLine(line);
-            }
-            // Skip lines within the section being replaced
+            count++;
+            index += pattern.Length;
+        }
+        return count;
+    }
+
+    [McpServerTool, Description("Update a memory's metadata (title, type, tags, confidence) without changing the content. Use Edit tool for content changes. All changes are versioned.")]
+    public async Task<string> UpdateMetadata(
+        [Description("The ID of the memory to update.")] Guid id,
+        [Description("Optional: New title for the memory. Pass null to keep existing.")] string? title = null,
+        [Description("Optional: New type for the memory. Pass null to keep existing.")] string? type = null,
+        [Description("Optional: New tags for the memory. Pass null to keep existing, pass empty array to clear tags.")] string[]? tags = null,
+        [Description("Optional: New confidence score (0.0 to 1.0). Pass null to keep existing.")] double? confidence = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.UpdateMetadata");
+
+        // Get existing memory
+        var existingMemory = await _storage.Get(id, cancellationToken);
+        if (existingMemory == null)
+        {
+            _logger.LogInformation("UpdateMetadata failed: Memory not found for ID: {MemoryId}", id);
+            activity?.SetStatus(ActivityStatusCode.Ok, "Memory not found");
+            return $"Memory with ID {id} not found.";
         }
 
-        // If section not found, append it at the end
-        if (!sectionFound)
+        // Use existing values for any null parameters
+        var newTitle = title ?? existingMemory.Title;
+        var newType = type ?? existingMemory.Type;
+        var newTags = tags ?? existingMemory.Tags;
+        var newConfidence = confidence ?? existingMemory.Confidence;
+
+        // Update the memory (content stays the same)
+        var updatedMemory = await _storage.UpdateMemory(
+            id,
+            newType,
+            existingMemory.Text,
+            existingMemory.Source,
+            newTags,
+            newConfidence,
+            newTitle,
+            cancellationToken
+        );
+
+        if (updatedMemory == null)
         {
-            result.AppendLine();
-            result.AppendLine(sectionMarker);
-            result.AppendLine(newContent);
+            _logger.LogWarning("UpdateMetadata failed: Could not update memory {MemoryId}", id);
+            activity?.SetStatus(ActivityStatusCode.Error, "Update failed");
+            return $"Failed to update metadata for memory {id}.";
         }
 
-        return result.ToString().TrimEnd('\n', '\r');
+        _logger.LogInformation("Memory {MemoryId} metadata updated. New version: {Version}", id, updatedMemory.CurrentVersion);
+        activity?.SetStatus(ActivityStatusCode.Ok, "Metadata update successful");
+
+        var changes = new List<string>();
+        if (title != null) changes.Add($"title='{title}'");
+        if (type != null) changes.Add($"type='{type}'");
+        if (tags != null) changes.Add($"tags=[{string.Join(", ", tags)}]");
+        if (confidence != null) changes.Add($"confidence={confidence:F2}");
+
+        return $"Metadata updated successfully. Changes: {string.Join(", ", changes)}. Memory ID: {id}, New Version: {updatedMemory.CurrentVersion}.";
     }
 
     [McpServerTool, Description("Search for memories similar to the provided text. Use this to retrieve reference material, how-tos, or examples relevant to the current task. Filtering by tags can help narrow down to specific types of knowledge.")]
