@@ -22,7 +22,7 @@ public class MemoryTools
         _logger = logger;
     }
 
-    [McpServerTool, Description("Store a new memory in the database. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. For updating existing memories, use the Edit tool instead.")]
+    [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples.")]
     public async Task<string> Store(
         [Description("The type of memory (e.g., 'conversation', 'document', 'reference', 'how-to', 'todo-list', etc.). Use 'reference' or 'how-to' for reusable knowledge.")] string type,
         [Description("Plain text (markdown, code, prose, etc.) to store. Include as much context as possible.")] string text,
@@ -55,7 +55,7 @@ public class MemoryTools
         return $"Memory stored successfully with ID: {memory.Id}. Use Edit tool to make targeted updates, or CreateRelationship to link to other memories.";
     }
 
-    [McpServerTool, Description("Edit an existing memory by performing a find-and-replace operation. This is the preferred way to make targeted changes to memory content (like checking off a to-do item, updating a specific section, or fixing a typo). The edit will FAIL if old_text is not found in the memory - use Get first to see the current content. All changes are versioned.")]
+    [McpServerTool, Description("Edit an existing memory using find-and-replace. Ideal for checking off to-do items, updating sections, or fixing typos. IMPORTANT: The edit will FAIL if old_text is not found exactly - always use Get first to see current content and copy the exact text to replace. All changes are versioned and can be reverted.")]
     public async Task<string> Edit(
         [Description("The ID of the memory to edit.")] Guid id,
         [Description("The exact text to find and replace. Must match exactly (case-sensitive). For multi-line replacements, include the full text including newlines.")] string old_text,
@@ -161,7 +161,7 @@ public class MemoryTools
         return count;
     }
 
-    [McpServerTool, Description("Update a memory's metadata (title, type, tags, confidence) without changing the content. Use Edit tool for content changes. All changes are versioned.")]
+    [McpServerTool, Description("Update a memory's metadata (title, type, tags, confidence) without changing the content or regenerating embeddings. Use Edit tool for content changes. All changes are versioned and can be reverted.")]
     public async Task<string> UpdateMetadata(
         [Description("The ID of the memory to update.")] Guid id,
         [Description("Optional: New title for the memory. Pass null to keep existing.")] string? title = null,
@@ -380,7 +380,7 @@ public class MemoryTools
         return result.ToString();
     }
 
-    [McpServerTool, Description("Retrieve a specific memory by ID, optionally with version history. Use this to fetch a particular reference, how-to, or example. Supports retrieving a specific version or including the version history timeline.")]
+    [McpServerTool, Description("Retrieve a specific memory by ID. Use this to fetch a particular reference, how-to, or example by its unique identifier. Optionally include version history or retrieve a specific past version.")]
     public async Task<string> Get(
         [Description("The ID of the memory to retrieve. Use this to fetch a specific piece of reference or how-to information.")] Guid id,
         [Description("Optional: If true, includes version history summary in the response (recent versions, change count).")] bool includeVersionHistory = false,
@@ -542,7 +542,7 @@ public class MemoryTools
         return result.ToString();
     }
 
-    [McpServerTool, Description("Delete a memory by ID. Use this to remove outdated or incorrect reference or how-to information.")]
+    [McpServerTool, Description("Delete a memory by ID. This permanently removes the memory including all version history. Use this to remove outdated or incorrect reference or how-to information.")]
     public async Task<string> Delete(
         [Description("The ID of the memory to delete. Use this to remove a specific piece of knowledge.")] Guid id,
         CancellationToken cancellationToken = default
@@ -655,7 +655,7 @@ public class MemoryTools
         return $"Relationship created: {rel.Id} from {rel.FromMemoryId} to {rel.ToMemoryId} (type: {rel.Type})";
     }
 
-    [McpServerTool, Description("Revert a memory to a previous version. This restores all content, metadata (title, tags, confidence), and the type from the specified version. Creates a new version recording the revert operation. Embeddings are regenerated. Use Get with includeVersionHistory=true first to see available versions.")]
+    [McpServerTool, Description("Revert a memory to a previous version. Restores all content and metadata (title, type, tags, confidence) from the specified version. Creates a new version recording the revert operation and regenerates embeddings. Use Get with includeVersionHistory=true to see available versions first.")]
     public async Task<string> RevertToVersion(
         [Description("The ID of the memory to revert.")] Guid id,
         [Description("The version number to revert to. Use Get with includeVersionHistory=true to see available versions.")] int versionNumber,
