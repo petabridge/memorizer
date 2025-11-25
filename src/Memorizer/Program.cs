@@ -142,7 +142,7 @@ app.MapGet("/otel-test", () =>
 app.MapGet("/ui/tools/title-generation-progress",
     async (IActorRegistry actorRegistry, CancellationToken ct) =>
 {
-    var titleGenActor = await actorRegistry.GetAsync<TitleGenerationActor>();
+    var titleGenActor = await actorRegistry.GetAsync<TitleGenerationActorKey>();
     var subscriberId = Guid.NewGuid().ToString();
 
     // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>
@@ -188,7 +188,7 @@ app.MapGet("/ui/tools/title-generation-progress",
 app.MapGet("/ui/tools/metadata-embedding-progress",
     async (IActorRegistry actorRegistry, CancellationToken ct) =>
 {
-    var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActor>();
+    var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActorKey>();
     var subscriberId = Guid.NewGuid().ToString();
 
     // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>

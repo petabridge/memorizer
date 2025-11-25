@@ -191,7 +191,8 @@ class ProgressStreamClient {
     _handleProgressEvent(event) {
         const progress = JSON.parse(event.data);
         const percentComplete = progress.percentComplete;
-        const statusText = `Processing... ${progress.totalProcessed} processed (${progress.totalSuccessful} successful, ${progress.totalFailed} failed), ${progress.outstanding} remaining`;
+        const totalItems = progress.totalProcessed + progress.outstanding;
+        const statusText = `Processing ${progress.totalProcessed} of ${totalItems} items (${progress.totalSuccessful} successful, ${progress.totalFailed} failed)`;
 
         this.updateProgress(percentComplete, statusText);
 
@@ -211,11 +212,14 @@ class ProgressStreamClient {
      * @private
      */
     _isCompleted(progress) {
-        // Job is complete when outstanding is 0 and we've processed at least one item
-        // OR when status indicates completion
+        // Job is complete when:
+        // 1. Outstanding is 0 and we've processed at least one item
+        // 2. Status indicates completion (Completed, Failed, NoWorkToDo, Idle)
         return (progress.outstanding === 0 && progress.totalProcessed > 0) ||
                progress.status === 'Completed' ||
-               progress.status === 'Failed';
+               progress.status === 'Failed' ||
+               progress.status === 'NoWorkToDo' ||
+               progress.status === 'Idle';
     }
 
     /**
@@ -224,20 +228,32 @@ class ProgressStreamClient {
      */
     _handleCompletion(progress) {
         this.stop();
-
-        const completionMessage = `${this.jobName} completed! ${progress.totalSuccessful} successful, ${progress.totalFailed} failed`;
-        this.updateProgress(100, completionMessage);
         this.enableStartButton();
 
-        const resultsHtml = `<p><strong>Batch completed:</strong></p>
-            <ul>
-                <li>Total processed: ${progress.totalProcessed}</li>
-                <li>Successful: ${progress.totalSuccessful}</li>
-                <li>Failed: ${progress.totalFailed}</li>
-                <li>Duration: ${progress.duration?.toFixed(2) || 'N/A'} seconds</li>
-                <li>Requested by: ${progress.requestedBy || 'Unknown'}</li>
-            </ul>`;
-        this.showResults(resultsHtml);
+        // Handle different completion scenarios
+        if (progress.status === 'NoWorkToDo' || (progress.status === 'Idle' && progress.totalProcessed === 0)) {
+            const noWorkMessage = `${this.jobName} - No items to process`;
+            this.updateProgress(100, noWorkMessage);
+            this.showResults(`<p><strong>No work to do:</strong></p>
+                <p>There are no items that need processing at this time.</p>`);
+        } else if (progress.status === 'Idle') {
+            const idleMessage = `${this.jobName} - No job running`;
+            this.updateProgress(0, idleMessage);
+            this.hideProgressCard();
+        } else {
+            const completionMessage = `${this.jobName} completed! ${progress.totalSuccessful} successful, ${progress.totalFailed} failed`;
+            this.updateProgress(100, completionMessage);
+
+            const resultsHtml = `<p><strong>Batch completed:</strong></p>
+                <ul>
+                    <li>Total processed: ${progress.totalProcessed}</li>
+                    <li>Successful: ${progress.totalSuccessful}</li>
+                    <li>Failed: ${progress.totalFailed}</li>
+                    <li>Duration: ${progress.duration?.toFixed(2) || 'N/A'} seconds</li>
+                    <li>Requested by: ${progress.requestedBy || 'Unknown'}</li>
+                </ul>`;
+            this.showResults(resultsHtml);
+        }
 
         // Call optional completion callback
         if (this.onComplete) {
