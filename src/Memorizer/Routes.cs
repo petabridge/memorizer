@@ -19,13 +19,15 @@ public static class Routes
         app.MapGet("/ui/tools/title-generation-progress",
             async (IActorRegistry actorRegistry, CancellationToken ct) =>
         {
-            var titleGenActor = await actorRegistry.GetAsync<TitleGenerationActorKey>();
+            var titleGenActor = await actorRegistry.GetAsync<TitleGenerationActorKey>(ct);
             var subscriberId = Guid.NewGuid().ToString();
 
             // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>
             var subscription = await titleGenActor.Ask<ProgressSubscription>(
                 new SubscribeToProgress(subscriberId),
                 ct);
+
+            return TypedResults.ServerSentEvents(StreamProgress());
 
             async IAsyncEnumerable<SseItem<ProgressSseData>> StreamProgress()
             {
@@ -57,15 +59,13 @@ public static class Routes
                     titleGenActor.Tell(new UnsubscribeFromProgress(subscriberId), ActorRefs.NoSender);
                 }
             }
-
-            return TypedResults.ServerSentEvents(StreamProgress());
         });
 
         // SSE endpoint for metadata embedding progress
         app.MapGet("/ui/tools/metadata-embedding-progress",
             async (IActorRegistry actorRegistry, CancellationToken ct) =>
         {
-            var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActorKey>();
+            var metadataEmbeddingActor = await actorRegistry.GetAsync<MetadataEmbeddingActorKey>(ct);
             var subscriberId = Guid.NewGuid().ToString();
 
             // Subscribe to progress updates - actor returns a ChannelReader<ProgressEvent>
