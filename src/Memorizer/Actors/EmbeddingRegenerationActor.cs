@@ -91,11 +91,14 @@ public sealed class EmbeddingRegenerationActor : ReceiveActor
 
     private async Task HandleRegenerateAll(RegenerateAllEmbeddings msg)
     {
+        // Capture sender for reply - needed because we're in an async method
+        var sender = Sender;
+
         if (_jobManager != null)
         {
             // Already running a batch, decline new request
             _logger.Warning("Embedding regeneration already in progress, declining new request from {0}", msg.RequestedBy);
-            Sender.Tell(new EmbeddingRegenerationStatus(
+            sender.Tell(new EmbeddingRegenerationStatus(
                 IsRunning: true,
                 Status: "Running",
                 TotalProcessed: _jobManager.ProcessedCount,
@@ -128,6 +131,21 @@ public sealed class EmbeddingRegenerationActor : ReceiveActor
 
             Become(Running);
 
+            // Reply with initial status BEFORE processing starts - this ensures
+            // the HTTP request completes and SSE can connect while job is Running
+            sender.Tell(new EmbeddingRegenerationStatus(
+                IsRunning: true,
+                Status: "Running",
+                TotalProcessed: 0,
+                TotalSuccessful: 0,
+                TotalFailed: 0,
+                Outstanding: totalCount,
+                FailedMemoryIds: [],
+                StartTime: _jobManager.StartTime,
+                Duration: TimeSpan.Zero,
+                RequestedBy: msg.RequestedBy
+            ));
+
             if (totalCount == 0)
             {
                 _logger.Info("No memories found to process");
@@ -142,6 +160,14 @@ public sealed class EmbeddingRegenerationActor : ReceiveActor
         catch (Exception ex)
         {
             _logger.Error(ex, "Error starting embedding regeneration: {0}", ex.Message);
+            sender.Tell(new EmbeddingRegenerationStatus(
+                IsRunning: false,
+                Status: "Failed",
+                TotalProcessed: 0,
+                TotalSuccessful: 0,
+                TotalFailed: 0,
+                Outstanding: 0
+            ));
             _jobManager?.Fail(ex.Message);
             _jobManager = null;
             Become(Idle);

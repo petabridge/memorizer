@@ -90,6 +90,9 @@ public sealed class TitleGenerationActor : ReceiveActor
 
     private async Task HandleGenerateTitlesForUntitled(GenerateTitlesForUntitled message)
     {
+        // Capture sender for reply - needed because we're in an async method
+        var sender = Sender;
+
         _logger.Info("Starting batch title generation for up to {0} untitled memories, requested by {1}",
             message.BatchSize, message.RequestedBy);
 
@@ -103,6 +106,21 @@ public sealed class TitleGenerationActor : ReceiveActor
             _jobManager.StartJob(untitledMemories.Count, message.RequestedBy);
 
             Become(Running);
+
+            // Reply with initial status BEFORE processing starts - this ensures
+            // the HTTP request completes and SSE can connect while job is Running
+            sender.Tell(new TitleGenerationStatus(
+                IsRunning: true,
+                Status: "Running",
+                TotalProcessed: 0,
+                TotalSuccessful: 0,
+                TotalFailed: 0,
+                Outstanding: untitledMemories.Count,
+                FailedMemoryIds: [],
+                StartTime: _jobManager.StartTime,
+                Duration: TimeSpan.Zero,
+                RequestedBy: message.RequestedBy
+            ));
 
             if (untitledMemories.Count == 0)
             {
@@ -132,6 +150,14 @@ public sealed class TitleGenerationActor : ReceiveActor
         catch (Exception ex)
         {
             _logger.Error(ex, "Error starting batch title generation: {0}", ex.Message);
+            sender.Tell(new TitleGenerationStatus(
+                IsRunning: false,
+                Status: "Failed",
+                TotalProcessed: 0,
+                TotalSuccessful: 0,
+                TotalFailed: 0,
+                Outstanding: 0
+            ));
             _jobManager?.Fail(ex.Message);
             _jobManager = null;
             Become(Idle);

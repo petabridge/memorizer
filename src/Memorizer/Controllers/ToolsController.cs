@@ -62,7 +62,7 @@ public class ToolsController : Controller
     /// </summary>
     [HttpPost]
     [Route("start-title-generation")]
-    public IActionResult StartTitleGeneration(int batchSize = 50)
+    public async Task<IActionResult> StartTitleGeneration(int batchSize = 50)
     {
         try
         {
@@ -71,8 +71,8 @@ public class ToolsController : Controller
             if (!configStatus.IsConfigured)
             {
                 _logger.LogWarning("Title generation requested but LLM not configured: {Reason}", configStatus.Reason);
-                return Json(new { 
-                    success = false, 
+                return Json(new {
+                    success = false,
                     message = $"LLM not configured: {configStatus.Reason}",
                     requiresConfiguration = true
                 });
@@ -86,11 +86,16 @@ public class ToolsController : Controller
                 RequestedBy = User.Identity?.Name ?? "Anonymous"
             };
 
-            _titleGenerationActor.Tell(generateMessage);
+            // Use Ask to wait for the actor to start the job - this ensures the SSE subscription
+            // will see the job as Running (not Idle) when it connects
+            var startStatus = await _titleGenerationActor.Ask<TitleGenerationStatus>(
+                generateMessage, TimeSpan.FromSeconds(30));
 
-            return Json(new { 
-                success = true, 
-                message = $"Title generation started for up to {batchSize} memories using model '{_llmSettings.Model}'" 
+            return Json(new {
+                success = true,
+                message = $"Title generation started for up to {batchSize} memories using model '{_llmSettings.Model}'",
+                totalItems = startStatus.Outstanding + startStatus.TotalProcessed,
+                isRunning = startStatus.IsRunning
             });
         }
         catch (Exception ex)
@@ -236,11 +241,16 @@ public class ToolsController : Controller
                 RequestedBy: User.Identity?.Name ?? "Anonymous"
             );
 
-            _embeddingRegenerationActor.Tell(generateMessage);
+            // Use Ask to wait for the actor to start the job - this ensures the SSE subscription
+            // will see the job as Running (not Idle) when it connects
+            var startStatus = await _embeddingRegenerationActor.Ask<EmbeddingRegenerationStatus>(
+                generateMessage, TimeSpan.FromSeconds(30));
 
             return Json(new {
                 success = true,
-                message = $"Embedding regeneration started for ALL memories with page size {pageSize}"
+                message = $"Embedding regeneration started for ALL memories with page size {pageSize}",
+                totalItems = startStatus.Outstanding + startStatus.TotalProcessed,
+                isRunning = startStatus.IsRunning
             });
         }
         catch (Exception ex)
