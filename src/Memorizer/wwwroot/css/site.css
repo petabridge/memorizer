@@ -154,10 +154,28 @@ footer .text-muted a {
 
 footer a {
     color: var(--footer-link);
+    text-decoration: underline;
+}
+
+footer a:hover {
+    color: var(--brand-primary);
 }
 
 /* Table styling for dark mode */
 [data-theme="dark"] .table {
+    color: var(--text-primary);
+    --bs-table-bg: transparent;
+    --bs-table-striped-bg: rgba(255, 255, 255, 0.05);
+    --bs-table-hover-bg: rgba(255, 255, 255, 0.075);
+}
+
+[data-theme="dark"] .table > :not(caption) > * > * {
+    background-color: var(--surface-card);
+    border-bottom-color: var(--border-default);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .table strong {
     color: var(--text-primary);
 }
 
