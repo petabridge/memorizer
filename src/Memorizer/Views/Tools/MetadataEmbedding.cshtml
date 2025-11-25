@@ -151,6 +151,19 @@
 
 @section Scripts {
     <script>
+        // Create progress stream client for metadata embedding
+        const progressClient = new ProgressStreamClient({
+            sseUrl: '/ui/tools/metadata-embedding-progress',
+            progressBarId: 'progressBar',
+            progressTextId: 'progressText',
+            progressCardId: 'progressCard',
+            resultsCardId: 'resultsCard',
+            resultsContentId: 'resultsContent',
+            startButtonId: 'startButton',
+            formId: 'metadataEmbeddingForm',
+            jobName: 'Metadata embedding'
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('metadataEmbeddingForm').addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -164,52 +177,44 @@
 
         function startMetadataEmbedding() {
             const batchSize = document.getElementById('batchSize').value;
-            // Only 'all' mode is available now
-            const processingMode = 'all';
-            const startButton = document.getElementById('startButton');
-            const progressCard = document.getElementById('progressCard');
-            
+
             // Disable form and show progress
-            startButton.disabled = true;
-            progressCard.style.display = 'block';
-            updateProgress(0, 'Starting metadata embedding generation...');
-            
-            let url, formData;
-            
-            // Always use paginated regeneration for all memories
-            url = '@Url.Action("StartMetadataEmbeddingAll", "Tools")';
-            formData = new FormData();
+            progressClient.disableStartButton();
+            progressClient.showProgressCard();
+            progressClient.updateProgress(0, 'Starting metadata embedding generation...');
+
+            const formData = new FormData();
             formData.append('pageSize', batchSize);
-            
-            fetch(url, {
+
+            fetch('@Url.Action("StartMetadataEmbeddingAll", "Tools")', {
                 method: 'POST',
                 body: formData
             })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showAlert('success', data.message);
-                    updateProgress(10, 'Metadata embedding generation started. Processing...');
-                    // Start polling for status
-                    startStatusPolling();
+                    progressClient.showAlert('success', data.message);
+                    progressClient.updateProgress(10, 'Metadata embedding generation started. Processing...');
+                    // Start SSE progress stream
+                    progressClient.start();
                 } else {
                     if (data.status === 'running') {
-                        showAlert('warning', 'A batch job is already running. Please wait for it to finish. ' + progressDetails(data));
-                        startButton.disabled = true;
-                        progressCard.style.display = 'block';
-                        updateProgress(10, 'Batch already in progress...');
-                        startStatusPolling();
+                        progressClient.showAlert('warning', 'A batch job is already running. Please wait for it to finish. ' + ProgressStreamClient.formatProgressDetails(data));
+                        progressClient.disableStartButton();
+                        progressClient.showProgressCard();
+                        progressClient.updateProgress(10, 'Batch already in progress...');
+                        progressClient.start();
                     } else {
-                        showAlert('danger', data.message);
-                        startButton.disabled = false;
-                        progressCard.style.display = 'none';
+                        progressClient.showAlert('danger', data.message);
+                        progressClient.enableStartButton();
+                        progressClient.hideProgressCard();
                     }
                 }
             })
             .catch(error => {
-                showAlert('danger', 'Failed to start metadata embedding generation. Please try again.');
-                startButton.disabled = false;
-                progressCard.style.display = 'none';
+                progressClient.showAlert('danger', 'Failed to start metadata embedding generation. Please try again.');
+                progressClient.enableStartButton();
+                progressClient.hideProgressCard();
             });
         }
 
@@ -220,102 +225,20 @@
                     if (data.success) {
                         let msg = 'Status: ' + data.status;
                         if (data.isRunning) {
-                            msg += ' (Job in progress) ' + progressDetails(data);
-                            document.getElementById('startButton').disabled = true;
+                            msg += ' (Job in progress) ' + ProgressStreamClient.formatProgressDetails(data);
+                            progressClient.disableStartButton();
                         } else {
                             msg += ' (Idle)';
-                            document.getElementById('startButton').disabled = false;
+                            progressClient.enableStartButton();
                         }
-                        showAlert('info', msg);
+                        progressClient.showAlert('info', msg);
                     } else {
-                        showAlert('warning', data.message);
+                        progressClient.showAlert('warning', data.message);
                     }
                 })
                 .catch(error => {
-                    showAlert('danger', 'Failed to get status.');
+                    progressClient.showAlert('danger', 'Failed to get status.');
                 });
-        }
-
-        let eventSource = null;
-
-        function startStatusPolling() {
-            // Use Server-Sent Events for real-time progress updates
-            if (eventSource) {
-                eventSource.close();
-            }
-
-            eventSource = new EventSource('/ui/tools/metadata-embedding-progress');
-
-            eventSource.addEventListener('progress', function(event) {
-                const progress = JSON.parse(event.data);
-                const percentComplete = progress.percentComplete;
-                const statusText = `Processing... ${progress.totalProcessed} processed (${progress.totalSuccessful} successful, ${progress.totalFailed} failed), ${progress.outstanding} remaining`;
-
-                updateProgress(percentComplete, statusText);
-
-                // Check if complete (no outstanding items)
-                if (progress.outstanding === 0 && progress.totalProcessed > 0) {
-                    eventSource.close();
-                    updateProgress(100, `Metadata embedding completed! ${progress.totalSuccessful} successful, ${progress.totalFailed} failed`);
-                    document.getElementById('startButton').disabled = false;
-                    showResults(`<p><strong>Batch completed:</strong></p>
-                                <ul>
-                                    <li>Total processed: ${progress.totalProcessed}</li>
-                                    <li>Successful: ${progress.totalSuccessful}</li>
-                                    <li>Failed: ${progress.totalFailed}</li>
-                                    <li>Duration: ${progress.duration?.toFixed(2)} seconds</li>
-                                    <li>Requested by: ${progress.requestedBy}</li>
-                                </ul>`);
-                }
-            });
-
-            eventSource.onerror = function(error) {
-                console.error('EventSource error:', error);
-                eventSource.close();
-                showAlert('danger', 'Lost connection to progress stream. Metadata embedding may still be running in the background.');
-                document.getElementById('startButton').disabled = false;
-            };
-        }
-
-        function updateProgress(percent, text) {
-            const progressBar = document.getElementById('progressBar');
-            progressBar.style.width = percent + '%';
-            progressBar.setAttribute('aria-valuenow', percent);
-            progressBar.textContent = percent + '%';
-            document.getElementById('progressText').textContent = text;
-        }
-
-        function showResults(content) {
-            document.getElementById('resultsContent').innerHTML = content;
-            document.getElementById('resultsCard').style.display = 'block';
-        }
-
-        function showAlert(type, message) {
-            const alertHtml = `
-                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            `;
-            
-            // Remove existing alerts
-            const existingAlerts = document.querySelectorAll('.alert');
-            existingAlerts.forEach(alert => alert.remove());
-            
-            // Add new alert at the top of the form
-            const form = document.getElementById('metadataEmbeddingForm');
-            form.insertAdjacentHTML('afterbegin', alertHtml);
-            
-            // Auto-dismiss after 5 seconds for non-danger alerts
-            if (type !== 'danger') {
-                setTimeout(function() {
-                    const alert = document.querySelector('.alert');
-                    if (alert) {
-                        const bsAlert = new bootstrap.Alert(alert);
-                        bsAlert.close();
-                    }
-                }, 5000);
-            }
         }
     </script>
 }

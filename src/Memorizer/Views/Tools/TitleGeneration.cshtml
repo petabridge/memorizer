@@ -173,6 +173,19 @@
 
 @section Scripts {
     <script>
+        // Create progress stream client for title generation
+        const progressClient = new ProgressStreamClient({
+            sseUrl: '/ui/tools/title-generation-progress',
+            progressBarId: 'progressBar',
+            progressTextId: 'progressText',
+            progressCardId: 'progressCard',
+            resultsCardId: 'resultsCard',
+            resultsContentId: 'resultsContent',
+            startButtonId: 'startButton',
+            formId: 'titleGenerationForm',
+            jobName: 'Title generation'
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
             // Check LLM configuration when page loads
             checkLLMConfiguration();
@@ -193,14 +206,12 @@
 
         function startTitleGeneration() {
             const batchSize = document.getElementById('batchSize').value;
-            const startButton = document.getElementById('startButton');
-            const progressCard = document.getElementById('progressCard');
-            
+
             // Disable form and show progress
-            startButton.disabled = true;
-            progressCard.style.display = 'block';
-            updateProgress(0, 'Starting title generation...');
-            
+            progressClient.disableStartButton();
+            progressClient.showProgressCard();
+            progressClient.updateProgress(0, 'Starting title generation...');
+
             fetch('@Url.Action("StartTitleGeneration", "Tools")', {
                 method: 'POST',
                 headers: {
@@ -211,25 +222,25 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showAlert('success', data.message);
-                    updateProgress(10, 'Title generation started. Processing...');
-                    // Start polling for status
-                    startStatusPolling();
+                    progressClient.showAlert('success', data.message);
+                    progressClient.updateProgress(10, 'Title generation started. Processing...');
+                    // Start SSE progress stream
+                    progressClient.start();
                 } else {
                     if (data.requiresConfiguration) {
-                        showAlert('warning', data.message);
+                        progressClient.showAlert('warning', data.message);
                         checkLLMConfiguration(); // Refresh config status
                     } else {
-                        showAlert('danger', data.message);
+                        progressClient.showAlert('danger', data.message);
                     }
-                    startButton.disabled = false;
-                    progressCard.style.display = 'none';
+                    progressClient.enableStartButton();
+                    progressClient.hideProgressCard();
                 }
             })
             .catch(error => {
-                showAlert('danger', 'Failed to start title generation. Please try again.');
-                startButton.disabled = false;
-                progressCard.style.display = 'none';
+                progressClient.showAlert('danger', 'Failed to start title generation. Please try again.');
+                progressClient.enableStartButton();
+                progressClient.hideProgressCard();
             });
         }
 
@@ -238,13 +249,17 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        showAlert('info', 'Status: ' + data.status + ' - ' + data.message);
+                        let msg = 'Status: ' + data.status;
+                        if (data.isRunning) {
+                            msg += ' ' + ProgressStreamClient.formatProgressDetails(data);
+                        }
+                        progressClient.showAlert('info', msg);
                     } else {
-                        showAlert('warning', data.message);
+                        progressClient.showAlert('warning', data.message);
                     }
                 })
                 .catch(error => {
-                    showAlert('danger', 'Failed to get status.');
+                    progressClient.showAlert('danger', 'Failed to get status.');
                 });
         }
 
@@ -264,109 +279,27 @@
                             startButton.disabled = false;
                             const inputs = form.querySelectorAll('input, button');
                             inputs.forEach(input => input.disabled = false);
-                            showAlert('success', `LLM is configured (Model: ${data.model})`);
+                            progressClient.showAlert('success', `LLM is configured (Model: ${data.model})`);
                         } else {
                             // LLM needs configuration
                             configReason.textContent = data.reason;
                             configCard.style.display = 'block';
                             startButton.disabled = true;
-                            
+
                             // Show current configuration details
                             let configDetails = `Current settings: Model="${data.model}", API="${data.apiUrl}"`;
                             configReason.innerHTML = data.reason + '<br><small class="text-muted">' + configDetails + '</small>';
                         }
                     } else {
-                        showAlert('danger', 'Failed to check LLM configuration: ' + data.message);
+                        progressClient.showAlert('danger', 'Failed to check LLM configuration: ' + data.message);
                     }
                 })
                 .catch(error => {
-                    showAlert('danger', 'Failed to check LLM configuration.');
+                    progressClient.showAlert('danger', 'Failed to check LLM configuration.');
                     document.getElementById('configStatusCard').style.display = 'block';
                     document.getElementById('configReason').textContent = 'Unable to connect to server to check configuration.';
                     document.getElementById('startButton').disabled = true;
                 });
-        }
-
-        let eventSource = null;
-
-        function startStatusPolling() {
-            // Use Server-Sent Events for real-time progress updates
-            if (eventSource) {
-                eventSource.close();
-            }
-
-            eventSource = new EventSource('/ui/tools/title-generation-progress');
-
-            eventSource.addEventListener('progress', function(event) {
-                const progress = JSON.parse(event.data);
-                const percentComplete = progress.percentComplete;
-                const statusText = `Processing... ${progress.totalProcessed} processed (${progress.totalSuccessful} successful, ${progress.totalFailed} failed), ${progress.outstanding} remaining`;
-
-                updateProgress(percentComplete, statusText);
-
-                // Check if complete (no outstanding items)
-                if (progress.outstanding === 0 && progress.totalProcessed > 0) {
-                    eventSource.close();
-                    updateProgress(100, `Title generation completed! ${progress.totalSuccessful} successful, ${progress.totalFailed} failed`);
-                    document.getElementById('startButton').disabled = false;
-                    showResults(`<p><strong>Batch completed:</strong></p>
-                                <ul>
-                                    <li>Total processed: ${progress.totalProcessed}</li>
-                                    <li>Successful: ${progress.totalSuccessful}</li>
-                                    <li>Failed: ${progress.totalFailed}</li>
-                                    <li>Duration: ${progress.duration?.toFixed(2)} seconds</li>
-                                    <li>Requested by: ${progress.requestedBy}</li>
-                                </ul>`);
-                }
-            });
-
-            eventSource.onerror = function(error) {
-                console.error('EventSource error:', error);
-                eventSource.close();
-                showAlert('danger', 'Lost connection to progress stream. Title generation may still be running in the background.');
-                document.getElementById('startButton').disabled = false;
-            };
-        }
-
-        function updateProgress(percent, text) {
-            const progressBar = document.getElementById('progressBar');
-            progressBar.style.width = percent + '%';
-            progressBar.setAttribute('aria-valuenow', percent);
-            progressBar.textContent = percent + '%';
-            document.getElementById('progressText').textContent = text;
-        }
-
-        function showResults(content) {
-            document.getElementById('resultsContent').innerHTML = content;
-            document.getElementById('resultsCard').style.display = 'block';
-        }
-
-        function showAlert(type, message) {
-            const alertHtml = `
-                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-                    ${message}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                </div>
-            `;
-            
-            // Remove existing alerts
-            const existingAlerts = document.querySelectorAll('.alert');
-            existingAlerts.forEach(alert => alert.remove());
-            
-            // Add new alert at the top of the form
-            const form = document.getElementById('titleGenerationForm');
-            form.insertAdjacentHTML('afterbegin', alertHtml);
-            
-            // Auto-dismiss after 5 seconds for non-danger alerts
-            if (type !== 'danger') {
-                setTimeout(function() {
-                    const alert = document.querySelector('.alert');
-                    if (alert) {
-                        const bsAlert = new bootstrap.Alert(alert);
-                        bsAlert.close();
-                    }
-                }, 5000);
-            }
         }
     </script>
 } 
