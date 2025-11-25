@@ -32,7 +32,7 @@ public class IntegrationTestFixture : IAsyncLifetime
             .WithImage("ollama/ollama:latest")
             .WithPortBinding(11434, true)
             .WithCleanUp(true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(11434))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPort(11434)))
             .Build();
     }
 
