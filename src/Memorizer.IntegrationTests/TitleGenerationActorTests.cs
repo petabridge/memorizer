@@ -206,6 +206,28 @@ public class TitleGenerationActorTests : TestKit
 
         public Task<(List<Memory> FullResults, List<Memory> MetadataResults)> CompareSearchMethods(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
+
+        // Versioning support
+        public Task<List<MemoryEvent>> GetEvents(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<MemoryEvent>());
+
+        public Task<List<MemoryVersion>> GetVersionHistory(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<MemoryVersion>());
+
+        public Task<MemoryVersion?> GetVersion(Guid memoryId, int versionNumber, CancellationToken cancellationToken = default)
+            => Task.FromResult<MemoryVersion?>(null);
+
+        public Task<Memory?> RevertToVersion(Guid memoryId, int versionNumber, string? changedBy = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<int> PurgeVersionsKeepingLatest(Guid memoryId, int versionsToKeep, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> PurgeVersionsOlderThan(DateTime cutoffDate, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<VersionStats> GetVersionStats(CancellationToken cancellationToken = default)
+            => Task.FromResult(new VersionStats());
     }
 
     /// <summary>
@@ -269,6 +291,28 @@ public class TitleGenerationActorTests : TestKit
 
         public Task<(List<Memory> FullResults, List<Memory> MetadataResults)> CompareSearchMethods(string query, int limit = 10, double minSimilarity = 0.7, string[]? filterTags = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
+
+        // Versioning support
+        public Task<List<MemoryEvent>> GetEvents(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<MemoryEvent>());
+
+        public Task<List<MemoryVersion>> GetVersionHistory(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<MemoryVersion>());
+
+        public Task<MemoryVersion?> GetVersion(Guid memoryId, int versionNumber, CancellationToken cancellationToken = default)
+            => Task.FromResult<MemoryVersion?>(null);
+
+        public Task<Memory?> RevertToVersion(Guid memoryId, int versionNumber, string? changedBy = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<int> PurgeVersionsKeepingLatest(Guid memoryId, int versionsToKeep, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<int> PurgeVersionsOlderThan(DateTime cutoffDate, CancellationToken cancellationToken = default)
+            => Task.FromResult(0);
+
+        public Task<VersionStats> GetVersionStats(CancellationToken cancellationToken = default)
+            => Task.FromResult(new VersionStats());
     }
 
     /// <summary>

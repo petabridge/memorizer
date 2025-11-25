@@ -1,0 +1,387 @@
+@{
+    ViewData["Title"] = "Admin - Version Management";
+}
+
+<div class="mb-4">
+    <h1 class="h3 mb-1">
+        <i class="fas fa-cogs me-2 text-primary"></i>
+        Admin - Version Management
+    </h1>
+    <p class="text-muted mb-0">Manage memory versions and storage across the system</p>
+</div>
+
+<!-- Version Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-brain fa-3x text-primary"></i>
+                </div>
+                <h3 class="mb-1" id="totalMemories">-</h3>
+                <p class="text-muted mb-0">Total Memories</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-history fa-3x text-success"></i>
+                </div>
+                <h3 class="mb-1" id="totalVersions">-</h3>
+                <p class="text-muted mb-0">Total Versions</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-calendar-alt fa-3x text-info"></i>
+                </div>
+                <h3 class="mb-1" id="totalEvents">-</h3>
+                <p class="text-muted mb-0">Audit Events</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 col-lg-3 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-database fa-3x text-warning"></i>
+                </div>
+                <h3 class="mb-1" id="estimatedStorage">-</h3>
+                <p class="text-muted mb-0">Estimated Storage</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Details -->
+<div class="row mb-4">
+    <div class="col-lg-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Version Statistics
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Average Versions per Memory</h6>
+                            <p class="h4 mb-0" id="avgVersions">-</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Memories with Multiple Versions</h6>
+                            <p class="h4 mb-0" id="memoriesWithMultiple">-</p>
+                        </div>
+                    </div>
+                </div>
+                <hr />
+                <div class="row">
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Oldest Version</h6>
+                            <p class="mb-0" id="oldestVersion">-</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Newest Version</h6>
+                            <p class="mb-0" id="newestVersion">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools me-2"></i>
+                    Quick Actions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="refreshStats()">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        Refresh Statistics
+                    </button>
+                    <a href="/ui/stats" class="btn btn-outline-secondary">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        View Full Statistics
+                    </a>
+                    <a href="/ui/" class="btn btn-outline-secondary">
+                        <i class="fas fa-list me-2"></i>
+                        View All Memories
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Version Purge Actions -->
+<div class="row mb-4">
+    <div class="col-lg-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">
+                    <i class="fas fa-trash-alt me-2"></i>
+                    Purge by Age
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    Remove all version snapshots older than a specified number of days.
+                    This helps reduce storage usage while keeping recent history.
+                </p>
+                <div class="mb-3">
+                    <label for="purgeAgeDays" class="form-label">Delete versions older than (days):</label>
+                    <input type="number" class="form-control" id="purgeAgeDays" value="30" min="1" max="365">
+                </div>
+                <div class="alert alert-warning mb-3" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Warning:</strong> This action cannot be undone. Old versions will be permanently deleted.
+                </div>
+                <button class="btn btn-warning w-100" onclick="confirmPurgeByAge()">
+                    <i class="fas fa-clock me-2"></i>
+                    Purge Old Versions
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-broom me-2"></i>
+                    Bulk Version Cleanup
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">
+                    For individual memories, you can purge old versions from the memory detail page.
+                    Use the "View All Memories" link to browse and manage versions per memory.
+                </p>
+                <div class="mb-3">
+                    <h6 class="text-muted">Recommendations:</h6>
+                    <ul class="mb-0">
+                        <li>Keep at least 3-5 versions per memory for rollback capability</li>
+                        <li>Purge versions older than 30-90 days for routine maintenance</li>
+                        <li>Consider storage costs vs. history retention needs</li>
+                    </ul>
+                </div>
+                <div class="alert alert-info mb-0" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Version events (audit log) are not purged - only version snapshots are removed.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Confirmation Modal -->
+<div class="modal fade" id="purgeConfirmModal" tabindex="-1" aria-labelledby="purgeConfirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title" id="purgeConfirmModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Confirm Version Purge
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="purgeConfirmMessage">Are you sure you want to purge old versions?</p>
+                <p class="text-danger mb-0">
+                    <strong>This action cannot be undone.</strong>
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="confirmPurgeBtn" onclick="executePurge()">
+                    <i class="fas fa-trash-alt me-2"></i>
+                    Confirm Purge
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Purge Result Modal -->
+<div class="modal fade" id="purgeResultModal" tabindex="-1" aria-labelledby="purgeResultModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" id="purgeResultHeader">
+                <h5 class="modal-title" id="purgeResultModalLabel">Purge Result</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="purgeResultMessage">-</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="refreshStats()">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+let pendingPurgeAction = null;
+
+// Load stats on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadVersionStats();
+    animateCards();
+});
+
+async function loadVersionStats() {
+    try {
+        const response = await fetch('/api/memory/admin/versions/stats');
+        if (!response.ok) {
+            throw new Error('Failed to load version statistics');
+        }
+        const stats = await response.json();
+
+        // Update the cards
+        document.getElementById('totalMemories').textContent = stats.totalMemories.toLocaleString();
+        document.getElementById('totalVersions').textContent = stats.totalVersions.toLocaleString();
+        document.getElementById('totalEvents').textContent = stats.totalEvents.toLocaleString();
+        document.getElementById('estimatedStorage').textContent = formatBytes(stats.estimatedStorageBytes);
+
+        // Update details
+        document.getElementById('avgVersions').textContent = stats.averageVersionsPerMemory.toFixed(2);
+        document.getElementById('memoriesWithMultiple').textContent = stats.memoriesWithMultipleVersions.toLocaleString();
+
+        document.getElementById('oldestVersion').textContent = stats.oldestVersion
+            ? new Date(stats.oldestVersion).toLocaleDateString()
+            : 'N/A';
+        document.getElementById('newestVersion').textContent = stats.newestVersion
+            ? new Date(stats.newestVersion).toLocaleDateString()
+            : 'N/A';
+
+    } catch (error) {
+        console.error('Error loading version stats:', error);
+        // Show error state
+        document.getElementById('totalMemories').textContent = 'Error';
+        document.getElementById('totalVersions').textContent = 'Error';
+        document.getElementById('totalEvents').textContent = 'Error';
+        document.getElementById('estimatedStorage').textContent = 'Error';
+    }
+}
+
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function refreshStats() {
+    // Show loading state
+    document.getElementById('totalMemories').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    document.getElementById('totalVersions').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    document.getElementById('totalEvents').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    document.getElementById('estimatedStorage').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    loadVersionStats();
+}
+
+function confirmPurgeByAge() {
+    const days = parseInt(document.getElementById('purgeAgeDays').value);
+    if (isNaN(days) || days < 1) {
+        alert('Please enter a valid number of days (minimum 1)');
+        return;
+    }
+
+    pendingPurgeAction = { type: 'age', days: days };
+    document.getElementById('purgeConfirmMessage').innerHTML =
+        `You are about to purge all version snapshots older than <strong>${days} days</strong>.<br><br>` +
+        `This will remove historical version data across all memories.`;
+
+    new bootstrap.Modal(document.getElementById('purgeConfirmModal')).show();
+}
+
+async function executePurge() {
+    if (!pendingPurgeAction) return;
+
+    // Hide confirm modal
+    bootstrap.Modal.getInstance(document.getElementById('purgeConfirmModal')).hide();
+
+    // Show loading on button
+    const confirmBtn = document.getElementById('confirmPurgeBtn');
+    const originalText = confirmBtn.innerHTML;
+    confirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Purging...';
+    confirmBtn.disabled = true;
+
+    try {
+        let response;
+        if (pendingPurgeAction.type === 'age') {
+            response = await fetch('/api/memory/admin/versions/purge-by-age', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ daysOld: pendingPurgeAction.days })
+            });
+        }
+
+        if (!response.ok) {
+            throw new Error('Purge operation failed');
+        }
+
+        const result = await response.json();
+
+        // Show success result
+        document.getElementById('purgeResultHeader').className = 'modal-header bg-success text-white';
+        document.getElementById('purgeResultModalLabel').innerHTML = '<i class="fas fa-check-circle me-2"></i>Purge Successful';
+        document.getElementById('purgeResultMessage').innerHTML =
+            `<strong>${result.versionsPurged}</strong> version(s) were purged.<br><br>${result.message}`;
+
+    } catch (error) {
+        console.error('Error during purge:', error);
+
+        // Show error result
+        document.getElementById('purgeResultHeader').className = 'modal-header bg-danger text-white';
+        document.getElementById('purgeResultModalLabel').innerHTML = '<i class="fas fa-times-circle me-2"></i>Purge Failed';
+        document.getElementById('purgeResultMessage').textContent =
+            'An error occurred during the purge operation. Please try again.';
+    } finally {
+        confirmBtn.innerHTML = originalText;
+        confirmBtn.disabled = false;
+        pendingPurgeAction = null;
+
+        new bootstrap.Modal(document.getElementById('purgeResultModal')).show();
+    }
+}
+
+function animateCards() {
+    const cards = document.querySelectorAll('.card');
+    cards.forEach((card, index) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+            card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+        }, index * 100);
+    });
+}
+</script>
+}

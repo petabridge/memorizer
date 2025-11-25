@@ -17,6 +17,7 @@ public class Memory
     public DateTime UpdatedAt { get; init; }
     public string? Title { get; init; }
     public string Text { get; init; } = string.Empty;
+    public int CurrentVersion { get; init; } = 1;
     public double? Similarity { get; set; }
     public List<MemoryRelationship>? Relationships { get; set; }
 }

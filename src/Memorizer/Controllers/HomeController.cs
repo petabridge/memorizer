@@ -90,6 +90,16 @@ public class HomeController : Controller
     }
 
     /// <summary>
+    /// Admin page for version management
+    /// </summary>
+    [HttpGet]
+    [Route("admin")]
+    public IActionResult Admin()
+    {
+        return View();
+    }
+
+    /// <summary>
     /// MCP configuration JSON endpoint - returns simplified JSON configuration for MCP client
     /// </summary>
     [HttpGet]

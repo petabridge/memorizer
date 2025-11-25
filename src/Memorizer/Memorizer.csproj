@@ -52,6 +52,7 @@
         <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
         <PackageReference Include="pgvector" />
         <PackageReference Include="Registrator.Net" />
+        <PackageReference Include="DiffPlex" />
     </ItemGroup>
 
     <ItemGroup>

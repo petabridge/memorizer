@@ -111,6 +111,128 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Version History section -->
+                    <div class="mt-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-history me-2"></i>
+                                        Version History
+                                    </h5>
+                                    <span class="badge bg-secondary" id="versionBadge">v1</span>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="versionHistoryLoading" class="text-center py-3">
+                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                        <span class="visually-hidden">Loading version history...</span>
+                                    </div>
+                                </div>
+                                <div id="versionHistoryContent" style="display:none;">
+                                    <div id="versionHistoryEmpty" style="display:none;">
+                                        <p class="text-muted mb-0">
+                                            <i class="fas fa-info-circle me-2"></i>
+                                            This memory has only one version (initial creation).
+                                        </p>
+                                    </div>
+                                    <div id="versionTimeline">
+                                        <!-- Version timeline will be inserted here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Version Comparison Modal -->
+                    <div class="modal fade" id="versionCompareModal" tabindex="-1" aria-labelledby="versionCompareModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-xl">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="versionCompareModalLabel">
+                                        <i class="fas fa-code-compare me-2"></i>
+                                        Version Comparison
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div id="compareLoading" class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading comparison...</span>
+                                        </div>
+                                    </div>
+                                    <div id="compareContent" style="display:none;">
+                                        <div class="row mb-3">
+                                            <div class="col-6">
+                                                <div class="card bg-light">
+                                                    <div class="card-body py-2">
+                                                        <strong>From:</strong> <span id="compareFromVersion"></span>
+                                                        <br><small class="text-muted" id="compareFromDate"></small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-6">
+                                                <div class="card bg-light">
+                                                    <div class="card-body py-2">
+                                                        <strong>To:</strong> <span id="compareToVersion"></span>
+                                                        <br><small class="text-muted" id="compareToDate"></small>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <div id="metadataChanges">
+                                                <!-- Metadata changes summary -->
+                                            </div>
+                                        </div>
+                                        <div class="card">
+                                            <div class="card-header">
+                                                <h6 class="mb-0">Content Diff</h6>
+                                            </div>
+                                            <div class="card-body p-0">
+                                                <div id="diffContent" class="diff-view-container">
+                                                    <!-- Diff content will be inserted here -->
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Revert Confirmation Modal -->
+                    <div class="modal fade" id="revertModal" tabindex="-1" aria-labelledby="revertModalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header bg-warning">
+                                    <h5 class="modal-title" id="revertModalLabel">
+                                        <i class="fas fa-undo me-2"></i>
+                                        Confirm Revert
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p>Are you sure you want to revert this memory to <strong>version <span id="revertTargetVersion"></span></strong>?</p>
+                                    <p class="text-muted small">
+                                        This will restore all content, tags, title, and metadata from that version.
+                                        A new version will be created recording this revert operation.
+                                    </p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-warning" id="confirmRevertBtn" onclick="confirmRevert()">
+                                        <i class="fas fa-undo me-1"></i>
+                                        Revert
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Error state (hidden initially) -->
@@ -241,6 +363,15 @@ function populateMemoryView(memory) {
             displayRelatedMemories(memory.relationships);
         }
 
+        // Update version badge
+        const versionBadge = document.getElementById('versionBadge');
+        if (versionBadge && memory.currentVersion) {
+            versionBadge.textContent = `v${memory.currentVersion}`;
+        }
+
+        // Load version history
+        loadVersionHistory();
+
         console.log('All memory view fields populated successfully');
     } catch (error) {
         console.error('Error in populateMemoryView:', error);
@@ -353,6 +484,207 @@ function showError() {
     hideSpinner();
     document.getElementById('memoryContent').style.display = 'none';
     document.getElementById('errorState').style.display = 'block';
+}
+
+// =====================
+// Version History Functions
+// =====================
+
+let pendingRevertVersion = null;
+let versionHistory = [];
+
+async function loadVersionHistory() {
+    try {
+        const response = await fetch(`/api/memory/${memoryId}/versions`);
+        if (!response.ok) {
+            console.warn('Could not load version history');
+            document.getElementById('versionHistoryLoading').style.display = 'none';
+            document.getElementById('versionHistoryContent').style.display = 'block';
+            document.getElementById('versionHistoryEmpty').style.display = 'block';
+            return;
+        }
+
+        versionHistory = await response.json();
+        displayVersionHistory(versionHistory);
+    } catch (error) {
+        console.error('Error loading version history:', error);
+        document.getElementById('versionHistoryLoading').style.display = 'none';
+        document.getElementById('versionHistoryContent').style.display = 'block';
+        document.getElementById('versionHistoryEmpty').style.display = 'block';
+    }
+}
+
+function displayVersionHistory(versions) {
+    const loadingEl = document.getElementById('versionHistoryLoading');
+    const contentEl = document.getElementById('versionHistoryContent');
+    const emptyEl = document.getElementById('versionHistoryEmpty');
+    const timelineEl = document.getElementById('versionTimeline');
+
+    loadingEl.style.display = 'none';
+    contentEl.style.display = 'block';
+
+    if (!versions || versions.length <= 1) {
+        emptyEl.style.display = 'block';
+        return;
+    }
+
+    timelineEl.innerHTML = '';
+
+    versions.forEach((version, index) => {
+        const isLatest = index === 0;
+        const hasPrevious = index < versions.length - 1;
+
+        // Parse events to display what changed
+        let changeDescription = 'Initial creation';
+        if (version.events && version.events.length > 0) {
+            const eventTypes = [...new Set(version.events.map(e => e.eventType))];
+            changeDescription = eventTypes.map(t => formatEventType(t)).join(', ');
+        }
+
+        const versionItem = document.createElement('div');
+        versionItem.className = 'version-item d-flex align-items-start mb-3 pb-3 border-bottom';
+        versionItem.innerHTML = `
+            <div class="version-marker me-3">
+                <span class="badge ${isLatest ? 'bg-primary' : 'bg-secondary'} rounded-pill">v${version.versionNumber}</span>
+            </div>
+            <div class="version-content flex-grow-1">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <strong>${isLatest ? 'Current Version' : `Version ${version.versionNumber}`}</strong>
+                        <br>
+                        <small class="text-muted">
+                            <i class="fas fa-clock me-1"></i>
+                            ${formatDateTime(version.versionedAt)}
+                        </small>
+                        <br>
+                        <small class="text-info">
+                            <i class="fas fa-pen me-1"></i>
+                            ${escapeHtml(changeDescription)}
+                        </small>
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        ${hasPrevious ? `
+                        <button class="btn btn-outline-primary btn-sm" onclick="compareVersions(${versions[index + 1].versionNumber}, ${version.versionNumber})" title="Compare with previous">
+                            <i class="fas fa-code-compare"></i>
+                        </button>
+                        ` : ''}
+                        ${!isLatest ? `
+                        <button class="btn btn-outline-warning btn-sm" onclick="promptRevert(${version.versionNumber})" title="Revert to this version">
+                            <i class="fas fa-undo"></i>
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+        timelineEl.appendChild(versionItem);
+    });
+}
+
+function formatEventType(eventType) {
+    const mappings = {
+        'text_changed': 'Content updated',
+        'title_changed': 'Title changed',
+        'tags_changed': 'Tags modified',
+        'type_changed': 'Type changed',
+        'confidence_changed': 'Confidence updated',
+        'source_changed': 'Source changed',
+        'relationship_added': 'Relationship added',
+        'relationship_removed': 'Relationship removed',
+        'created': 'Created',
+        'reverted': 'Reverted'
+    };
+    return mappings[eventType] || eventType;
+}
+
+async function compareVersions(fromVersion, toVersion) {
+    const modal = new bootstrap.Modal(document.getElementById('versionCompareModal'));
+    modal.show();
+
+    document.getElementById('compareLoading').style.display = 'block';
+    document.getElementById('compareContent').style.display = 'none';
+
+    try {
+        const response = await fetch(`/api/memory/${memoryId}/versions/compare?fromVersion=${fromVersion}&toVersion=${toVersion}`);
+        if (!response.ok) {
+            throw new Error('Failed to load comparison');
+        }
+
+        const comparison = await response.json();
+        displayComparison(comparison);
+    } catch (error) {
+        console.error('Error loading comparison:', error);
+        alert('Failed to load version comparison. Please try again.');
+        modal.hide();
+    }
+}
+
+function displayComparison(comparison) {
+    document.getElementById('compareLoading').style.display = 'none';
+    document.getElementById('compareContent').style.display = 'block';
+
+    document.getElementById('compareFromVersion').textContent = `Version ${comparison.fromVersion}`;
+    document.getElementById('compareToVersion').textContent = `Version ${comparison.toVersion}`;
+    document.getElementById('compareFromDate').textContent = formatDateTime(comparison.fromVersionDetails.versionedAt);
+    document.getElementById('compareToDate').textContent = formatDateTime(comparison.toVersionDetails.versionedAt);
+
+    // Display metadata changes
+    const metadataEl = document.getElementById('metadataChanges');
+    let metadataHtml = '';
+
+    if (comparison.titleChanged) {
+        metadataHtml += `<span class="badge bg-info me-1"><i class="fas fa-heading me-1"></i>Title changed</span>`;
+    }
+    if (comparison.tagsChanged) {
+        metadataHtml += `<span class="badge bg-warning me-1"><i class="fas fa-tags me-1"></i>Tags changed</span>`;
+    }
+    if (comparison.typeChanged) {
+        metadataHtml += `<span class="badge bg-secondary me-1"><i class="fas fa-folder me-1"></i>Type changed</span>`;
+    }
+    if (comparison.confidenceChanged) {
+        metadataHtml += `<span class="badge bg-secondary me-1"><i class="fas fa-percentage me-1"></i>Confidence changed</span>`;
+    }
+
+    metadataEl.innerHTML = metadataHtml || '<span class="text-muted">Only content changed</span>';
+
+    // Display diff HTML
+    const diffEl = document.getElementById('diffContent');
+    diffEl.innerHTML = comparison.textDiffHtml || '<p class="p-3 text-muted">No content differences</p>';
+}
+
+function promptRevert(versionNumber) {
+    pendingRevertVersion = versionNumber;
+    document.getElementById('revertTargetVersion').textContent = versionNumber;
+    const modal = new bootstrap.Modal(document.getElementById('revertModal'));
+    modal.show();
+}
+
+async function confirmRevert() {
+    if (!pendingRevertVersion) return;
+
+    const btn = document.getElementById('confirmRevertBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Reverting...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`/api/memory/${memoryId}/versions/${pendingRevertVersion}/revert`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to revert');
+        }
+
+        // Close modal and reload page
+        bootstrap.Modal.getInstance(document.getElementById('revertModal')).hide();
+        window.location.reload();
+    } catch (error) {
+        console.error('Error reverting:', error);
+        alert('Failed to revert to version. Please try again.');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 }
 </script>
 }

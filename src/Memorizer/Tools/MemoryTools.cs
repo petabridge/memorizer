@@ -22,28 +22,69 @@ public class MemoryTools
         _logger = logger;
     }
 
-    [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples.")]
+    [McpServerTool, Description("Store a new memory or update an existing one. For new memories: creates a new entry with provided data. For updates (when 'id' is provided): updates an existing memory with options to replace, append, or prepend content. All changes are versioned. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks.")]
     public async Task<string> Store(
         [Description("The type of memory (e.g., 'conversation', 'document', 'reference', 'how-to', etc.). Use 'reference' or 'how-to' for reusable knowledge.")] string type,
-        [Description("Plain text (markdown, code, prose, etc.) that you want to store and embed.")] string text,
+        [Description("Plain text (markdown, code, prose, etc.) to store or update.")] string text,
         [Description("The source of the memory (e.g., 'user', 'system', 'LLM', etc.). Use 'LLM' if you are storing knowledge for your own future use.")] string source,
-        [Description("Title for the memory. This is required and must not be null or empty.")] string title,
+        [Description("Title for the memory. Required for new memories.")] string title,
         [Description("Optional tags to categorize the memory. Use tags like 'coding-standard', 'unit-test', 'reference', 'how-to', etc. to make retrieval easier.")] string[]? tags = null,
         [Description("Confidence score for the memory (0.0 to 1.0)")] double confidence = 1.0,
         [Description("Optionally, the ID of a related memory. Use this to link related reference materials, how-tos, or examples.")] Guid? relatedTo = null,
         [Description("Optionally, the type of relationship to create (e.g., 'example-of', 'explains', 'related-to'). Use relationships to connect related knowledge.")] string? relationshipType = null,
+        [Description("Optional: ID of an existing memory to update. If provided, updates the existing memory instead of creating a new one. Creates a new version.")] Guid? id = null,
+        [Description("Update mode when 'id' is provided: 'replace' (default) replaces all content, 'append' adds to end, 'prepend' adds to beginning, 'section' replaces content between section markers.")] string updateMode = "replace",
+        [Description("For 'section' mode: the marker to identify the section to replace (e.g., '## Notes' or '<!-- daily-log -->'). Content between this marker and the next marker of same type (or end of text) will be replaced.")] string? sectionMarker = null,
+        [Description("For 'append'/'prepend' modes: separator between existing and new content. Default is '\\n\\n'.")] string? appendSeparator = null,
         CancellationToken cancellationToken = default
     )
     {
-        Memory memory = await _storage.StoreMemory(
-            type,
-            text,
-            source,
-            tags,
-            confidence,
-            title: title,
-            cancellationToken: cancellationToken
-        );
+        Memory memory;
+        bool isUpdate = id.HasValue;
+
+        if (isUpdate && id.HasValue)
+        {
+            // Update existing memory
+            var existingMemory = await _storage.Get(id.Value, cancellationToken);
+            if (existingMemory == null)
+            {
+                return $"Memory with ID {id.Value} not found. Cannot update non-existent memory.";
+            }
+
+            // Apply update mode
+            string finalText = ApplyUpdateMode(existingMemory.Text, text, updateMode, sectionMarker, appendSeparator);
+
+            var updatedMemory = await _storage.UpdateMemory(
+                id.Value,
+                type,
+                finalText,
+                source,
+                tags,
+                confidence,
+                title,
+                cancellationToken
+            );
+
+            if (updatedMemory == null)
+            {
+                return $"Failed to update memory with ID {id.Value}.";
+            }
+
+            memory = updatedMemory;
+        }
+        else
+        {
+            // Create new memory
+            memory = await _storage.StoreMemory(
+                type,
+                text,
+                source,
+                tags,
+                confidence,
+                title: title,
+                cancellationToken: cancellationToken
+            );
+        }
 
         // Handle manual relationship creation if specified
         if (relatedTo.HasValue && !string.IsNullOrWhiteSpace(relationshipType))
@@ -51,7 +92,69 @@ public class MemoryTools
             await _storage.CreateRelationship(memory.Id, relatedTo.Value, relationshipType, cancellationToken);
         }
 
+        if (isUpdate)
+        {
+            return $"Memory updated successfully. ID: {memory.Id}, Version: {memory.CurrentVersion}. Changes have been versioned and can be viewed/reverted via version history.";
+        }
+
         return $"Memory stored successfully with ID: {memory.Id}. You might want to call `CreateRelationship` to associate this memory with another memory for better context retrieval.";
+    }
+
+    private static string ApplyUpdateMode(string existingText, string newText, string updateMode, string? sectionMarker, string? appendSeparator)
+    {
+        var separator = appendSeparator ?? "\n\n";
+
+        return updateMode.ToLowerInvariant() switch
+        {
+            "append" => existingText + separator + newText,
+            "prepend" => newText + separator + existingText,
+            "section" when !string.IsNullOrWhiteSpace(sectionMarker) => ReplaceSectionContent(existingText, newText, sectionMarker),
+            _ => newText // "replace" or default
+        };
+    }
+
+    private static string ReplaceSectionContent(string existingText, string newContent, string sectionMarker)
+    {
+        var lines = existingText.Split('\n');
+        var result = new StringBuilder();
+        var inSection = false;
+        var sectionFound = false;
+
+        foreach (var line in lines)
+        {
+            if (line.TrimStart().StartsWith(sectionMarker, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!inSection)
+                {
+                    // Found the start of our section
+                    inSection = true;
+                    sectionFound = true;
+                    result.AppendLine(line);
+                    result.AppendLine(newContent);
+                }
+                else
+                {
+                    // Found the next section with same marker, exit our section
+                    inSection = false;
+                    result.AppendLine(line);
+                }
+            }
+            else if (!inSection)
+            {
+                result.AppendLine(line);
+            }
+            // Skip lines within the section being replaced
+        }
+
+        // If section not found, append it at the end
+        if (!sectionFound)
+        {
+            result.AppendLine();
+            result.AppendLine(sectionMarker);
+            result.AppendLine(newContent);
+        }
+
+        return result.ToString().TrimEnd('\n', '\r');
     }
 
     [McpServerTool, Description("Search for memories similar to the provided text. Use this to retrieve reference material, how-tos, or examples relevant to the current task. Filtering by tags can help narrow down to specific types of knowledge.")]
@@ -215,20 +318,64 @@ public class MemoryTools
         return result.ToString();
     }
 
-    [McpServerTool, Description("Retrieve a specific memory by ID. Use this to fetch a particular reference, how-to, or example by its unique identifier.")]
+    [McpServerTool, Description("Retrieve a specific memory by ID, optionally with version history. Use this to fetch a particular reference, how-to, or example. Supports retrieving a specific version or including the version history timeline.")]
     public async Task<string> Get(
         [Description("The ID of the memory to retrieve. Use this to fetch a specific piece of reference or how-to information.")] Guid id,
+        [Description("Optional: If true, includes version history summary in the response (recent versions, change count).")] bool includeVersionHistory = false,
+        [Description("Optional: Specific version number to retrieve. If provided, returns that version's content instead of current.")] int? versionNumber = null,
+        [Description("Optional: Maximum number of versions to include in history (default: 5, max: 20).")] int versionLimit = 5,
         CancellationToken cancellationToken = default
     )
     {
         using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.Get");
-        
+
         // Add query details as Activity event
         activity?.AddEvent(new ActivityEvent("query.details", DateTimeOffset.UtcNow, new ActivityTagsCollection
         {
-            {"query.id", id.ToString()}
+            {"query.id", id.ToString()},
+            {"query.includeVersionHistory", includeVersionHistory.ToString()},
+            {"query.versionNumber", versionNumber?.ToString() ?? "current"}
         }));
 
+        // If requesting a specific version, get that version
+        if (versionNumber.HasValue)
+        {
+            var version = await _storage.GetVersion(id, versionNumber.Value, cancellationToken);
+            if (version == null)
+            {
+                return $"Version {versionNumber.Value} not found for memory ID {id}.";
+            }
+
+            StringBuilder versionResult = new();
+            versionResult.AppendLine($"📜 VERSION {version.VersionNumber} (Historical Snapshot)");
+            versionResult.AppendLine($"ID: {version.MemoryId}");
+            versionResult.AppendLine($"Title: {version.Title ?? "Untitled"}");
+            versionResult.AppendLine($"Type: {version.Type}");
+            versionResult.AppendLine($"Text: {version.Text}");
+            versionResult.AppendLine($"Source: {version.Source}");
+            versionResult.AppendLine($"Tags: {(version.Tags != null ? string.Join(", ", version.Tags) : "none")}");
+            versionResult.AppendLine($"Confidence: {version.Confidence:F2}");
+            versionResult.AppendLine($"Original Created: {version.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+            versionResult.AppendLine($"Version Created: {version.VersionedAt:yyyy-MM-dd HH:mm:ss}");
+
+            if (version.Events is { Count: > 0 })
+            {
+                versionResult.AppendLine();
+                versionResult.AppendLine("📝 Changes in this version:");
+                foreach (var evt in version.Events)
+                {
+                    versionResult.AppendLine($"  • {evt.GetDisplayText()}");
+                }
+            }
+
+            versionResult.AppendLine();
+            versionResult.AppendLine("💡 Use RevertToVersion to restore this version as current, or Get with versionNumber to view other versions.");
+
+            activity?.SetStatus(ActivityStatusCode.Ok, "Version retrieved successfully");
+            return versionResult.ToString();
+        }
+
+        // Get current memory
         Memory? memory = await _storage.Get(id, cancellationToken);
 
         if (memory == null)
@@ -266,15 +413,16 @@ public class MemoryTools
             $"Tags: {(memory.Tags != null ? string.Join(", ", memory.Tags) : "none")}"
         );
         result.AppendLine($"Confidence: {memory.Confidence:F2}");
+        result.AppendLine($"Current Version: {memory.CurrentVersion}");
         if (memory.Similarity.HasValue)
         {
             double percent = 100 * (1 - memory.Similarity.Value);
             result.AppendLine($"Similarity: {percent:F1}%");
         }
-        
+
         // Collect related memory IDs for suggestion
         var relatedMemoryIds = new HashSet<Guid>();
-        
+
         // List relationships
         if (memory.Relationships != null && memory.Relationships.Count > 0)
         {
@@ -285,9 +433,9 @@ public class MemoryTools
                 var direction = rel.FromMemoryId == memory.Id ? "→" : "←";
                 var relatedTitle = rel.RelatedMemoryTitle ?? "Untitled";
                 var relatedType = rel.RelatedMemoryType ?? "unknown";
-                
+
                 result.AppendLine($"  • [{rel.Type.ToUpper()}] {direction} \"{relatedTitle}\" ({relatedType}) [ID: {relatedId}]");
-                
+
                 // Collect related memory IDs (excluding the current memory)
                 if (rel.FromMemoryId != memory.Id)
                     relatedMemoryIds.Add(rel.FromMemoryId);
@@ -297,6 +445,27 @@ public class MemoryTools
         }
         result.AppendLine($"Created: {memory.CreatedAt:yyyy-MM-dd HH:mm:ss}");
         result.AppendLine($"Updated: {memory.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
+
+        // Include version history if requested
+        if (includeVersionHistory)
+        {
+            var limitClamped = Math.Clamp(versionLimit, 1, 20);
+            var versions = await _storage.GetVersionHistory(id, limitClamped, cancellationToken);
+
+            if (versions.Count > 0)
+            {
+                result.AppendLine();
+                result.AppendLine($"📜 Version History (showing {versions.Count} most recent):");
+                foreach (var version in versions)
+                {
+                    var changeTypes = version.Events?.Select(e => e.EventType).Distinct().ToList() ?? [];
+                    var changesDesc = changeTypes.Count > 0 ? string.Join(", ", changeTypes) : "initial";
+                    result.AppendLine($"  v{version.VersionNumber} ({version.VersionedAt:yyyy-MM-dd HH:mm}) - {changesDesc}");
+                }
+                result.AppendLine();
+                result.AppendLine("💡 Use Get with versionNumber parameter to view a specific version, or RevertToVersion to restore.");
+            }
+        }
 
         // Add suggestion to load related memories if any exist
         if (relatedMemoryIds.Count > 0)
@@ -422,5 +591,69 @@ public class MemoryTools
     {
         var rel = await _storage.CreateRelationship(fromId, toId, type, cancellationToken);
         return $"Relationship created: {rel.Id} from {rel.FromMemoryId} to {rel.ToMemoryId} (type: {rel.Type})";
+    }
+
+    [McpServerTool, Description("Revert a memory to a previous version. This restores all content, metadata (title, tags, confidence), and the type from the specified version. Creates a new version recording the revert operation. Embeddings are regenerated. Use Get with includeVersionHistory=true first to see available versions.")]
+    public async Task<string> RevertToVersion(
+        [Description("The ID of the memory to revert.")] Guid id,
+        [Description("The version number to revert to. Use Get with includeVersionHistory=true to see available versions.")] int versionNumber,
+        [Description("Optional: Identifier of who is requesting the revert (e.g., 'user', 'LLM', 'system').")] string? changedBy = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.RevertToVersion");
+
+        activity?.AddEvent(new ActivityEvent("revert.details", DateTimeOffset.UtcNow, new ActivityTagsCollection
+        {
+            {"memory.id", id.ToString()},
+            {"target.version", versionNumber.ToString()},
+            {"changed.by", changedBy ?? "unspecified"}
+        }));
+
+        // First check the memory exists
+        var existingMemory = await _storage.Get(id, cancellationToken);
+        if (existingMemory == null)
+        {
+            _logger.LogInformation("Cannot revert: Memory not found for ID: {MemoryId}", id);
+            activity?.SetStatus(ActivityStatusCode.Ok, "Memory not found");
+            return $"Memory with ID {id} not found. Cannot revert.";
+        }
+
+        // Check if already at the target version
+        if (existingMemory.CurrentVersion == versionNumber)
+        {
+            return $"Memory is already at version {versionNumber}. No changes made.";
+        }
+
+        // Perform the revert
+        var revertedMemory = await _storage.RevertToVersion(id, versionNumber, changedBy, cancellationToken);
+
+        if (revertedMemory == null)
+        {
+            _logger.LogWarning("Failed to revert memory {MemoryId} to version {Version}", id, versionNumber);
+            activity?.SetStatus(ActivityStatusCode.Error, "Revert failed");
+            return $"Failed to revert memory to version {versionNumber}. The version may not exist. Use Get with includeVersionHistory=true to see available versions.";
+        }
+
+        _logger.LogInformation("Memory {MemoryId} reverted from version {OldVersion} to {TargetVersion}, now at version {NewVersion}",
+            id, existingMemory.CurrentVersion, versionNumber, revertedMemory.CurrentVersion);
+
+        activity?.SetStatus(ActivityStatusCode.Ok, "Memory reverted successfully");
+
+        StringBuilder result = new();
+        result.AppendLine($"✅ Memory successfully reverted to version {versionNumber}.");
+        result.AppendLine();
+        result.AppendLine("Restored state:");
+        result.AppendLine($"  ID: {revertedMemory.Id}");
+        result.AppendLine($"  Title: {revertedMemory.Title ?? "Untitled"}");
+        result.AppendLine($"  Type: {revertedMemory.Type}");
+        result.AppendLine($"  Tags: {(revertedMemory.Tags != null ? string.Join(", ", revertedMemory.Tags) : "none")}");
+        result.AppendLine($"  Confidence: {revertedMemory.Confidence:F2}");
+        result.AppendLine($"  New Version: {revertedMemory.CurrentVersion}");
+        result.AppendLine();
+        result.AppendLine("Note: A new version has been created recording this revert. Embeddings have been regenerated.");
+        result.AppendLine("Use Get with id to see the full restored content.");
+
+        return result.ToString();
     }
 }

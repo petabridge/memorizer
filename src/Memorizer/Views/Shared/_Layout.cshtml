@@ -73,6 +73,13 @@
                                 System Config
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link @(ViewContext.RouteData.Values["action"]?.ToString() == "Admin" ? "active" : "")"
+                               asp-controller="Home" asp-action="Admin">
+                                <i class="fas fa-user-shield me-2"></i>
+                                Admin
+                            </a>
+                        </li>
                     </ul>
 
                     <!-- Theme Toggle -->

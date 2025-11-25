@@ -1,9 +1,12 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Memorizer.Models;
 using Npgsql;
 using Pgvector;
 using Registrator.Net;
 using MemoryRelationship = Memorizer.Models.MemoryRelationship;
+using MemoryEvent = Memorizer.Models.MemoryEvent;
+using MemoryVersion = Memorizer.Models.MemoryVersion;
 
 namespace Memorizer.Services;
 
@@ -109,6 +112,17 @@ public interface IStorage
         string[]? filterTags = null,
         CancellationToken cancellationToken = default
     );
+
+    // Versioning support
+    Task<List<MemoryEvent>> GetEvents(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default);
+    Task<List<MemoryVersion>> GetVersionHistory(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default);
+    Task<MemoryVersion?> GetVersion(Guid memoryId, int versionNumber, CancellationToken cancellationToken = default);
+    Task<Memorizer.Models.Memory?> RevertToVersion(Guid memoryId, int versionNumber, string? changedBy = null, CancellationToken cancellationToken = default);
+
+    // Admin version operations
+    Task<int> PurgeVersionsKeepingLatest(Guid memoryId, int versionsToKeep, CancellationToken cancellationToken = default);
+    Task<int> PurgeVersionsOlderThan(DateTime cutoffDate, CancellationToken cancellationToken = default);
+    Task<VersionStats> GetVersionStats(CancellationToken cancellationToken = default);
 }
 
 [AutoRegisterInterfaces(ServiceLifetime.Singleton)]
@@ -1050,18 +1064,428 @@ public class Storage : IStorage
     public async Task<List<string>> GetDistinctMemoryTypes(CancellationToken cancellationToken = default)
     {
         const string sql = "SELECT DISTINCT type FROM memories";
-        
+
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
-        
+
         var result = new List<string>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        
+
         while (await reader.ReadAsync(cancellationToken))
         {
             result.Add(reader.GetString(0));
         }
-        
+
         return result;
+    }
+
+    // ==================== VERSIONING SUPPORT ====================
+
+    public async Task<List<MemoryEvent>> GetEvents(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        var sql = @"
+            SELECT event_id, memory_id, version_number, event_type, event_data, timestamp, changed_by
+            FROM memory_events
+            WHERE memory_id = @memoryId
+            ORDER BY version_number DESC, timestamp DESC";
+
+        if (limit.HasValue)
+            sql += " LIMIT @limit";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("memoryId", memoryId);
+        if (limit.HasValue)
+            cmd.Parameters.AddWithValue("limit", limit.Value);
+
+        var events = new List<MemoryEvent>();
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            events.Add(new MemoryEvent
+            {
+                EventId = reader.GetGuid(0),
+                MemoryId = reader.GetGuid(1),
+                VersionNumber = reader.GetInt32(2),
+                EventType = reader.GetString(3),
+                EventData = reader.GetFieldValue<JsonDocument>(4),
+                Timestamp = reader.GetDateTime(5),
+                ChangedBy = reader.IsDBNull(6) ? null : reader.GetString(6)
+            });
+        }
+
+        return events;
+    }
+
+    public async Task<List<MemoryVersion>> GetVersionHistory(Guid memoryId, int? limit = null, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        var sql = @"
+            SELECT version_id, memory_id, version_number, type, content, text, source, tags, confidence, title, relationship_ids, created_at, versioned_at
+            FROM memory_versions
+            WHERE memory_id = @memoryId
+            ORDER BY version_number DESC";
+
+        if (limit.HasValue)
+            sql += " LIMIT @limit";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("memoryId", memoryId);
+        if (limit.HasValue)
+            cmd.Parameters.AddWithValue("limit", limit.Value);
+
+        var versions = new List<MemoryVersion>();
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            versions.Add(new MemoryVersion
+            {
+                VersionId = reader.GetGuid(0),
+                MemoryId = reader.GetGuid(1),
+                VersionNumber = reader.GetInt32(2),
+                Type = reader.GetString(3),
+                Content = reader.GetFieldValue<JsonDocument>(4),
+                Text = reader.GetString(5),
+                Source = reader.GetString(6),
+                Tags = reader.GetFieldValue<string[]>(7),
+                Confidence = reader.GetDouble(8),
+                Title = reader.IsDBNull(9) ? null : reader.GetString(9),
+                RelationshipIds = reader.GetFieldValue<Guid[]>(10),
+                CreatedAt = reader.GetDateTime(11),
+                VersionedAt = reader.GetDateTime(12)
+            });
+        }
+
+        // Optionally load events for each version
+        if (versions.Count > 0)
+        {
+            var events = await GetEvents(memoryId, null, cancellationToken);
+            var eventsByVersion = events.GroupBy(e => e.VersionNumber).ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var version in versions)
+            {
+                if (eventsByVersion.TryGetValue(version.VersionNumber, out var versionEvents))
+                    version.Events = versionEvents;
+            }
+        }
+
+        return versions;
+    }
+
+    public async Task<MemoryVersion?> GetVersion(Guid memoryId, int versionNumber, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        const string sql = @"
+            SELECT version_id, memory_id, version_number, type, content, text, source, tags, confidence, title, relationship_ids, created_at, versioned_at
+            FROM memory_versions
+            WHERE memory_id = @memoryId AND version_number = @versionNumber";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("memoryId", memoryId);
+        cmd.Parameters.AddWithValue("versionNumber", versionNumber);
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            var version = new MemoryVersion
+            {
+                VersionId = reader.GetGuid(0),
+                MemoryId = reader.GetGuid(1),
+                VersionNumber = reader.GetInt32(2),
+                Type = reader.GetString(3),
+                Content = reader.GetFieldValue<JsonDocument>(4),
+                Text = reader.GetString(5),
+                Source = reader.GetString(6),
+                Tags = reader.GetFieldValue<string[]>(7),
+                Confidence = reader.GetDouble(8),
+                Title = reader.IsDBNull(9) ? null : reader.GetString(9),
+                RelationshipIds = reader.GetFieldValue<Guid[]>(10),
+                CreatedAt = reader.GetDateTime(11),
+                VersionedAt = reader.GetDateTime(12)
+            };
+
+            // Load events for this version
+            var events = await GetEvents(memoryId, null, cancellationToken);
+            version.Events = events.Where(e => e.VersionNumber == versionNumber).ToList();
+
+            return version;
+        }
+
+        return null;
+    }
+
+    public async Task<Memorizer.Models.Memory?> RevertToVersion(Guid memoryId, int versionNumber, string? changedBy = null, CancellationToken cancellationToken = default)
+    {
+        // Get the target version snapshot
+        var targetVersion = await GetVersion(memoryId, versionNumber, cancellationToken);
+        if (targetVersion == null)
+            return null;
+
+        // Get current memory to determine new version number
+        var currentMemory = await Get(memoryId, cancellationToken);
+        if (currentMemory == null)
+            return null;
+
+        var newVersionNumber = currentMemory.CurrentVersion + 1;
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            // Generate new embeddings for the restored content
+            string textToEmbed = targetVersion.Text;
+            if (!string.IsNullOrWhiteSpace(targetVersion.Title))
+                textToEmbed = targetVersion.Title + " " + textToEmbed;
+
+            float[] embedding = await _embeddingService.Generate(textToEmbed, cancellationToken);
+
+            string metadataText = targetVersion.Title ?? "";
+            if (targetVersion.Tags is { Length: > 0 })
+                metadataText += " " + string.Join(" ", targetVersion.Tags);
+
+            float[] embeddingMetadata = await _embeddingService.Generate(metadataText, cancellationToken);
+
+            // Record revert event
+            var eventData = JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                reverted_to_version = versionNumber,
+                previous_version = currentMemory.CurrentVersion
+            }));
+
+            const string eventSql = @"
+                INSERT INTO memory_events (memory_id, version_number, event_type, event_data, changed_by)
+                VALUES (@memoryId, @versionNumber, @eventType, @eventData, @changedBy)";
+
+            await using (var eventCmd = new NpgsqlCommand(eventSql, connection, transaction))
+            {
+                eventCmd.Parameters.AddWithValue("memoryId", memoryId);
+                eventCmd.Parameters.AddWithValue("versionNumber", newVersionNumber);
+                eventCmd.Parameters.AddWithValue("eventType", MemoryEventTypes.MemoryReverted);
+                eventCmd.Parameters.AddWithValue("eventData", eventData);
+                eventCmd.Parameters.AddWithValue("changedBy", (object?)changedBy ?? DBNull.Value);
+                await eventCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Create snapshot of current state before reverting (for history)
+            var relationshipIds = currentMemory.Relationships?.Select(r => r.Id).ToArray() ?? Array.Empty<Guid>();
+
+            const string snapshotSql = @"
+                INSERT INTO memory_versions (memory_id, version_number, type, content, text, source, tags, confidence, title, relationship_ids, created_at)
+                VALUES (@memoryId, @versionNumber, @type, @content, @text, @source, @tags, @confidence, @title, @relationshipIds, @createdAt)";
+
+            await using (var snapshotCmd = new NpgsqlCommand(snapshotSql, connection, transaction))
+            {
+                snapshotCmd.Parameters.AddWithValue("memoryId", memoryId);
+                snapshotCmd.Parameters.AddWithValue("versionNumber", newVersionNumber);
+                snapshotCmd.Parameters.AddWithValue("type", targetVersion.Type);
+                snapshotCmd.Parameters.AddWithValue("content", targetVersion.Content);
+                snapshotCmd.Parameters.AddWithValue("text", targetVersion.Text);
+                snapshotCmd.Parameters.AddWithValue("source", targetVersion.Source);
+                snapshotCmd.Parameters.AddWithValue("tags", targetVersion.Tags ?? Array.Empty<string>());
+                snapshotCmd.Parameters.AddWithValue("confidence", targetVersion.Confidence);
+                snapshotCmd.Parameters.AddWithValue("title", (object?)targetVersion.Title ?? DBNull.Value);
+                snapshotCmd.Parameters.AddWithValue("relationshipIds", targetVersion.RelationshipIds);
+                snapshotCmd.Parameters.AddWithValue("createdAt", currentMemory.CreatedAt);
+                await snapshotCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Update the memories table with restored content
+            const string updateSql = @"
+                UPDATE memories
+                SET type = @type, content = @content, text = @text, source = @source,
+                    tags = @tags, confidence = @confidence, title = @title,
+                    embedding = @embedding, embedding_metadata = @embeddingMetadata,
+                    current_version = @currentVersion, updated_at = NOW()
+                WHERE id = @id";
+
+            await using (var updateCmd = new NpgsqlCommand(updateSql, connection, transaction))
+            {
+                updateCmd.Parameters.AddWithValue("id", memoryId);
+                updateCmd.Parameters.AddWithValue("type", targetVersion.Type);
+                updateCmd.Parameters.AddWithValue("content", targetVersion.Content);
+                updateCmd.Parameters.AddWithValue("text", targetVersion.Text);
+                updateCmd.Parameters.AddWithValue("source", targetVersion.Source);
+                updateCmd.Parameters.AddWithValue("tags", targetVersion.Tags ?? Array.Empty<string>());
+                updateCmd.Parameters.AddWithValue("confidence", targetVersion.Confidence);
+                updateCmd.Parameters.AddWithValue("title", (object?)targetVersion.Title ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("embedding", new Vector(embedding));
+                updateCmd.Parameters.AddWithValue("embeddingMetadata", new Vector(embeddingMetadata));
+                updateCmd.Parameters.AddWithValue("currentVersion", newVersionNumber);
+                await updateCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+
+            // Return the updated memory
+            return await Get(memoryId, cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<int> PurgeVersionsKeepingLatest(Guid memoryId, int versionsToKeep, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        const string sql = @"
+            WITH versions_to_delete AS (
+                SELECT version_id
+                FROM memory_versions
+                WHERE memory_id = @memoryId
+                ORDER BY version_number DESC
+                OFFSET @keepCount
+            )
+            DELETE FROM memory_versions
+            WHERE version_id IN (SELECT version_id FROM versions_to_delete)";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        cmd.Parameters.AddWithValue("memoryId", memoryId);
+        cmd.Parameters.AddWithValue("keepCount", versionsToKeep);
+
+        return await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> PurgeVersionsOlderThan(DateTime cutoffDate, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            // Delete old events
+            const string eventSql = @"
+                DELETE FROM memory_events
+                WHERE timestamp < @cutoff";
+
+            await using (var eventCmd = new NpgsqlCommand(eventSql, connection, transaction))
+            {
+                eventCmd.Parameters.AddWithValue("cutoff", cutoffDate);
+                await eventCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            // Delete old versions but keep at least the latest version for each memory
+            const string versionSql = @"
+                DELETE FROM memory_versions
+                WHERE versioned_at < @cutoff
+                AND version_number < (
+                    SELECT MAX(version_number)
+                    FROM memory_versions mv2
+                    WHERE mv2.memory_id = memory_versions.memory_id
+                )";
+
+            await using var versionCmd = new NpgsqlCommand(versionSql, connection, transaction);
+            versionCmd.Parameters.AddWithValue("cutoff", cutoffDate);
+
+            var deleted = await versionCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+            return deleted;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    public async Task<VersionStats> GetVersionStats(CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        const string sql = @"
+            SELECT
+                (SELECT COUNT(*) FROM memories) as total_memories,
+                (SELECT COUNT(*) FROM memory_versions) as total_versions,
+                (SELECT COUNT(*) FROM memory_events) as total_events,
+                (SELECT AVG(version_count) FROM (
+                    SELECT COUNT(*) as version_count FROM memory_versions GROUP BY memory_id
+                ) sub) as avg_versions,
+                (SELECT COUNT(*) FROM (
+                    SELECT memory_id FROM memory_versions GROUP BY memory_id HAVING COUNT(*) > 1
+                ) sub) as memories_with_multiple_versions,
+                (SELECT MIN(versioned_at) FROM memory_versions) as oldest_version,
+                (SELECT MAX(versioned_at) FROM memory_versions) as newest_version,
+                (SELECT pg_total_relation_size('memory_versions') + pg_total_relation_size('memory_events')) as storage_bytes";
+
+        await using var cmd = new NpgsqlCommand(sql, connection);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            return new VersionStats
+            {
+                TotalMemories = reader.GetInt32(0),
+                TotalVersions = reader.GetInt32(1),
+                TotalEvents = reader.GetInt32(2),
+                AverageVersionsPerMemory = reader.IsDBNull(3) ? 0 : reader.GetDouble(3),
+                MemoriesWithMultipleVersions = reader.IsDBNull(4) ? 0 : Convert.ToInt32(reader.GetInt64(4)),
+                OldestVersion = reader.IsDBNull(5) ? null : reader.GetDateTime(5),
+                NewestVersion = reader.IsDBNull(6) ? null : reader.GetDateTime(6),
+                EstimatedStorageBytes = reader.IsDBNull(7) ? 0 : reader.GetInt64(7)
+            };
+        }
+
+        return new VersionStats();
+    }
+
+    // Helper method to create a version snapshot and event when updating a memory
+    internal async Task CreateVersionSnapshot(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        Memorizer.Models.Memory memory,
+        int newVersionNumber,
+        string eventType,
+        object eventData,
+        string? changedBy,
+        CancellationToken cancellationToken)
+    {
+        // Get current relationship IDs
+        var relationshipIds = memory.Relationships?.Select(r => r.Id).ToArray() ?? Array.Empty<Guid>();
+
+        // Create event
+        var eventDataJson = JsonDocument.Parse(JsonSerializer.Serialize(eventData));
+
+        const string eventSql = @"
+            INSERT INTO memory_events (memory_id, version_number, event_type, event_data, changed_by)
+            VALUES (@memoryId, @versionNumber, @eventType, @eventData, @changedBy)";
+
+        await using (var eventCmd = new NpgsqlCommand(eventSql, connection, transaction))
+        {
+            eventCmd.Parameters.AddWithValue("memoryId", memory.Id);
+            eventCmd.Parameters.AddWithValue("versionNumber", newVersionNumber);
+            eventCmd.Parameters.AddWithValue("eventType", eventType);
+            eventCmd.Parameters.AddWithValue("eventData", eventDataJson);
+            eventCmd.Parameters.AddWithValue("changedBy", (object?)changedBy ?? DBNull.Value);
+            await eventCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Create snapshot
+        const string snapshotSql = @"
+            INSERT INTO memory_versions (memory_id, version_number, type, content, text, source, tags, confidence, title, relationship_ids, created_at)
+            VALUES (@memoryId, @versionNumber, @type, @content, @text, @source, @tags, @confidence, @title, @relationshipIds, @createdAt)";
+
+        await using var snapshotCmd = new NpgsqlCommand(snapshotSql, connection, transaction);
+        snapshotCmd.Parameters.AddWithValue("memoryId", memory.Id);
+        snapshotCmd.Parameters.AddWithValue("versionNumber", newVersionNumber);
+        snapshotCmd.Parameters.AddWithValue("type", memory.Type);
+        snapshotCmd.Parameters.AddWithValue("content", memory.Content);
+        snapshotCmd.Parameters.AddWithValue("text", memory.Text);
+        snapshotCmd.Parameters.AddWithValue("source", memory.Source);
+        snapshotCmd.Parameters.AddWithValue("tags", memory.Tags ?? Array.Empty<string>());
+        snapshotCmd.Parameters.AddWithValue("confidence", memory.Confidence);
+        snapshotCmd.Parameters.AddWithValue("title", (object?)memory.Title ?? DBNull.Value);
+        snapshotCmd.Parameters.AddWithValue("relationshipIds", relationshipIds);
+        snapshotCmd.Parameters.AddWithValue("createdAt", memory.CreatedAt);
+        await snapshotCmd.ExecuteNonQueryAsync(cancellationToken);
     }
 }
