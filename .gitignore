@@ -416,3 +416,4 @@ FodyWeavers.xsd
 
 # Claude Code files
 .claude/
+/.playwright-mcp
