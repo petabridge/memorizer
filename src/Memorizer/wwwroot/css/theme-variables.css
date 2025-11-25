@@ -48,7 +48,7 @@
     /* Footer */
     --footer-border: #dee2e6;
     --footer-text: #6c757d;
-    --footer-link: #6c757d;
+    --footer-link: #0d6efd;
 }
 
 /* Dark Theme */
@@ -94,7 +94,7 @@
     /* Footer */
     --footer-border: #333333;
     --footer-text: #94a3b8;
-    --footer-link: #94a3b8;
+    --footer-link: #60a5fa;
 }
 
 /* Mermaid container styling */

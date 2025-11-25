@@ -147,14 +147,13 @@ footer {
     border-color: var(--footer-border) !important;
 }
 
-footer .text-muted,
-footer .text-muted a {
+footer .text-muted {
     color: var(--footer-text) !important;
 }
 
 footer a {
-    color: var(--footer-link);
-    text-decoration: underline;
+    color: var(--footer-link) !important;
+    text-decoration: underline !important;
 }
 
 footer a:hover {
