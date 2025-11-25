@@ -1,7 +1,5 @@
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
-using Akka;
-using Akka.Streams.Dsl;
 
 namespace Memorizer.Actors;
 
@@ -103,59 +101,3 @@ public sealed record ProgressSubscription(string SubscriberId, ChannelReader<Pro
 /// </summary>
 public sealed record UnsubscribeFromProgress(string SubscriberId);
 
-#region Legacy Types (for backward compatibility during migration)
-// TODO: Remove these types after migrating actors to use ProgressJobManager
-
-/// <summary>
-/// Base interface for all progress events.
-/// </summary>
-public interface IProgressEvent
-{
-    int TotalProcessed { get; }
-    int TotalSuccessful { get; }
-    int TotalFailed { get; }
-    int Outstanding { get; }
-    string Status { get; }
-    string RequestedBy { get; }
-    TimeSpan? Duration { get; }
-}
-
-/// <summary>
-/// Progress event for title generation operations
-/// </summary>
-public sealed record TitleGenerationProgressEvent(
-    int TotalProcessed,
-    int TotalSuccessful,
-    int TotalFailed,
-    int Outstanding,
-    string Status,
-    string RequestedBy,
-    TimeSpan? Duration = null,
-    List<Guid>? FailedMemoryIds = null
-) : IProgressEvent;
-
-/// <summary>
-/// Progress event for metadata embedding operations
-/// </summary>
-public sealed record MetadataEmbeddingProgressEvent(
-    int TotalProcessed,
-    int TotalSuccessful,
-    int TotalFailed,
-    int Outstanding,
-    string Status,
-    string RequestedBy,
-    TimeSpan? Duration = null,
-    List<Guid>? FailedMemoryIds = null
-) : IProgressEvent;
-
-/// <summary>
-/// Generic request to get a progress source from an actor.
-/// </summary>
-public sealed record GetProgressSource<TEvent>() where TEvent : IProgressEvent;
-
-/// <summary>
-/// Response containing a typed Akka.Streams Source
-/// </summary>
-public sealed record ProgressSource<TEvent>(Source<TEvent, NotUsed> Source) where TEvent : IProgressEvent;
-
-#endregion
