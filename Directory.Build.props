@@ -3,23 +3,21 @@
     <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/dariogriffo/postg-mem</PackageProjectUrl>
-    <VersionPrefix>1.7.1</VersionPrefix>
+    <VersionPrefix>1.8.0</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
-    <PackageReleaseNotes>**Breaking Changes**
-- **MCP Endpoint Configuration Updated**: The recommended MCP endpoint has changed from `/sse` to the root path `/` to use modern Streamable HTTP transport (MCP spec 2025-03-26+)
-  - **Before:** `"url": "http://localhost:5000/sse"`
-  - **After:** `"url": "http://localhost:5000"`
-  - The `/sse` endpoint still works for backward compatibility but is no longer recommended
-  - [Update MCP endpoint from /sse to root path for Streamable HTTP](https://github.com/petabridge/memorizer-v1/pull/57)
-
-**Bug Fixes**
-- [Enable stateless mode for MCP HTTP transport](https://github.com/petabridge/memorizer-v1/pull/64) - Fixes "Session not found" errors when clients reconnect or server restarts by enabling sessionless operation
+    <PackageReleaseNotes>**Features**
+- [.NET 10 SSE support](https://github.com/petabridge/memorizer-v1/pull/88) - Upgraded to .NET 10 with improved Server-Sent Events capabilities
+- [Add Mermaid.js support and dark/light theme switcher](https://github.com/petabridge/memorizer-v1/pull/92) - Enhanced documentation visualization with automatic theme detection
+- [Unified Embedding Regeneration Tool](https://github.com/petabridge/memorizer-v1/pull/91) - Streamlined tool for regenerating embeddings across the database
 
 **Updates**
-- [Bump ModelContextProtocol from 0.3.0-preview.4 to 0.4.0-preview.2](https://github.com/petabridge/memorizer-v1/pull/56) - Fixes server notification bugs and improves protocol compatibility
-- [Bump ModelContextProtocol.AspNetCore from 0.3.0-preview.4 to 0.4.0-preview.2](https://github.com/petabridge/memorizer-v1/pull/56) - Adds Streamable HTTP transport support</PackageReleaseNotes>
+- [Updated Model Context Protocol (MCP) packages to 0.4.0-preview.3](https://github.com/petabridge/memorizer-v1/pull/93) - Latest MCP protocol improvements and bug fixes
+- Updated Akka.NET and .NET dependencies to latest versions - Including Akka.Persistence.Sql.Hosting, Akka.Hosting, Akka.Hosting.TestKit, and Microsoft.NET.Test.Sdk
+
+**Bug Fixes**
+- [Fix footer link styling in light and dark themes](https://github.com/petabridge/memorizer-v1/pull/94) - Improved visibility and consistency of footer links across themes</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>

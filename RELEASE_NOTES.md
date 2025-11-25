@@ -1,3 +1,17 @@
+#### 1.8.0 November 25th 2025 ####
+
+**Features**
+- [Unified Embedding Regeneration Tool](https://github.com/petabridge/memorizer-v1/pull/91) - Regenerate embeddings for both memory content and metadata, enabling model changes and dimension updates without data loss
+- [.NET 10 SSE support](https://github.com/petabridge/memorizer-v1/pull/88) - Upgraded to .NET 10 with improved Server-Sent Events capabilities for real-time progress tracking
+- [Add Mermaid.js support and dark/light theme switcher](https://github.com/petabridge/memorizer-v1/pull/92) - Enhanced documentation visualization with Mermaid diagrams and automatic theme detection
+
+**Updates**
+- [Updated Model Context Protocol (MCP) packages to 0.4.0-preview.3](https://github.com/petabridge/memorizer-v1/pull/93) - Latest MCP protocol improvements and bug fixes
+- Updated Akka.NET and .NET dependencies to latest versions - Including Akka.Persistence.Sql.Hosting, Akka.Hosting, Akka.Hosting.TestKit, and Microsoft.NET.Test.Sdk
+
+**Bug Fixes**
+- [Fix footer link styling in light and dark themes](https://github.com/petabridge/memorizer-v1/pull/94) - Improved visibility and consistency of footer links across themes
+
 #### 1.7.1 October 10th 2025 ####
 
 **Breaking Changes**
