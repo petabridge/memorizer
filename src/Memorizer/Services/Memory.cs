@@ -1512,10 +1512,11 @@ public class Storage : IStorage
             await eventCmd.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        // Create snapshot
+        // Create snapshot (use ON CONFLICT DO NOTHING to handle pre-existing snapshots from migration)
         const string snapshotSql = @"
             INSERT INTO memory_versions (memory_id, version_number, type, content, text, source, tags, confidence, title, relationship_ids, created_at)
-            VALUES (@memoryId, @versionNumber, @type, @content, @text, @source, @tags, @confidence, @title, @relationshipIds, @createdAt)";
+            VALUES (@memoryId, @versionNumber, @type, @content, @text, @source, @tags, @confidence, @title, @relationshipIds, @createdAt)
+            ON CONFLICT (memory_id, version_number) DO NOTHING";
 
         await using var snapshotCmd = new NpgsqlCommand(snapshotSql, connection, transaction);
         snapshotCmd.Parameters.AddWithValue("memoryId", memory.Id);
