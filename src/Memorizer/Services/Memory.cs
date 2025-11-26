@@ -658,8 +658,7 @@ public class Storage : IStorage
                 transaction,
                 existingMemory,
                 existingMemory.CurrentVersion,
-                "update",
-                new { old_text = existingMemory.Text, new_text = bodyText },
+                new ContentUpdatedEvent(existingMemory.Text, bodyText),
                 null,
                 cancellationToken);
 
@@ -1296,11 +1295,8 @@ public class Storage : IStorage
             float[] embeddingMetadata = await _embeddingService.Generate(metadataText, cancellationToken);
 
             // Record revert event
-            var eventData = JsonDocument.Parse(JsonSerializer.Serialize(new
-            {
-                reverted_to_version = versionNumber,
-                previous_version = currentMemory.CurrentVersion
-            }));
+            var revertEvent = new MemoryRevertedEvent(versionNumber, currentMemory.CurrentVersion);
+            var (eventType, eventData) = revertEvent.Serialize();
 
             const string eventSql = @"
                 INSERT INTO memory_events (memory_id, version_number, event_type, event_data, changed_by)
@@ -1310,7 +1306,7 @@ public class Storage : IStorage
             {
                 eventCmd.Parameters.AddWithValue("memoryId", memoryId);
                 eventCmd.Parameters.AddWithValue("versionNumber", newVersionNumber);
-                eventCmd.Parameters.AddWithValue("eventType", MemoryEventTypes.MemoryReverted);
+                eventCmd.Parameters.AddWithValue("eventType", eventType);
                 eventCmd.Parameters.AddWithValue("eventData", eventData);
                 eventCmd.Parameters.AddWithValue("changedBy", (object?)changedBy ?? DBNull.Value);
                 await eventCmd.ExecuteNonQueryAsync(cancellationToken);
@@ -1487,16 +1483,15 @@ public class Storage : IStorage
         NpgsqlTransaction transaction,
         Memorizer.Models.Memory memory,
         int newVersionNumber,
-        string eventType,
-        object eventData,
+        MemoryChangeEvent changeEvent,
         string? changedBy,
         CancellationToken cancellationToken)
     {
         // Get current relationship IDs
         var relationshipIds = memory.Relationships?.Select(r => r.Id).ToArray() ?? Array.Empty<Guid>();
 
-        // Create event
-        var eventDataJson = JsonDocument.Parse(JsonSerializer.Serialize(eventData));
+        // Serialize the strongly-typed event
+        var (eventType, eventDataJson) = changeEvent.Serialize();
 
         const string eventSql = @"
             INSERT INTO memory_events (memory_id, version_number, event_type, event_data, changed_by)

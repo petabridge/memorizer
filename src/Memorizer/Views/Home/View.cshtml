@@ -523,7 +523,9 @@ function displayVersionHistory(versions) {
     loadingEl.style.display = 'none';
     contentEl.style.display = 'block';
 
-    if (!versions || versions.length <= 1) {
+    // Show empty message only if there are truly no version snapshots
+    // (versions.length === 0 means no edits have been made yet)
+    if (!versions || versions.length === 0) {
         emptyEl.style.display = 'block';
         return;
     }
@@ -534,23 +536,25 @@ function displayVersionHistory(versions) {
         const isLatest = index === 0;
         const hasPrevious = index < versions.length - 1;
 
-        // Parse events to display what changed
-        let changeDescription = 'Initial creation';
+        // Parse events to display what changed - use displayText from strongly-typed events
+        let changeDescription = 'Version snapshot';
         if (version.events && version.events.length > 0) {
-            const eventTypes = [...new Set(version.events.map(e => e.eventType))];
-            changeDescription = eventTypes.map(t => formatEventType(t)).join(', ');
+            // Use displayText property which contains the rich change description
+            changeDescription = version.events.map(e => e.displayText || formatEventType(e.eventType)).join(', ');
         }
 
+        // Version snapshots are historical - they represent the state BEFORE an edit
+        // The most recent snapshot (index 0) shows what was changed to become the current version
         const versionItem = document.createElement('div');
         versionItem.className = 'version-item d-flex align-items-start mb-3 pb-3 border-bottom';
         versionItem.innerHTML = `
             <div class="version-marker me-3">
-                <span class="badge ${isLatest ? 'bg-primary' : 'bg-secondary'} rounded-pill">v${version.versionNumber}</span>
+                <span class="badge bg-secondary rounded-pill">v${version.versionNumber}</span>
             </div>
             <div class="version-content flex-grow-1">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <strong>${isLatest ? 'Current Version' : `Version ${version.versionNumber}`}</strong>
+                        <strong>Version ${version.versionNumber}</strong>
                         <br>
                         <small class="text-muted">
                             <i class="fas fa-clock me-1"></i>
@@ -568,11 +572,9 @@ function displayVersionHistory(versions) {
                             <i class="fas fa-code-compare"></i>
                         </button>
                         ` : ''}
-                        ${!isLatest ? `
                         <button class="btn btn-outline-warning btn-sm" onclick="promptRevert(${version.versionNumber})" title="Revert to this version">
                             <i class="fas fa-undo"></i>
                         </button>
-                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -583,16 +585,23 @@ function displayVersionHistory(versions) {
 
 function formatEventType(eventType) {
     const mappings = {
+        // New strongly-typed event types
+        'memory_created': 'Memory created',
+        'content_updated': 'Content updated',
+        'metadata_updated': 'Metadata updated',
+        'relationship_added': 'Relationship added',
+        'relationship_removed': 'Relationship removed',
+        'memory_reverted': 'Reverted',
+        // Legacy event types (for backwards compatibility)
         'text_changed': 'Content updated',
         'title_changed': 'Title changed',
         'tags_changed': 'Tags modified',
         'type_changed': 'Type changed',
         'confidence_changed': 'Confidence updated',
         'source_changed': 'Source changed',
-        'relationship_added': 'Relationship added',
-        'relationship_removed': 'Relationship removed',
         'created': 'Created',
-        'reverted': 'Reverted'
+        'reverted': 'Reverted',
+        'update': 'Updated'
     };
     return mappings[eventType] || eventType;
 }

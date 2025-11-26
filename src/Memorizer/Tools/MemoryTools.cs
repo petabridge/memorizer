@@ -426,7 +426,7 @@ public class MemoryTools
                 versionResult.AppendLine("📝 Changes in this version:");
                 foreach (var evt in version.Events)
                 {
-                    versionResult.AppendLine($"  • {evt.GetDisplayText()}");
+                    versionResult.AppendLine($"  • {evt.DisplayText}");
                 }
             }
 
