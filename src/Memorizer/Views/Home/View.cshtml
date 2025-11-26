@@ -304,10 +304,13 @@ function populateMemoryView(memory) {
             displayRelatedMemories(memory.relationships);
         }
 
-        // Update version badge
+        // Update version badge and track current version globally
         const versionBadge = document.getElementById('versionBadge');
-        if (versionBadge && memory.currentVersion) {
-            versionBadge.textContent = `v${memory.currentVersion}`;
+        if (memory.currentVersion) {
+            currentVersion = memory.currentVersion;
+            if (versionBadge) {
+                versionBadge.textContent = `v${memory.currentVersion}`;
+            }
         }
 
         // Load version history
@@ -433,6 +436,7 @@ function showError() {
 
 let pendingRevertVersion = null;
 let versionHistory = [];
+let currentVersion = 1; // Track the current version of the memory
 
 async function loadVersionHistory() {
     try {
@@ -476,6 +480,7 @@ function displayVersionHistory(versions) {
     versions.forEach((version, index) => {
         const isLatest = index === 0;
         const hasPrevious = index < versions.length - 1;
+        const isCurrentVersion = version.versionNumber === currentVersion;
 
         // Parse events to display what changed - use displayText from strongly-typed events
         let changeDescription = 'Version snapshot';
@@ -490,12 +495,12 @@ function displayVersionHistory(versions) {
         versionItem.className = 'version-item d-flex align-items-start mb-3 pb-3 border-bottom';
         versionItem.innerHTML = `
             <div class="version-marker me-3">
-                <span class="badge bg-secondary rounded-pill">v${version.versionNumber}</span>
+                <span class="badge ${isCurrentVersion ? 'bg-primary' : 'bg-secondary'} rounded-pill">v${version.versionNumber}${isCurrentVersion ? ' (current)' : ''}</span>
             </div>
             <div class="version-content flex-grow-1">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
-                        <strong>Version ${version.versionNumber}</strong>
+                        <strong>Version ${version.versionNumber}</strong>${isCurrentVersion ? ' <span class="badge bg-success">Current</span>' : ''}
                         <br>
                         <small class="text-muted">
                             <i class="fas fa-clock me-1"></i>
@@ -516,9 +521,11 @@ function displayVersionHistory(versions) {
                             <i class="fas fa-code-compare"></i>
                         </a>
                         ` : ''}
+                        ${!isCurrentVersion ? `
                         <button class="btn btn-outline-warning btn-sm" onclick="promptRevert(${version.versionNumber})" title="Revert to this version">
                             <i class="fas fa-undo"></i>
                         </button>
+                        ` : ''}
                     </div>
                 </div>
             </div>

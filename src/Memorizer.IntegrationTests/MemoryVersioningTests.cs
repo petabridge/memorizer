@@ -630,6 +630,91 @@ public class MemoryVersioningTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// Tests the "revert the revert" scenario: after reverting from v2 to v1,
+    /// the v2 snapshot should be preserved and you should be able to revert back to v2.
+    /// This verifies the fix for the bug where the pre-revert state was not being saved correctly.
+    /// </summary>
+    [Fact]
+    public async Task RevertToVersion_ShouldPreservePreRevertState_AllowingRevertTheRevert()
+    {
+        // Arrange
+        var storage = _serviceProvider.GetRequiredService<IStorage>();
+
+        // Step 1: Create a memory (v1)
+        var memory = await storage.StoreMemory(
+            "revert-test",
+            "Version 1 content - the original",
+            "test",
+            new[] { "v1", "original" },
+            1.0,
+            "Revert Test V1"
+        );
+        var memoryId = memory.Id;
+        _output.WriteLine($"Created memory at v{memory.CurrentVersion}: '{memory.Text}'");
+
+        try
+        {
+            // Step 2: Edit to create v2
+            var v2 = await storage.UpdateMemory(
+                memoryId,
+                "revert-test",
+                "Version 2 content - the edited version",
+                "test",
+                new[] { "v2", "edited" },
+                0.9,
+                "Revert Test V2",
+                CancellationToken.None
+            );
+            Assert.NotNull(v2);
+            Assert.Equal(2, v2.CurrentVersion);
+            _output.WriteLine($"Edited memory to v{v2.CurrentVersion}: '{v2.Text}'");
+
+            // Step 3: Revert to v1 (creates v3 with v1's content)
+            var v3 = await storage.RevertToVersion(memoryId, 1, "test-user", CancellationToken.None);
+            Assert.NotNull(v3);
+            Assert.Equal(3, v3.CurrentVersion);
+            Assert.Equal("Version 1 content - the original", v3.Text);
+            _output.WriteLine($"Reverted to v1, now at v{v3.CurrentVersion}: '{v3.Text}'");
+
+            // Step 4: Verify v2 snapshot was preserved
+            var versions = await storage.GetVersionHistory(memoryId, null, CancellationToken.None);
+            _output.WriteLine($"Version history has {versions.Count} versions:");
+            foreach (var v in versions)
+            {
+                _output.WriteLine($"  - v{v.VersionNumber}: '{v.Text?.Substring(0, Math.Min(50, v.Text?.Length ?? 0))}...'");
+            }
+
+            // v2 should exist in the history with v2's content (NOT v1's content)
+            var v2Snapshot = versions.FirstOrDefault(v => v.VersionNumber == 2);
+            Assert.NotNull(v2Snapshot);
+            Assert.Equal("Version 2 content - the edited version", v2Snapshot.Text);
+            _output.WriteLine($"✓ v2 snapshot correctly preserved with content: '{v2Snapshot.Text}'");
+
+            // Step 5: THE KEY TEST - Revert back to v2 ("revert the revert")
+            var v4 = await storage.RevertToVersion(memoryId, 2, "test-user", CancellationToken.None);
+            Assert.NotNull(v4);
+            Assert.Equal(4, v4.CurrentVersion);
+            Assert.Equal("Version 2 content - the edited version", v4.Text);
+            Assert.Equal("Revert Test V2", v4.Title);
+            _output.WriteLine($"✓ Successfully reverted to v2, now at v{v4.CurrentVersion}: '{v4.Text}'");
+
+            // Step 6: Verify v3 was also preserved (the state before the second revert)
+            var finalVersions = await storage.GetVersionHistory(memoryId, null, CancellationToken.None);
+            var v3Snapshot = finalVersions.FirstOrDefault(v => v.VersionNumber == 3);
+            Assert.NotNull(v3Snapshot);
+            Assert.Equal("Version 1 content - the original", v3Snapshot.Text);
+            _output.WriteLine($"✓ v3 snapshot correctly preserved with content: '{v3Snapshot.Text}'");
+
+            _output.WriteLine($"✓ Full version chain: v1 -> edit -> v2 -> revert to v1 -> v3 -> revert to v2 -> v4");
+        }
+        finally
+        {
+            // Cleanup
+            await storage.Delete(memoryId, CancellationToken.None);
+        }
+    }
+
     public void Dispose()
     {
         (_serviceProvider as IDisposable)?.Dispose();

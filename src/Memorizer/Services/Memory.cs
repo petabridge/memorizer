@@ -1325,25 +1325,29 @@ public class Storage : IStorage
                 await eventCmd.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            // Create snapshot of current state before reverting (for history)
+            // Create snapshot of CURRENT state before reverting (for history)
+            // This preserves the state at currentMemory.CurrentVersion so it can be reverted back to
             var relationshipIds = currentMemory.Relationships?.Select(r => r.Id).ToArray() ?? Array.Empty<Guid>();
 
             const string snapshotSql = @"
                 INSERT INTO memory_versions (memory_id, version_number, type, content, text, source, tags, confidence, title, relationship_ids, created_at)
-                VALUES (@memoryId, @versionNumber, @type, @content, @text, @source, @tags, @confidence, @title, @relationshipIds, @createdAt)";
+                VALUES (@memoryId, @versionNumber, @type, @content, @text, @source, @tags, @confidence, @title, @relationshipIds, @createdAt)
+                ON CONFLICT (memory_id, version_number) DO NOTHING";
 
             await using (var snapshotCmd = new NpgsqlCommand(snapshotSql, connection, transaction))
             {
                 snapshotCmd.Parameters.AddWithValue("memoryId", memoryId);
-                snapshotCmd.Parameters.AddWithValue("versionNumber", newVersionNumber);
-                snapshotCmd.Parameters.AddWithValue("type", targetVersion.Type);
-                snapshotCmd.Parameters.AddWithValue("content", targetVersion.Content);
-                snapshotCmd.Parameters.AddWithValue("text", targetVersion.Text);
-                snapshotCmd.Parameters.AddWithValue("source", targetVersion.Source);
-                snapshotCmd.Parameters.AddWithValue("tags", targetVersion.Tags ?? Array.Empty<string>());
-                snapshotCmd.Parameters.AddWithValue("confidence", targetVersion.Confidence);
-                snapshotCmd.Parameters.AddWithValue("title", (object?)targetVersion.Title ?? DBNull.Value);
-                snapshotCmd.Parameters.AddWithValue("relationshipIds", targetVersion.RelationshipIds);
+                // Use CURRENT version number - this snapshots the state BEFORE the revert
+                snapshotCmd.Parameters.AddWithValue("versionNumber", currentMemory.CurrentVersion);
+                // Use CURRENT memory content, not target version content
+                snapshotCmd.Parameters.AddWithValue("type", currentMemory.Type);
+                snapshotCmd.Parameters.AddWithValue("content", currentMemory.Content);
+                snapshotCmd.Parameters.AddWithValue("text", currentMemory.Text);
+                snapshotCmd.Parameters.AddWithValue("source", currentMemory.Source);
+                snapshotCmd.Parameters.AddWithValue("tags", currentMemory.Tags ?? Array.Empty<string>());
+                snapshotCmd.Parameters.AddWithValue("confidence", currentMemory.Confidence);
+                snapshotCmd.Parameters.AddWithValue("title", (object?)currentMemory.Title ?? DBNull.Value);
+                snapshotCmd.Parameters.AddWithValue("relationshipIds", relationshipIds);
                 snapshotCmd.Parameters.AddWithValue("createdAt", currentMemory.CreatedAt);
                 await snapshotCmd.ExecuteNonQueryAsync(cancellationToken);
             }
