@@ -3,11 +3,18 @@
 }
 
 <style>
-    .diff-added { background-color: #d4edda; }
-    .diff-removed { background-color: #f8d7da; }
-    .diff-modified { background-color: #fff3cd; }
+    /* Light mode diff styles */
+    .diff-added { background-color: #d4edda; color: #155724; }
+    .diff-removed { background-color: #f8d7da; color: #721c24; }
+    .diff-modified { background-color: #fff3cd; color: #856404; }
     .diff-line { font-family: monospace; white-space: pre-wrap; padding: 2px 8px; }
     .diff-line-number { color: #6c757d; user-select: none; min-width: 40px; text-align: right; padding-right: 8px; border-right: 1px solid #dee2e6; }
+
+    /* Dark mode diff styles */
+    [data-theme="dark"] .diff-added { background-color: #1e4620; color: #75d47b; }
+    [data-theme="dark"] .diff-removed { background-color: #4a1c1c; color: #f5a5a5; }
+    [data-theme="dark"] .diff-modified { background-color: #4a3f1c; color: #f5d5a5; }
+    [data-theme="dark"] .diff-line-number { color: #9ca3af; border-right-color: #4a5568; }
 </style>
 
 <div class="row justify-content-center">
