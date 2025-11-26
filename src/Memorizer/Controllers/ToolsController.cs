@@ -12,17 +12,20 @@ public class ToolsController : Controller
 {
     private readonly IActorRef _titleGenerationActor;
     private readonly IActorRef _embeddingRegenerationActor;
+    private readonly IActorRef _versionPurgeActor;
     private readonly LlmSettings _llmSettings;
     private readonly ILogger<ToolsController> _logger;
 
     public ToolsController(
         IRequiredActor<TitleGenerationActorKey> titleGenerationActor,
         IRequiredActor<EmbeddingRegenerationActorKey> embeddingRegenerationActor,
+        IRequiredActor<VersionPurgeActorKey> versionPurgeActor,
         LlmSettings llmSettings,
         ILogger<ToolsController> logger)
     {
         _titleGenerationActor = titleGenerationActor.ActorRef;
         _embeddingRegenerationActor = embeddingRegenerationActor.ActorRef;
+        _versionPurgeActor = versionPurgeActor.ActorRef;
         _llmSettings = llmSettings;
         _logger = logger;
     }
@@ -256,6 +259,97 @@ public class ToolsController : Controller
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting embedding regeneration: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Display the version purge tool page
+    /// </summary>
+    [HttpGet]
+    [Route("version-purge")]
+    public IActionResult VersionPurge()
+    {
+        return View();
+    }
+
+    /// <summary>
+    /// Start version purge for versions older than the specified number of days
+    /// </summary>
+    [HttpPost]
+    [Route("start-version-purge")]
+    public async Task<IActionResult> StartVersionPurge(int daysOld = 30)
+    {
+        try
+        {
+            // Check if a purge is already running
+            var status = await _versionPurgeActor.Ask<VersionPurgeStatus>(new GetVersionPurgeStatus(), TimeSpan.FromSeconds(5));
+            if (status.IsRunning)
+            {
+                return Json(new {
+                    success = false,
+                    message = "A version purge operation is already in progress. Please wait for it to complete before starting a new one.",
+                    status = "running",
+                    outstanding = status.Outstanding,
+                    totalProcessed = status.TotalProcessed,
+                    totalSuccessful = status.TotalSuccessful,
+                    totalFailed = status.TotalFailed,
+                    requestedBy = status.RequestedBy
+                });
+            }
+
+            _logger.LogInformation("Starting version purge for versions older than {DaysOld} days", daysOld);
+
+            var purgeMessage = new PurgeVersionsByAge
+            {
+                DaysOld = daysOld,
+                RequestedBy = User.Identity?.Name ?? "Anonymous"
+            };
+
+            // Use Ask to wait for the actor to start the job - this ensures the SSE subscription
+            // will see the job as Running (not Idle) when it connects
+            var startStatus = await _versionPurgeActor.Ask<VersionPurgeStatus>(
+                purgeMessage, TimeSpan.FromSeconds(30));
+
+            return Json(new {
+                success = true,
+                message = $"Version purge started for versions older than {daysOld} days",
+                isRunning = startStatus.IsRunning
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting version purge: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Get the status of version purge operations
+    /// </summary>
+    [HttpGet]
+    [Route("version-purge-status")]
+    public async Task<IActionResult> GetVersionPurgeStatus()
+    {
+        try
+        {
+            var status = await _versionPurgeActor.Ask<VersionPurgeStatus>(new GetVersionPurgeStatus(), TimeSpan.FromSeconds(5));
+            return Json(new {
+                success = true,
+                status = status.Status,
+                isRunning = status.IsRunning,
+                outstanding = status.Outstanding,
+                totalProcessed = status.TotalProcessed,
+                totalSuccessful = status.TotalSuccessful,
+                totalFailed = status.TotalFailed,
+                requestedBy = status.RequestedBy,
+                startTime = status.StartTime,
+                duration = status.Duration?.TotalSeconds
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting version purge status: {Error}", ex.Message);
             return Json(new { success = false, message = $"Error: {ex.Message}" });
         }
     }

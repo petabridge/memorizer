@@ -98,6 +98,11 @@ public static class ServiceCollectionExtensions
                 var embeddingRegenerationActorProps = resolver.Props<EmbeddingRegenerationActor>();
                 var embeddingRegenerationActor = system.ActorOf(embeddingRegenerationActorProps, "embedding-regeneration");
                 registry.Register<EmbeddingRegenerationActorKey>(embeddingRegenerationActor);
+
+                // Create and register the VersionPurgeActor
+                var versionPurgeActorProps = resolver.Props<VersionPurgeActor>();
+                var versionPurgeActor = system.ActorOf(versionPurgeActorProps, "version-purge");
+                registry.Register<VersionPurgeActorKey>(versionPurgeActor);
             });
 
             // TODO: Configure Akka.Persistence.Sql with PostgreSQL

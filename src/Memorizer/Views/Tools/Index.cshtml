@@ -61,6 +61,29 @@
             <div class="card h-100">
                 <div class="card-body">
                     <h5 class="card-title">
+                        <i class="fas fa-trash-alt me-2"></i>
+                        Version Purge
+                    </h5>
+                    <p class="card-text">
+                        Clean up old version snapshots to reclaim storage space.
+                    </p>
+                    <p class="text-muted small">
+                        Purge version snapshots older than a specified age. Always preserves the latest version of each memory.
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <a href="@Url.Action("VersionPurge", "Tools")" class="btn btn-warning">
+                        <i class="fas fa-broom me-1"></i>
+                        Purge Versions
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
                         <i class="fas fa-chart-bar me-2"></i>
                         Performance Analytics
                     </h5>

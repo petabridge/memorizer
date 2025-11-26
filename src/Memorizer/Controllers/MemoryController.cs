@@ -378,17 +378,7 @@ public class MemoryController : ControllerBase
         });
     }
 
-    // ==================== Admin Version Management Endpoints ====================
-
-    /// <summary>
-    /// Get version statistics across all memories
-    /// </summary>
-    [HttpGet("admin/versions/stats")]
-    public async Task<ActionResult<VersionStats>> GetVersionStats()
-    {
-        var stats = await _storage.GetVersionStats();
-        return Ok(stats);
-    }
+    // ==================== Per-Memory Version Management Endpoints ====================
 
     /// <summary>
     /// Purge old versions for a specific memory, keeping only the latest N versions
@@ -412,26 +402,6 @@ public class MemoryController : ControllerBase
         {
             VersionsPurged = purged,
             Message = $"Purged {purged} old version(s), keeping latest {request.VersionsToKeep}"
-        });
-    }
-
-    /// <summary>
-    /// Purge versions older than a specified date across all memories
-    /// </summary>
-    [HttpPost("admin/versions/purge-by-age")]
-    public async Task<ActionResult<PurgeResult>> PurgeVersionsByAge([FromBody] PurgeByAgeRequest request)
-    {
-        if (request.DaysOld < 1)
-        {
-            return BadRequest("Days must be at least 1");
-        }
-
-        var cutoffDate = DateTime.UtcNow.AddDays(-request.DaysOld);
-        var purged = await _storage.PurgeVersionsOlderThan(cutoffDate);
-        return Ok(new PurgeResult
-        {
-            VersionsPurged = purged,
-            Message = $"Purged {purged} version(s) older than {cutoffDate:yyyy-MM-dd}"
         });
     }
 }
@@ -506,14 +476,6 @@ public class PurgeVersionsRequest
     /// Number of latest versions to keep for each memory
     /// </summary>
     public int VersionsToKeep { get; set; } = 5;
-}
-
-public class PurgeByAgeRequest
-{
-    /// <summary>
-    /// Number of days - versions older than this will be purged
-    /// </summary>
-    public int DaysOld { get; set; } = 30;
 }
 
 public class PurgeResult

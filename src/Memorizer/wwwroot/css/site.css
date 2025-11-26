@@ -221,9 +221,50 @@ footer a:hover {
     color: var(--text-primary);
 }
 
-/* Alert styling for dark mode (keep functional colors) */
+/* Alert styling for dark mode (proper contrast with dark backgrounds) */
 [data-theme="dark"] .alert {
     border-width: 1px;
+}
+
+[data-theme="dark"] .alert-warning {
+    background-color: rgba(255, 193, 7, 0.15);
+    border-color: rgba(255, 193, 7, 0.4);
+    color: #ffc107;
+}
+
+[data-theme="dark"] .alert-info {
+    background-color: rgba(13, 202, 240, 0.15);
+    border-color: rgba(13, 202, 240, 0.4);
+    color: #0dcaf0;
+}
+
+[data-theme="dark"] .alert-secondary {
+    background-color: rgba(108, 117, 125, 0.15);
+    border-color: rgba(108, 117, 125, 0.4);
+    color: #adb5bd;
+}
+
+[data-theme="dark"] .alert-success {
+    background-color: rgba(25, 135, 84, 0.15);
+    border-color: rgba(25, 135, 84, 0.4);
+    color: #20c997;
+}
+
+[data-theme="dark"] .alert-danger {
+    background-color: rgba(220, 53, 69, 0.15);
+    border-color: rgba(220, 53, 69, 0.4);
+    color: #ea868f;
+}
+
+[data-theme="dark"] .alert-primary {
+    background-color: rgba(13, 110, 253, 0.15);
+    border-color: rgba(13, 110, 253, 0.4);
+    color: #6ea8fe;
+}
+
+[data-theme="dark"] .alert a {
+    color: inherit;
+    text-decoration: underline;
 }
 
 /* Spinner styling */

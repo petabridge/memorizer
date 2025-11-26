@@ -90,16 +90,6 @@ public class HomeController : Controller
     }
 
     /// <summary>
-    /// Admin page for version management
-    /// </summary>
-    [HttpGet]
-    [Route("admin")]
-    public IActionResult Admin()
-    {
-        return View();
-    }
-
-    /// <summary>
     /// View a specific version of a memory
     /// </summary>
     [HttpGet]

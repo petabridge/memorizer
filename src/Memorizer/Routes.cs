@@ -79,6 +79,38 @@ public static class Routes
             }
         });
 
+        // SSE endpoint for version purge progress
+        app.MapGet("/ui/tools/version-purge-progress",
+            async (IActorRegistry actorRegistry, CancellationToken ct) =>
+        {
+            var versionPurgeActor = await actorRegistry.GetAsync<VersionPurgeActorKey>(ct);
+            var subscriberId = Guid.NewGuid().ToString();
+
+            var subscription = await versionPurgeActor.Ask<ProgressSubscription>(
+                new SubscribeToProgress(subscriberId),
+                ct);
+
+            return TypedResults.ServerSentEvents(StreamProgress());
+
+            async IAsyncEnumerable<SseItem<ProgressEvent>> StreamProgress()
+            {
+                try
+                {
+                    await foreach (var progress in subscription.Reader.ReadAllAsync(ct))
+                    {
+                        yield return new SseItem<ProgressEvent>(progress, "progress")
+                        {
+                            EventId = Guid.NewGuid().ToString()
+                        };
+                    }
+                }
+                finally
+                {
+                    versionPurgeActor.Tell(new UnsubscribeFromProgress(subscriberId), ActorRefs.NoSender);
+                }
+            }
+        });
+
         return app;
     }
 }

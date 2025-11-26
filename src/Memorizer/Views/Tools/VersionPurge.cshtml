@@ -1,0 +1,220 @@
+@{
+    ViewData["Title"] = "Version Purge Tool";
+}
+
+<div class="container-fluid version-purge-page">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="@Url.Action("Index", "Tools")">Tools</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Version Purge</li>
+                </ol>
+            </nav>
+
+            <h1 class="mb-4">
+                <i class="fas fa-trash-alt me-2"></i>
+                Version Purge Tool
+            </h1>
+            <p class="lead">Clean up old version snapshots to reclaim storage space.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Purge Old Versions</h5>
+                </div>
+                <div class="card-body">
+                    <form id="versionPurgeForm">
+                        <div class="mb-3">
+                            <label for="daysOld" class="form-label">Minimum Age (Days)</label>
+                            <input type="number" class="form-control" id="daysOld" name="daysOld"
+                                   value="30" min="1" max="365" required>
+                            <div class="form-text text-body-secondary">
+                                Delete version snapshots older than this many days (1-365).
+                                The most recent version of each memory is always preserved.
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+                            <button type="submit" class="btn btn-warning" id="startButton">
+                                <i class="fas fa-broom me-1"></i>
+                                Start Version Purge
+                            </button>
+                            <button type="button" class="btn btn-secondary" id="statusButton">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Check Status
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Progress and Results -->
+            <div class="card mt-4" id="progressCard" style="display: none;">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Progress</h6>
+                </div>
+                <div class="card-body">
+                    <div class="progress mb-3">
+                        <div class="progress-bar bg-warning" role="progressbar" style="width: 0%"
+                             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="progressBar">
+                            0%
+                        </div>
+                    </div>
+                    <div id="progressText">Initializing...</div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="card mt-4" id="resultsCard" style="display: none;">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Results</h6>
+                </div>
+                <div class="card-body">
+                    <div id="resultsContent">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">How It Works</h6>
+                </div>
+                <div class="card-body">
+                    <ol class="list-group list-group-numbered list-group-flush">
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Find Old Versions</strong><br>
+                            <small class="text-body-secondary">Identify version snapshots older than the specified age</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Preserve Latest</strong><br>
+                            <small class="text-body-secondary">Always keep the most recent version of each memory</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Delete in Batches</strong><br>
+                            <small class="text-body-secondary">Remove old versions in batches for safety</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Report Results</strong><br>
+                            <small class="text-body-secondary">Show how many versions and events were purged</small>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Important Notes</h6>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning" role="alert">
+                        <small>
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            <strong>Irreversible:</strong> Deleted versions cannot be recovered. Make sure you have backups if needed.
+                        </small>
+                    </div>
+                    <div class="alert alert-info" role="alert">
+                        <small>
+                            <i class="fas fa-info-circle me-1"></i>
+                            <strong>Latest Protected:</strong> The most recent version of each memory is always preserved, regardless of age.
+                        </small>
+                    </div>
+                    <div class="alert alert-secondary" role="alert">
+                        <small>
+                            <i class="fas fa-chart-line me-1"></i>
+                            <strong>Storage:</strong> Check the <a href="/ui/stats">Statistics Dashboard</a> to see current version storage usage.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Create progress stream client for version purge
+        const progressClient = new ProgressStreamClient({
+            sseUrl: '/ui/tools/version-purge-progress',
+            progressBarId: 'progressBar',
+            progressTextId: 'progressText',
+            progressCardId: 'progressCard',
+            resultsCardId: 'resultsCard',
+            resultsContentId: 'resultsContent',
+            startButtonId: 'startButton',
+            formId: 'versionPurgeForm',
+            jobName: 'Version purge'
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('versionPurgeForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                startVersionPurge();
+            });
+
+            document.getElementById('statusButton').addEventListener('click', function() {
+                checkStatus();
+            });
+        });
+
+        function startVersionPurge() {
+            const daysOld = document.getElementById('daysOld').value;
+
+            // Disable form and show progress
+            progressClient.disableStartButton();
+            progressClient.showProgressCard();
+            progressClient.updateProgress(0, 'Starting version purge...');
+
+            fetch('@Url.Action("StartVersionPurge", "Tools")', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'daysOld=' + encodeURIComponent(daysOld)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    progressClient.showAlert('success', data.message);
+                    progressClient.updateProgress(10, 'Version purge started. Processing...');
+                    // Start SSE progress stream
+                    progressClient.start();
+                } else {
+                    progressClient.showAlert('danger', data.message);
+                    progressClient.enableStartButton();
+                    progressClient.hideProgressCard();
+                }
+            })
+            .catch(error => {
+                progressClient.showAlert('danger', 'Failed to start version purge. Please try again.');
+                progressClient.enableStartButton();
+                progressClient.hideProgressCard();
+            });
+        }
+
+        function checkStatus() {
+            fetch('@Url.Action("GetVersionPurgeStatus", "Tools")')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        let msg = 'Status: ' + data.status;
+                        if (data.isRunning) {
+                            msg += ' ' + ProgressStreamClient.formatProgressDetails(data);
+                        }
+                        progressClient.showAlert('info', msg);
+                    } else {
+                        progressClient.showAlert('warning', data.message);
+                    }
+                })
+                .catch(error => {
+                    progressClient.showAlert('danger', 'Failed to get status.');
+                });
+        }
+    </script>
+}

@@ -11,6 +11,16 @@
     <p class="text-muted mb-0">Overview of your Memorizer memory storage system</p>
 </div>
 
+@{
+    string FormatBytes(long bytes)
+    {
+        if (bytes == 0) return "0 B";
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        int i = (int)Math.Floor(Math.Log(bytes) / Math.Log(1024));
+        return $"{(bytes / Math.Pow(1024, i)):F2} {sizes[i]}";
+    }
+}
+
 <div class="row mb-4">
     <!-- Total Memories Card -->
     <div class="col-md-6 col-lg-3 mb-4">
@@ -24,42 +34,129 @@
             </div>
         </div>
     </div>
-    
-    <!-- Average Size Card -->
+
+    <!-- Total Versions Card -->
     <div class="col-md-6 col-lg-3 mb-4">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center">
                 <div class="mb-3">
-                    <i class="fas fa-file-text fa-3x text-success"></i>
+                    <i class="fas fa-history fa-3x text-success"></i>
                 </div>
-                <h3 class="mb-1">@(Model.AverageMemorySizeBytes.ToString("N0")) bytes</h3>
-                <p class="text-muted mb-0">Average Memory Size</p>
+                <h3 class="mb-1">@Model.TotalVersions.ToString("N0")</h3>
+                <p class="text-muted mb-0">Version Snapshots</p>
             </div>
         </div>
     </div>
-    
-    <!-- Storage Efficiency Card -->
+
+    <!-- Audit Events Card -->
     <div class="col-md-6 col-lg-3 mb-4">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center">
                 <div class="mb-3">
-                    <i class="fas fa-database fa-3x text-info"></i>
+                    <i class="fas fa-calendar-alt fa-3x text-info"></i>
                 </div>
-                <h3 class="mb-1">@((Model.TotalMemories * Model.AverageMemorySizeBytes / 1024).ToString("N0")) KB</h3>
-                <p class="text-muted mb-0">Estimated Content Size</p>
+                <h3 class="mb-1">@Model.TotalAuditEvents.ToString("N0")</h3>
+                <p class="text-muted mb-0">Audit Events</p>
             </div>
         </div>
     </div>
-    
-    <!-- Vector Embeddings Card -->
+
+    <!-- Total Storage Card -->
     <div class="col-md-6 col-lg-3 mb-4">
         <div class="card border-0 shadow-sm h-100">
             <div class="card-body text-center">
                 <div class="mb-3">
-                    <i class="fas fa-vector-square fa-3x text-warning"></i>
+                    <i class="fas fa-database fa-3x text-warning"></i>
                 </div>
-                <h3 class="mb-1">@(Model.EmbeddingDimensions)D</h3>
-                <p class="text-muted mb-0">Vector Dimensions</p>
+                <h3 class="mb-1">@FormatBytes(Model.TotalStorageBytes)</h3>
+                <p class="text-muted mb-0">Total Storage</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Storage Breakdown Row -->
+<div class="row mb-4">
+    <div class="col-lg-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-hdd me-2"></i>
+                    Storage Breakdown
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Memories + Embeddings</h6>
+                            <p class="h4 mb-0">@FormatBytes(Model.MemoriesStorageBytes)</p>
+                            <small class="text-muted">Includes content & vector data</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Versions + Events</h6>
+                            <p class="h4 mb-0">@FormatBytes(Model.VersionStorageBytes)</p>
+                            <small class="text-muted">History snapshots & audit log</small>
+                        </div>
+                    </div>
+                </div>
+                <hr />
+                <div class="row">
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Average Memory Size</h6>
+                            <p class="mb-0">@(Model.AverageMemorySizeBytes.ToString("N0")) bytes</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Vector Dimensions</h6>
+                            <p class="mb-0">@(Model.EmbeddingDimensions)D</p>
+                        </div>
+                    </div>
+                </div>
+                @if (Model.TotalStorageBytes > 0)
+                {
+                    <div class="mt-3">
+                        <small class="text-muted">Storage ratio: @(((double)Model.VersionStorageBytes / Model.TotalStorageBytes * 100).ToString("F1"))% versions</small>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-code-branch me-2"></i>
+                    Version Statistics
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Avg Versions per Memory</h6>
+                            <p class="h4 mb-0">@(Model.TotalMemories > 0 ? ((double)Model.TotalVersions / Model.TotalMemories).ToString("F2") : "0")</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-1">Avg Events per Memory</h6>
+                            <p class="h4 mb-0">@(Model.TotalMemories > 0 ? ((double)Model.TotalAuditEvents / Model.TotalMemories).ToString("F2") : "0")</p>
+                        </div>
+                    </div>
+                </div>
+                <hr />
+                <div class="alert alert-info mb-0" role="alert">
+                    <small>
+                        <i class="fas fa-info-circle me-1"></i>
+                        Use the <a href="/ui/tools" class="alert-link">Version Purge tool</a> to clean up old version snapshots.
+                    </small>
+                </div>
             </div>
         </div>
     </div>
