@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Memorizer.Models;
+using Memorizer.Settings;
 using Npgsql;
 using Pgvector;
 using Registrator.Net;
@@ -131,12 +132,41 @@ public class Storage : IStorage
     private readonly NpgsqlDataSource _dataSource;
     private readonly IEmbeddingService _embeddingService;
     private readonly IDiffService _diffService;
+    private readonly VersioningSettings _versioningSettings;
 
-    public Storage(NpgsqlDataSource dataSource, IEmbeddingService embeddingService, IDiffService diffService)
+    public Storage(NpgsqlDataSource dataSource, IEmbeddingService embeddingService, IDiffService diffService, VersioningSettings versioningSettings)
     {
         _dataSource = dataSource;
         _embeddingService = embeddingService;
         _diffService = diffService;
+        _versioningSettings = versioningSettings;
+    }
+
+    /// <summary>
+    /// Prune old versions if we exceed MaxVersionsPerMemory setting.
+    /// Deletes oldest versions first (FIFO). Must be called within a transaction.
+    /// </summary>
+    private async Task PruneOldVersionsIfNeeded(Guid memoryId, NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        var maxVersions = _versioningSettings.MaxVersionsPerMemory;
+        if (maxVersions <= 0)
+            return; // Pruning disabled
+
+        const string pruneSql = @"
+            WITH versions_to_delete AS (
+                SELECT version_id
+                FROM memory_versions
+                WHERE memory_id = @memoryId
+                ORDER BY version_number DESC
+                OFFSET @keepCount
+            )
+            DELETE FROM memory_versions
+            WHERE version_id IN (SELECT version_id FROM versions_to_delete)";
+
+        await using var cmd = new NpgsqlCommand(pruneSql, connection, transaction);
+        cmd.Parameters.AddWithValue("memoryId", memoryId);
+        cmd.Parameters.AddWithValue("keepCount", maxVersions);
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task<Memorizer.Models.Memory> StoreMemory(
@@ -698,6 +728,9 @@ public class Storage : IStorage
             cmd.Parameters.AddWithValue("currentVersion", newVersionNumber);
 
             int rowsAffected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+            // Prune old versions if we exceed the limit
+            await PruneOldVersionsIfNeeded(id, connection, transaction, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 
@@ -1376,6 +1409,9 @@ public class Storage : IStorage
                 updateCmd.Parameters.AddWithValue("currentVersion", newVersionNumber);
                 await updateCmd.ExecuteNonQueryAsync(cancellationToken);
             }
+
+            // Prune old versions if we exceed the limit
+            await PruneOldVersionsIfNeeded(memoryId, connection, transaction, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 

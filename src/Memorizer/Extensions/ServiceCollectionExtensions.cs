@@ -19,6 +19,7 @@ public static class ServiceCollectionExtensions
         services.AddStorage();
         services.AddServerSettings();
         services.AddCorsSettings();
+        services.AddVersioningSettings();
         if(initialize)
             services.AddHostedService<InitializationService>();
         services.AutoRegisterTypesInAssemblies(typeof(Storage).Assembly);
@@ -138,6 +139,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<CorsSettings>(sp =>
             sp.GetRequiredService<IConfiguration>().GetSection("Cors").Get<CorsSettings>() ??
             new CorsSettings());
+
+        return services;
+    }
+
+    public static IServiceCollection AddVersioningSettings(
+        this IServiceCollection services)
+    {
+        services.AddSingleton<VersioningSettings>(sp =>
+            sp.GetRequiredService<IConfiguration>().GetSection("Versioning").Get<VersioningSettings>() ??
+            new VersioningSettings());
 
         return services;
     }

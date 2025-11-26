@@ -715,6 +715,258 @@ public class MemoryVersioningTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// Tests that old versions are automatically pruned when MaxVersionsPerMemory is exceeded.
+    /// This tests the inline auto-pruning feature that deletes oldest versions (FIFO) when
+    /// the version count exceeds the configured limit.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMemory_WhenExceedingMaxVersions_ShouldAutoPruneOldestVersions()
+    {
+        // Arrange: Create a service provider with a small MaxVersionsPerMemory limit
+        var services = new ServiceCollection();
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Storage"] = _fixture.PostgresConnectionString,
+                ["Embeddings:ApiUrl"] = _fixture.OllamaApiUrl,
+                ["Embeddings:Model"] = "all-minilm",
+                ["Embeddings:Timeout"] = TimeSpan.FromMinutes(1).ToString(),
+                // Set a small max versions limit for testing
+                ["Versioning:MaxVersionsPerMemory"] = "3"
+            })
+            .Build();
+
+        services.AddSingleton<IConfiguration>(config);
+        services.AddHttpClient<IEmbeddingService, EmbeddingService>(client =>
+        {
+            client.BaseAddress = new Uri(_fixture.OllamaApiUrl);
+            client.Timeout = TimeSpan.FromMinutes(1);
+        });
+        services.AddSingleton(new EmbeddingSettings
+        {
+            ApiUrl = new Uri(_fixture.OllamaApiUrl),
+            Model = "all-minilm",
+            Timeout = TimeSpan.FromMinutes(1)
+        });
+        services.AddMemorizer();
+        services.AddLogging();
+
+        var testServiceProvider = services.BuildServiceProvider();
+        var storage = testServiceProvider.GetRequiredService<IStorage>();
+
+        try
+        {
+            // Create a memory (v1)
+            var memory = await storage.StoreMemory(
+                "prune-test",
+                "Version 1 content",
+                "test",
+                new[] { "prune-test" },
+                1.0,
+                "Prune Test V1"
+            );
+            var memoryId = memory.Id;
+            _output.WriteLine($"Created memory at v{memory.CurrentVersion}");
+
+            // Edit to create v2 (snapshot of v1 is created)
+            var v2 = await storage.UpdateMemory(
+                memoryId,
+                "prune-test",
+                "Version 2 content",
+                "test",
+                new[] { "prune-test" },
+                0.9,
+                "Prune Test V2",
+                CancellationToken.None
+            );
+            Assert.Equal(2, v2!.CurrentVersion);
+            _output.WriteLine($"Edited to v{v2.CurrentVersion}");
+
+            // Edit to create v3 (snapshot of v2 is created)
+            var v3 = await storage.UpdateMemory(
+                memoryId,
+                "prune-test",
+                "Version 3 content",
+                "test",
+                new[] { "prune-test" },
+                0.8,
+                "Prune Test V3",
+                CancellationToken.None
+            );
+            Assert.Equal(3, v3!.CurrentVersion);
+            _output.WriteLine($"Edited to v{v3.CurrentVersion}");
+
+            // Edit to create v4 (snapshot of v3 is created)
+            var v4 = await storage.UpdateMemory(
+                memoryId,
+                "prune-test",
+                "Version 4 content",
+                "test",
+                new[] { "prune-test" },
+                0.7,
+                "Prune Test V4",
+                CancellationToken.None
+            );
+            Assert.Equal(4, v4!.CurrentVersion);
+            _output.WriteLine($"Edited to v{v4.CurrentVersion}");
+
+            // At this point we have v1, v2, v3 snapshots. Max is 3, so no pruning yet.
+            var versionsAfter4 = await storage.GetVersionHistory(memoryId, null, CancellationToken.None);
+            _output.WriteLine($"After v4: {versionsAfter4.Count} versions in history");
+            Assert.Equal(3, versionsAfter4.Count);
+
+            // Edit to create v5 (snapshot of v4 is created, should prune v1)
+            var v5 = await storage.UpdateMemory(
+                memoryId,
+                "prune-test",
+                "Version 5 content",
+                "test",
+                new[] { "prune-test" },
+                0.6,
+                "Prune Test V5",
+                CancellationToken.None
+            );
+            Assert.Equal(5, v5!.CurrentVersion);
+            _output.WriteLine($"Edited to v{v5.CurrentVersion}");
+
+            // Verify auto-pruning: should still have only 3 versions (v2, v3, v4 - v1 was pruned)
+            var versionsAfter5 = await storage.GetVersionHistory(memoryId, null, CancellationToken.None);
+            _output.WriteLine($"After v5: {versionsAfter5.Count} versions in history");
+            foreach (var v in versionsAfter5)
+            {
+                _output.WriteLine($"  - v{v.VersionNumber}: '{v.Text}'");
+            }
+
+            Assert.Equal(3, versionsAfter5.Count);
+            // v1 should be pruned, remaining versions should be v4, v3, v2 (descending order)
+            Assert.DoesNotContain(versionsAfter5, v => v.VersionNumber == 1);
+            Assert.Contains(versionsAfter5, v => v.VersionNumber == 2);
+            Assert.Contains(versionsAfter5, v => v.VersionNumber == 3);
+            Assert.Contains(versionsAfter5, v => v.VersionNumber == 4);
+
+            _output.WriteLine($"✓ Auto-pruning working: v1 was automatically pruned when exceeding max versions");
+
+            // Edit to create v6 (should prune v2)
+            var v6 = await storage.UpdateMemory(
+                memoryId,
+                "prune-test",
+                "Version 6 content",
+                "test",
+                new[] { "prune-test" },
+                0.5,
+                "Prune Test V6",
+                CancellationToken.None
+            );
+            Assert.Equal(6, v6!.CurrentVersion);
+
+            var versionsAfter6 = await storage.GetVersionHistory(memoryId, null, CancellationToken.None);
+            Assert.Equal(3, versionsAfter6.Count);
+            Assert.DoesNotContain(versionsAfter6, v => v.VersionNumber == 1);
+            Assert.DoesNotContain(versionsAfter6, v => v.VersionNumber == 2);
+            Assert.Contains(versionsAfter6, v => v.VersionNumber == 3);
+            Assert.Contains(versionsAfter6, v => v.VersionNumber == 4);
+            Assert.Contains(versionsAfter6, v => v.VersionNumber == 5);
+
+            _output.WriteLine($"✓ Auto-pruning continues: v2 was automatically pruned");
+
+            // Cleanup
+            await storage.Delete(memoryId, CancellationToken.None);
+        }
+        finally
+        {
+            (testServiceProvider as IDisposable)?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Tests that auto-pruning is disabled when MaxVersionsPerMemory is set to 0 or negative.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMemory_WhenMaxVersionsDisabled_ShouldNotPrune()
+    {
+        // Arrange: Create a service provider with pruning disabled (MaxVersionsPerMemory = 0)
+        var services = new ServiceCollection();
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Storage"] = _fixture.PostgresConnectionString,
+                ["Embeddings:ApiUrl"] = _fixture.OllamaApiUrl,
+                ["Embeddings:Model"] = "all-minilm",
+                ["Embeddings:Timeout"] = TimeSpan.FromMinutes(1).ToString(),
+                // Disable pruning
+                ["Versioning:MaxVersionsPerMemory"] = "0"
+            })
+            .Build();
+
+        services.AddSingleton<IConfiguration>(config);
+        services.AddHttpClient<IEmbeddingService, EmbeddingService>(client =>
+        {
+            client.BaseAddress = new Uri(_fixture.OllamaApiUrl);
+            client.Timeout = TimeSpan.FromMinutes(1);
+        });
+        services.AddSingleton(new EmbeddingSettings
+        {
+            ApiUrl = new Uri(_fixture.OllamaApiUrl),
+            Model = "all-minilm",
+            Timeout = TimeSpan.FromMinutes(1)
+        });
+        services.AddMemorizer();
+        services.AddLogging();
+
+        var testServiceProvider = services.BuildServiceProvider();
+        var storage = testServiceProvider.GetRequiredService<IStorage>();
+
+        try
+        {
+            // Create a memory and edit it 5 times
+            var memory = await storage.StoreMemory(
+                "no-prune-test",
+                "Version 1",
+                "test",
+                new[] { "no-prune-test" },
+                1.0,
+                "No Prune Test"
+            );
+            var memoryId = memory.Id;
+
+            for (int i = 2; i <= 6; i++)
+            {
+                await storage.UpdateMemory(
+                    memoryId,
+                    "no-prune-test",
+                    $"Version {i}",
+                    "test",
+                    new[] { "no-prune-test" },
+                    1.0 - (i * 0.1),
+                    $"No Prune Test V{i}",
+                    CancellationToken.None
+                );
+            }
+
+            // Verify all 5 version snapshots exist (v1 through v5, v6 is current)
+            var versions = await storage.GetVersionHistory(memoryId, null, CancellationToken.None);
+            _output.WriteLine($"Versions with pruning disabled: {versions.Count}");
+
+            Assert.Equal(5, versions.Count);
+            for (int i = 1; i <= 5; i++)
+            {
+                Assert.Contains(versions, v => v.VersionNumber == i);
+            }
+
+            _output.WriteLine($"✓ No pruning when MaxVersionsPerMemory is 0: all {versions.Count} versions retained");
+
+            // Cleanup
+            await storage.Delete(memoryId, CancellationToken.None);
+        }
+        finally
+        {
+            (testServiceProvider as IDisposable)?.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         (_serviceProvider as IDisposable)?.Dispose();
