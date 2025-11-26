@@ -145,35 +145,6 @@
                         </div>
                     </div>
 
-                    <!-- Revert Confirmation Modal (no fade animation to prevent flickering) -->
-                    <div class="modal" id="revertModal" tabindex="-1" aria-labelledby="revertModalLabel" aria-hidden="true" data-bs-backdrop="static">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header bg-warning">
-                                    <h5 class="modal-title" id="revertModalLabel">
-                                        <i class="fas fa-undo me-2"></i>
-                                        Confirm Revert
-                                    </h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <p>Are you sure you want to revert this memory to <strong>version <span id="revertTargetVersion"></span></strong>?</p>
-                                    <p class="text-muted small">
-                                        This will restore all content, tags, title, and metadata from that version.
-                                        A new version will be created recording this revert operation.
-                                    </p>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                    <button type="button" class="btn btn-warning" id="confirmRevertBtn" onclick="confirmRevert()">
-                                        <i class="fas fa-undo me-1"></i>
-                                        Revert
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                 </div>
 
                 <!-- Error state (hidden initially) -->
@@ -186,6 +157,35 @@
                         Back to List
                     </a>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Revert Confirmation Modal - placed outside card to avoid transform issues -->
+<div class="modal fade" id="revertModal" tabindex="-1" aria-labelledby="revertModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title" id="revertModalLabel">
+                    <i class="fas fa-undo me-2"></i>
+                    Confirm Revert
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to revert this memory to <strong>version <span id="revertTargetVersion"></span></strong>?</p>
+                <p class="text-muted small">
+                    This will restore all content, tags, title, and metadata from that version.
+                    A new version will be created recording this revert operation.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="confirmRevertBtn" onclick="confirmRevert()">
+                    <i class="fas fa-undo me-1"></i>
+                    Revert
+                </button>
             </div>
         </div>
     </div>

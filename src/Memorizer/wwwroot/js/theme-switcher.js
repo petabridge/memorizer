@@ -5,6 +5,7 @@
 const ThemeSwitcher = (function() {
     const COOKIE_NAME = 'memorizer-theme';
     const COOKIE_DAYS = 365;
+    let isInitialized = false;
 
     /**
      * Get a cookie value by name
@@ -92,8 +93,12 @@ const ThemeSwitcher = (function() {
      * Initialize the theme on page load
      */
     function init() {
+        if (isInitialized) {
+            return; // Prevent duplicate initialization which causes flickering
+        }
         const theme = getTheme();
         applyTheme(theme);
+        isInitialized = true;
     }
 
     // Public API
@@ -109,7 +114,6 @@ const ThemeSwitcher = (function() {
 // Initialize immediately to prevent flash of unstyled content
 ThemeSwitcher.init();
 
-// Also initialize on DOMContentLoaded to ensure button icon is updated
-document.addEventListener('DOMContentLoaded', function() {
-    ThemeSwitcher.init();
-});
+// The DOMContentLoaded handler is no longer needed since init() now has
+// an initialization guard. The immediate init() call above is sufficient.
+// Removing the redundant handler fixes flickering issues with Bootstrap modals.
