@@ -145,66 +145,6 @@
                         </div>
                     </div>
 
-                    <!-- Version Comparison Modal -->
-                    <div class="modal fade" id="versionCompareModal" tabindex="-1" aria-labelledby="versionCompareModalLabel" aria-hidden="true">
-                        <div class="modal-dialog modal-xl">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title" id="versionCompareModalLabel">
-                                        <i class="fas fa-code-compare me-2"></i>
-                                        Version Comparison
-                                    </h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <div id="compareLoading" class="text-center py-4">
-                                        <div class="spinner-border text-primary" role="status">
-                                            <span class="visually-hidden">Loading comparison...</span>
-                                        </div>
-                                    </div>
-                                    <div id="compareContent" style="display:none;">
-                                        <div class="row mb-3">
-                                            <div class="col-6">
-                                                <div class="card bg-light">
-                                                    <div class="card-body py-2">
-                                                        <strong>From:</strong> <span id="compareFromVersion"></span>
-                                                        <br><small class="text-muted" id="compareFromDate"></small>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="col-6">
-                                                <div class="card bg-light">
-                                                    <div class="card-body py-2">
-                                                        <strong>To:</strong> <span id="compareToVersion"></span>
-                                                        <br><small class="text-muted" id="compareToDate"></small>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="mb-3">
-                                            <div id="metadataChanges">
-                                                <!-- Metadata changes summary -->
-                                            </div>
-                                        </div>
-                                        <div class="card">
-                                            <div class="card-header">
-                                                <h6 class="mb-0">Content Diff</h6>
-                                            </div>
-                                            <div class="card-body p-0">
-                                                <div id="diffContent" class="diff-view-container">
-                                                    <!-- Diff content will be inserted here -->
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                     <!-- Revert Confirmation Modal -->
                     <div class="modal fade" id="revertModal" tabindex="-1" aria-labelledby="revertModalLabel" aria-hidden="true">
                         <div class="modal-dialog">
@@ -233,6 +173,7 @@
                             </div>
                         </div>
                     </div>
+
                 </div>
 
                 <!-- Error state (hidden initially) -->
@@ -567,10 +508,13 @@ function displayVersionHistory(versions) {
                         </small>
                     </div>
                     <div class="btn-group btn-group-sm">
+                        <a href="/ui/view/${memoryId}/version/${version.versionNumber}" class="btn btn-outline-info btn-sm" title="View this version">
+                            <i class="fas fa-eye"></i>
+                        </a>
                         ${hasPrevious ? `
-                        <button class="btn btn-outline-primary btn-sm" onclick="compareVersions(${versions[index + 1].versionNumber}, ${version.versionNumber})" title="Compare with previous">
+                        <a href="/ui/view/${memoryId}/compare/${versions[index + 1].versionNumber}/${version.versionNumber}" class="btn btn-outline-primary btn-sm" title="Compare with previous">
                             <i class="fas fa-code-compare"></i>
-                        </button>
+                        </a>
                         ` : ''}
                         <button class="btn btn-outline-warning btn-sm" onclick="promptRevert(${version.versionNumber})" title="Revert to this version">
                             <i class="fas fa-undo"></i>
@@ -606,65 +550,11 @@ function formatEventType(eventType) {
     return mappings[eventType] || eventType;
 }
 
-async function compareVersions(fromVersion, toVersion) {
-    const modal = new bootstrap.Modal(document.getElementById('versionCompareModal'));
-    modal.show();
-
-    document.getElementById('compareLoading').style.display = 'block';
-    document.getElementById('compareContent').style.display = 'none';
-
-    try {
-        const response = await fetch(`/api/memory/${memoryId}/versions/compare?fromVersion=${fromVersion}&toVersion=${toVersion}`);
-        if (!response.ok) {
-            throw new Error('Failed to load comparison');
-        }
-
-        const comparison = await response.json();
-        displayComparison(comparison);
-    } catch (error) {
-        console.error('Error loading comparison:', error);
-        alert('Failed to load version comparison. Please try again.');
-        modal.hide();
-    }
-}
-
-function displayComparison(comparison) {
-    document.getElementById('compareLoading').style.display = 'none';
-    document.getElementById('compareContent').style.display = 'block';
-
-    document.getElementById('compareFromVersion').textContent = `Version ${comparison.fromVersion}`;
-    document.getElementById('compareToVersion').textContent = `Version ${comparison.toVersion}`;
-    document.getElementById('compareFromDate').textContent = formatDateTime(comparison.fromVersionDetails.versionedAt);
-    document.getElementById('compareToDate').textContent = formatDateTime(comparison.toVersionDetails.versionedAt);
-
-    // Display metadata changes
-    const metadataEl = document.getElementById('metadataChanges');
-    let metadataHtml = '';
-
-    if (comparison.titleChanged) {
-        metadataHtml += `<span class="badge bg-info me-1"><i class="fas fa-heading me-1"></i>Title changed</span>`;
-    }
-    if (comparison.tagsChanged) {
-        metadataHtml += `<span class="badge bg-warning me-1"><i class="fas fa-tags me-1"></i>Tags changed</span>`;
-    }
-    if (comparison.typeChanged) {
-        metadataHtml += `<span class="badge bg-secondary me-1"><i class="fas fa-folder me-1"></i>Type changed</span>`;
-    }
-    if (comparison.confidenceChanged) {
-        metadataHtml += `<span class="badge bg-secondary me-1"><i class="fas fa-percentage me-1"></i>Confidence changed</span>`;
-    }
-
-    metadataEl.innerHTML = metadataHtml || '<span class="text-muted">Only content changed</span>';
-
-    // Display diff HTML
-    const diffEl = document.getElementById('diffContent');
-    diffEl.innerHTML = comparison.textDiffHtml || '<p class="p-3 text-muted">No content differences</p>';
-}
-
 function promptRevert(versionNumber) {
     pendingRevertVersion = versionNumber;
     document.getElementById('revertTargetVersion').textContent = versionNumber;
-    const modal = new bootstrap.Modal(document.getElementById('revertModal'));
+    const modalEl = document.getElementById('revertModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
 }
 

@@ -157,7 +157,27 @@ public class MemoryController : ControllerBase
         }
 
         var version = await _storage.GetVersion(id, versionNumber);
-        if (version == null)
+
+        // If version is the current version and not stored, return live memory data
+        if (version == null && versionNumber == memory.CurrentVersion)
+        {
+            version = new MemoryVersion
+            {
+                VersionId = Guid.Empty,
+                MemoryId = memory.Id,
+                VersionNumber = memory.CurrentVersion,
+                Type = memory.Type,
+                Content = memory.Content,
+                Text = memory.Text,
+                Source = memory.Source,
+                Tags = memory.Tags,
+                Confidence = memory.Confidence,
+                Title = memory.Title,
+                CreatedAt = memory.CreatedAt,
+                VersionedAt = memory.UpdatedAt
+            };
+        }
+        else if (version == null)
         {
             return NotFound($"Version {versionNumber} not found");
         }
@@ -225,7 +245,27 @@ public class MemoryController : ControllerBase
         {
             return NotFound($"Version {fromVersion} not found");
         }
-        if (toVersionObj == null)
+
+        // If toVersion is the current version and not stored, use live memory data
+        if (toVersionObj == null && toVersion == memory.CurrentVersion)
+        {
+            toVersionObj = new MemoryVersion
+            {
+                VersionId = Guid.Empty,
+                MemoryId = memory.Id,
+                VersionNumber = memory.CurrentVersion,
+                Type = memory.Type,
+                Content = memory.Content,
+                Text = memory.Text,
+                Source = memory.Source,
+                Tags = memory.Tags,
+                Confidence = memory.Confidence,
+                Title = memory.Title,
+                CreatedAt = memory.CreatedAt,
+                VersionedAt = memory.UpdatedAt
+            };
+        }
+        else if (toVersionObj == null)
         {
             return NotFound($"Version {toVersion} not found");
         }

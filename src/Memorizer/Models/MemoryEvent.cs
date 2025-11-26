@@ -145,10 +145,14 @@ public record MemoryCreatedEvent : MemoryChangeEvent
 
 /// <summary>
 /// Event recorded when memory content is updated.
+/// Includes pre-computed diff stats for efficient display.
 /// </summary>
 public record ContentUpdatedEvent(
     [property: JsonPropertyName("old_text")] string OldText,
-    [property: JsonPropertyName("new_text")] string NewText
+    [property: JsonPropertyName("new_text")] string NewText,
+    [property: JsonPropertyName("added_lines")] int? AddedLines = null,
+    [property: JsonPropertyName("removed_lines")] int? RemovedLines = null,
+    [property: JsonPropertyName("change_snippet")] string? ChangeSnippet = null
 ) : MemoryChangeEvent
 {
     public override string GetDisplayText()
@@ -160,11 +164,55 @@ public record ContentUpdatedEvent(
         if (!string.IsNullOrEmpty(OldText) && string.IsNullOrEmpty(NewText))
             return "Content removed";
 
-        // Show a preview of the change
-        var oldPreview = TruncateForDisplay(OldText, 40);
-        var newPreview = TruncateForDisplay(NewText, 40);
+        // If we have pre-computed stats, use them (git-style display)
+        if (AddedLines.HasValue || RemovedLines.HasValue)
+        {
+            var added = AddedLines ?? 0;
+            var removed = RemovedLines ?? 0;
+            var stats = $"+{added} -{removed}";
 
-        return $"Changed: \"{oldPreview}\" → \"{newPreview}\"";
+            if (!string.IsNullOrEmpty(ChangeSnippet))
+            {
+                var snippet = TruncateForDisplay(ChangeSnippet, 50);
+                return $"{stats}: {snippet}";
+            }
+
+            return $"{stats} lines changed";
+        }
+
+        // Fallback for legacy events: compute diff summary on the fly
+        return ComputeFallbackDisplay();
+    }
+
+    /// <summary>
+    /// Fallback display for legacy events without pre-computed stats.
+    /// Finds the first differing line rather than showing document start.
+    /// </summary>
+    private string ComputeFallbackDisplay()
+    {
+        var oldLines = OldText.Split('\n');
+        var newLines = NewText.Split('\n');
+
+        // Find first differing line
+        var minLen = Math.Min(oldLines.Length, newLines.Length);
+        for (int i = 0; i < minLen; i++)
+        {
+            if (oldLines[i] != newLines[i])
+            {
+                var oldLine = TruncateForDisplay(oldLines[i], 30);
+                var newLine = TruncateForDisplay(newLines[i], 30);
+                return $"Changed: \"{oldLine}\" → \"{newLine}\"";
+            }
+        }
+
+        // If all common lines match, show length change
+        if (oldLines.Length != newLines.Length)
+        {
+            var diff = newLines.Length - oldLines.Length;
+            return diff > 0 ? $"+{diff} lines added" : $"{Math.Abs(diff)} lines removed";
+        }
+
+        return "Content updated";
     }
 
     private static string TruncateForDisplay(string text, int maxLength)
@@ -182,7 +230,14 @@ public record ContentUpdatedEvent(
     }
 
     public override (string EventType, JsonDocument EventData) Serialize()
-        => (MemoryChangeEventTypes.ContentUpdated, ToJsonDocument(new { old_text = OldText, new_text = NewText }));
+        => (MemoryChangeEventTypes.ContentUpdated, ToJsonDocument(new
+        {
+            old_text = OldText,
+            new_text = NewText,
+            added_lines = AddedLines,
+            removed_lines = RemovedLines,
+            change_snippet = ChangeSnippet
+        }));
 }
 
 /// <summary>

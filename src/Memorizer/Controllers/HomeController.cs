@@ -100,6 +100,31 @@ public class HomeController : Controller
     }
 
     /// <summary>
+    /// View a specific version of a memory
+    /// </summary>
+    [HttpGet]
+    [Route("view/{id:guid}/version/{versionNumber:int}")]
+    public IActionResult ViewVersion(Guid id, int versionNumber)
+    {
+        ViewBag.MemoryId = id;
+        ViewBag.VersionNumber = versionNumber;
+        return View();
+    }
+
+    /// <summary>
+    /// Compare two versions of a memory
+    /// </summary>
+    [HttpGet]
+    [Route("view/{id:guid}/compare/{fromVersion:int}/{toVersion:int}")]
+    public IActionResult CompareVersions(Guid id, int fromVersion, int toVersion)
+    {
+        ViewBag.MemoryId = id;
+        ViewBag.FromVersion = fromVersion;
+        ViewBag.ToVersion = toVersion;
+        return View();
+    }
+
+    /// <summary>
     /// MCP configuration JSON endpoint - returns simplified JSON configuration for MCP client
     /// </summary>
     [HttpGet]

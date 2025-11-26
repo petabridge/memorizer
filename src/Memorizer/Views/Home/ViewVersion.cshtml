@@ -1,0 +1,221 @@
+@{
+    ViewData["Title"] = "View Version";
+}
+
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-history me-2"></i>
+                        <span id="pageTitle">Version @ViewBag.VersionNumber</span>
+                    </h4>
+                    <div class="btn-group" role="group">
+                        <a asp-controller="Home" asp-action="View" asp-route-id="@ViewBag.MemoryId" class="btn btn-light">
+                            <i class="fas fa-arrow-left me-1"></i>
+                            Back to Memory
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Loading state -->
+                <div class="d-flex justify-content-center py-5" id="loadingSpinner">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading version...</span>
+                    </div>
+                </div>
+
+                <!-- Version content (hidden initially) -->
+                <div id="versionContent" style="display: none;">
+                    <!-- Alert for historical version -->
+                    <div class="alert alert-info mb-4">
+                        <i class="fas fa-info-circle me-2"></i>
+                        You are viewing <strong>version @ViewBag.VersionNumber</strong> of this memory.
+                        <span id="currentVersionNote"></span>
+                    </div>
+
+                    <!-- Version metadata -->
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        Version Details
+                                    </h6>
+                                    <div class="row">
+                                        <div class="col-sm-4"><strong>Title:</strong></div>
+                                        <div class="col-sm-8" id="versionTitle">-</div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-sm-4"><strong>Type:</strong></div>
+                                        <div class="col-sm-8" id="versionType">-</div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-sm-4"><strong>Confidence:</strong></div>
+                                        <div class="col-sm-8" id="versionConfidence">-</div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-sm-4"><strong>Versioned At:</strong></div>
+                                        <div class="col-sm-8" id="versionDate">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="fas fa-tags me-2"></i>
+                                        Tags at this Version
+                                    </h6>
+                                    <div id="versionTags">
+                                        <span class="text-muted">No tags</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Version actions -->
+                    <div class="mb-4">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-warning" id="revertBtn" onclick="promptRevert()">
+                                <i class="fas fa-undo me-1"></i>
+                                Revert to this Version
+                            </button>
+                            <a id="compareWithCurrentLink" href="#" class="btn btn-outline-primary">
+                                <i class="fas fa-code-compare me-1"></i>
+                                Compare with Current
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Content section -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-file-alt me-2"></i>
+                                Content at Version @ViewBag.VersionNumber
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="versionText" class="markdown-body"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+const memoryId = '@ViewBag.MemoryId';
+const versionNumber = @ViewBag.VersionNumber;
+
+document.addEventListener('DOMContentLoaded', loadVersion);
+
+async function loadVersion() {
+    try {
+        // Load version data
+        const response = await fetch(`/api/memory/${memoryId}/versions/${versionNumber}`);
+        if (!response.ok) {
+            throw new Error('Failed to load version');
+        }
+        const version = await response.json();
+
+        // Also get current memory to know current version
+        const memoryResponse = await fetch(`/api/memory/${memoryId}`);
+        const memory = await memoryResponse.json();
+        const currentVersion = memory.currentVersion || 1;
+
+        // Update page title
+        document.getElementById('pageTitle').textContent = `${version.title || 'Untitled'} - Version ${versionNumber}`;
+        document.title = `Version ${versionNumber} - ${version.title || 'Untitled'} - Memorizer`;
+
+        // Show if this is the current version
+        if (versionNumber === currentVersion) {
+            document.getElementById('currentVersionNote').textContent = '(This is the current version)';
+            document.getElementById('revertBtn').style.display = 'none';
+        }
+
+        // Populate metadata
+        document.getElementById('versionTitle').textContent = version.title || 'Untitled';
+        document.getElementById('versionType').textContent = version.type || 'N/A';
+        document.getElementById('versionConfidence').textContent = version.confidence != null
+            ? `${(version.confidence * 100).toFixed(0)}%`
+            : 'N/A';
+        document.getElementById('versionDate').textContent = formatDateTime(version.versionedAt);
+
+        // Populate tags
+        const tagsEl = document.getElementById('versionTags');
+        if (version.tags && version.tags.length > 0) {
+            tagsEl.innerHTML = version.tags.map(t =>
+                `<span class="badge bg-secondary me-1">${t}</span>`
+            ).join('');
+        }
+
+        // Set compare link
+        document.getElementById('compareWithCurrentLink').href =
+            `/ui/view/${memoryId}/compare/${versionNumber}/${currentVersion}`;
+
+        // Render content
+        const textEl = document.getElementById('versionText');
+        if (version.text) {
+            textEl.innerHTML = marked.parse(version.text);
+        } else {
+            textEl.innerHTML = '<p class="text-muted">No content in this version</p>';
+        }
+
+        // Show content, hide spinner (remove d-flex class to allow display:none to work)
+        const spinner = document.getElementById('loadingSpinner');
+        spinner.classList.remove('d-flex');
+        spinner.style.display = 'none';
+        document.getElementById('versionContent').style.display = 'block';
+
+    } catch (error) {
+        console.error('Error loading version:', error);
+        document.getElementById('loadingSpinner').innerHTML =
+            '<div class="alert alert-danger">Failed to load version. Please try again.</div>';
+    }
+}
+
+function formatDateTime(dateString) {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+}
+
+async function promptRevert() {
+    if (!confirm(`Are you sure you want to revert to version ${versionNumber}?\n\nThis will create a new version with the content from version ${versionNumber}. No data will be lost.`)) {
+        return;
+    }
+
+    const btn = document.getElementById('revertBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Reverting...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`/api/memory/${memoryId}/versions/${versionNumber}/revert`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to revert');
+        }
+
+        // Redirect to the memory view page
+        window.location.href = `/ui/view/${memoryId}`;
+    } catch (error) {
+        console.error('Error reverting:', error);
+        alert('Failed to revert to version. Please try again.');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+</script>
+}

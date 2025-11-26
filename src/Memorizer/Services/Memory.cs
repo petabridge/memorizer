@@ -130,11 +130,13 @@ public class Storage : IStorage
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly IEmbeddingService _embeddingService;
+    private readonly IDiffService _diffService;
 
-    public Storage(NpgsqlDataSource dataSource, IEmbeddingService embeddingService)
+    public Storage(NpgsqlDataSource dataSource, IEmbeddingService embeddingService, IDiffService diffService)
     {
         _dataSource = dataSource;
         _embeddingService = embeddingService;
+        _diffService = diffService;
     }
 
     public async Task<Memorizer.Models.Memory> StoreMemory(
@@ -652,13 +654,24 @@ public class Storage : IStorage
             // Calculate new version number
             int newVersionNumber = existingMemory.CurrentVersion + 1;
 
+            // Compute diff stats for the change event
+            var diff = _diffService.ComputeDiff(existingMemory.Text, bodyText);
+            var firstChange = diff.Lines.FirstOrDefault(l => l.Type != DiffLineType.Unchanged);
+            var changeEvent = new ContentUpdatedEvent(
+                existingMemory.Text,
+                bodyText,
+                diff.AddedCount,
+                diff.RemovedCount,
+                firstChange?.Text
+            );
+
             // Create version snapshot of the OLD state before updating
             await CreateVersionSnapshot(
                 connection,
                 transaction,
                 existingMemory,
                 existingMemory.CurrentVersion,
-                new ContentUpdatedEvent(existingMemory.Text, bodyText),
+                changeEvent,
                 null,
                 cancellationToken);
 

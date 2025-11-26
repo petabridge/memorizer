@@ -1,0 +1,206 @@
+@{
+    ViewData["Title"] = "Compare Versions";
+}
+
+<style>
+    .diff-added { background-color: #d4edda; }
+    .diff-removed { background-color: #f8d7da; }
+    .diff-modified { background-color: #fff3cd; }
+    .diff-line { font-family: monospace; white-space: pre-wrap; padding: 2px 8px; }
+    .diff-line-number { color: #6c757d; user-select: none; min-width: 40px; text-align: right; padding-right: 8px; border-right: 1px solid #dee2e6; }
+</style>
+
+<div class="row justify-content-center">
+    <div class="col-lg-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-code-compare me-2"></i>
+                        Compare Version @ViewBag.FromVersion to Version @ViewBag.ToVersion
+                    </h4>
+                    <div class="btn-group" role="group">
+                        <a asp-controller="Home" asp-action="View" asp-route-id="@ViewBag.MemoryId" class="btn btn-light">
+                            <i class="fas fa-arrow-left me-1"></i>
+                            Back to Memory
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Loading state -->
+                <div class="d-flex justify-content-center py-5" id="loadingSpinner">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading comparison...</span>
+                    </div>
+                </div>
+
+                <!-- Compare content (hidden initially) -->
+                <div id="compareContent" style="display: none;">
+                    <!-- Summary -->
+                    <div class="alert alert-secondary mb-4">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-info-circle me-2"></i>
+                                Comparing <strong>Version @ViewBag.FromVersion</strong> to <strong>Version @ViewBag.ToVersion</strong>
+                            </div>
+                            <div id="diffStats">
+                                <!-- Stats will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metadata changes -->
+                    <div class="card mb-4" id="metadataChangesCard" style="display: none;">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-tags me-2"></i>
+                                Metadata Changes
+                            </h5>
+                        </div>
+                        <div class="card-body" id="metadataChanges">
+                            <!-- Metadata changes will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Content diff -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-file-alt me-2"></i>
+                                Content Diff
+                            </h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div id="diffContent" class="overflow-auto" style="max-height: 70vh;">
+                                <!-- Diff will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Version links -->
+                    <div class="mt-4">
+                        <div class="btn-group" role="group">
+                            <a id="viewFromVersionLink" href="#" class="btn btn-outline-info">
+                                <i class="fas fa-eye me-1"></i>
+                                View Version @ViewBag.FromVersion
+                            </a>
+                            <a id="viewToVersionLink" href="#" class="btn btn-outline-info">
+                                <i class="fas fa-eye me-1"></i>
+                                View Version @ViewBag.ToVersion
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+const memoryId = '@ViewBag.MemoryId';
+const fromVersion = @ViewBag.FromVersion;
+const toVersion = @ViewBag.ToVersion;
+
+document.addEventListener('DOMContentLoaded', loadComparison);
+
+async function loadComparison() {
+    try {
+        const response = await fetch(`/api/memory/${memoryId}/versions/compare?fromVersion=${fromVersion}&toVersion=${toVersion}`);
+        if (!response.ok) {
+            throw new Error('Failed to load comparison');
+        }
+        const comparison = await response.json();
+
+        // Set version links
+        document.getElementById('viewFromVersionLink').href = `/ui/view/${memoryId}/version/${fromVersion}`;
+        document.getElementById('viewToVersionLink').href = `/ui/view/${memoryId}/version/${toVersion}`;
+
+        // Display diff stats
+        displayDiffStats(comparison);
+
+        // Display metadata changes
+        displayMetadataChanges(comparison);
+
+        // Display diff content
+        displayDiffContent(comparison);
+
+        // Show content, hide spinner (remove d-flex class to allow display:none to work)
+        const spinner = document.getElementById('loadingSpinner');
+        spinner.classList.remove('d-flex');
+        spinner.style.display = 'none';
+        document.getElementById('compareContent').style.display = 'block';
+
+    } catch (error) {
+        console.error('Error loading comparison:', error);
+        document.getElementById('loadingSpinner').innerHTML =
+            '<div class="alert alert-danger">Failed to load comparison. Please try again.</div>';
+    }
+}
+
+function displayDiffStats(comparison) {
+    const statsEl = document.getElementById('diffStats');
+    let html = '';
+    const diff = comparison.textDiff || {};
+
+    if (diff.addedCount > 0) {
+        html += `<span class="badge bg-success me-2">+${diff.addedCount} added</span>`;
+    }
+    if (diff.removedCount > 0) {
+        html += `<span class="badge bg-danger me-2">-${diff.removedCount} removed</span>`;
+    }
+    if (diff.modifiedCount > 0) {
+        html += `<span class="badge bg-warning text-dark me-2">~${diff.modifiedCount} modified</span>`;
+    }
+
+    if (!html) {
+        html = '<span class="badge bg-secondary">No changes</span>';
+    }
+
+    statsEl.innerHTML = html;
+}
+
+function displayMetadataChanges(comparison) {
+    const metadataCard = document.getElementById('metadataChangesCard');
+    const metadataEl = document.getElementById('metadataChanges');
+
+    const hasChanges = comparison.titleChanged || comparison.tagsChanged ||
+                       comparison.typeChanged || comparison.confidenceChanged;
+
+    if (!hasChanges) {
+        metadataCard.style.display = 'none';
+        return;
+    }
+
+    metadataCard.style.display = 'block';
+    let html = '<div class="d-flex flex-wrap gap-2">';
+
+    if (comparison.titleChanged) {
+        html += '<span class="badge bg-info"><i class="fas fa-heading me-1"></i>Title changed</span>';
+    }
+    if (comparison.tagsChanged) {
+        html += '<span class="badge bg-warning text-dark"><i class="fas fa-tags me-1"></i>Tags changed</span>';
+    }
+    if (comparison.typeChanged) {
+        html += '<span class="badge bg-secondary"><i class="fas fa-folder me-1"></i>Type changed</span>';
+    }
+    if (comparison.confidenceChanged) {
+        html += '<span class="badge bg-secondary"><i class="fas fa-percentage me-1"></i>Confidence changed</span>';
+    }
+
+    html += '</div>';
+    metadataEl.innerHTML = html;
+}
+
+function displayDiffContent(comparison) {
+    const diffEl = document.getElementById('diffContent');
+
+    if (comparison.textDiffHtml) {
+        diffEl.innerHTML = comparison.textDiffHtml;
+    } else {
+        diffEl.innerHTML = '<p class="p-4 text-muted text-center">No content differences</p>';
+    }
+}
+</script>
+}
