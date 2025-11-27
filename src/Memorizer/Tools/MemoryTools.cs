@@ -220,7 +220,7 @@ public class MemoryTools
     }
 
     [McpServerTool, Description("Search for memories similar to the provided text. Use this to retrieve reference material, how-tos, or examples relevant to the current task. Filtering by tags can help narrow down to specific types of knowledge.")]
-    public async Task<string> Search(
+    public async Task<string> SearchMemories(
         [Description("The text to search for similar memories. Use natural language queries to find relevant reference or how-to information.")] string query,
         [Description("Maximum number of results to return")] int limit = 10,
         [Description("Minimum similarity threshold (0.0 to 1.0)")] double minSimilarity = 0.7,
@@ -228,7 +228,7 @@ public class MemoryTools
         CancellationToken cancellationToken = default
     )
     {
-        using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.Search");
+        using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.SearchMemories");
         
         // Add query details as Activity event with structured data
         activity?.AddEvent(new ActivityEvent("query.details", DateTimeOffset.UtcNow, new ActivityTagsCollection
