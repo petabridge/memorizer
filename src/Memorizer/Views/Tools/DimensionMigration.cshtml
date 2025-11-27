@@ -1,0 +1,450 @@
+@{
+    ViewData["Title"] = "Dimension Migration Tool";
+}
+
+<div class="container-fluid dimension-migration-page">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="@Url.Action("Index", "Tools")">Tools</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Dimension Migration</li>
+                </ol>
+            </nav>
+
+            <h1 class="mb-4">
+                <i class="fas fa-expand-arrows-alt me-2"></i>
+                Embedding Dimension Migration Tool
+            </h1>
+            <p class="lead">Migrate embedding dimensions when changing to a model with different vector output size.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <!-- Current Status Card -->
+            <div class="card mb-4" id="statusCard">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Current Dimension Status
+                    </h5>
+                </div>
+                <div class="card-body" id="statusContent">
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Loading dimension status...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Migration Action Card -->
+            <div class="card" id="actionCard" style="display: none;">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Run Dimension Migration</h5>
+                </div>
+                <div class="card-body">
+                    <div id="noMigrationNeeded" style="display: none;">
+                        <div class="alert alert-success">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>All Good!</strong> No dimension migration is required. Your configured model dimensions match the database schema.
+                        </div>
+                    </div>
+
+                    <div id="migrationNeeded" style="display: none;">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Migration Required!</strong>
+                            <span id="mismatchDescription"></span>
+                        </div>
+
+                        <div class="alert alert-danger">
+                            <i class="fas fa-database me-2"></i>
+                            <strong>Important:</strong> This migration will:
+                            <ol class="mb-0 mt-2">
+                                <li>ALTER the database schema to change vector column dimensions</li>
+                                <li>Set all existing embeddings to NULL (temporarily making memories unsearchable)</li>
+                                <li>Regenerate all embeddings with the new model/dimensions</li>
+                            </ol>
+                            <p class="mt-2 mb-0">
+                                <strong>This operation cannot be interrupted safely.</strong> Ensure your system can handle the load during migration.
+                            </p>
+                        </div>
+
+                        <form id="dimensionMigrationForm">
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+                                <button type="submit" class="btn btn-danger" id="startButton">
+                                    <i class="fas fa-rocket me-1"></i>
+                                    Start Dimension Migration
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="refreshButton">
+                                    <i class="fas fa-refresh me-1"></i>
+                                    Refresh Status
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div id="apiUnavailable" style="display: none;">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-plug me-2"></i>
+                            <strong>Embedding API Unavailable</strong>
+                            <p class="mb-0 mt-2">
+                                Cannot detect model dimensions because the embedding API is not responding.
+                                Please ensure Ollama (or your embedding service) is running and try again.
+                            </p>
+                        </div>
+                        <button type="button" class="btn btn-primary" id="retryButton">
+                            <i class="fas fa-redo me-1"></i>
+                            Retry Detection
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress and Results -->
+            <div class="card mt-4" id="progressCard" style="display: none;">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Migration Progress</h6>
+                </div>
+                <div class="card-body">
+                    <div class="progress mb-3">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"
+                             aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="progressBar">
+                            0%
+                        </div>
+                    </div>
+                    <div id="progressText">Initializing...</div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="card mt-4" id="resultsCard" style="display: none;">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">Results</h6>
+                </div>
+                <div class="card-body">
+                    <div id="resultsContent">
+                        <!-- Results will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">How It Works</h6>
+                </div>
+                <div class="card-body">
+                    <ol class="list-group list-group-numbered list-group-flush">
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Acquire Lock</strong><br>
+                            <small class="text-muted">PostgreSQL advisory lock prevents concurrent migrations</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Drop Indexes</strong><br>
+                            <small class="text-muted">Remove vector indexes before schema change</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>ALTER TABLE</strong><br>
+                            <small class="text-muted">Change VECTOR column size (sets embeddings to NULL)</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Recreate Indexes</strong><br>
+                            <small class="text-muted">Rebuild vector indexes for new dimensions</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Regenerate Embeddings</strong><br>
+                            <small class="text-muted">Re-embed all memories with new model/dimensions</small>
+                        </li>
+                        <li class="list-group-item border-0 px-0">
+                            <strong>Update Config</strong><br>
+                            <small class="text-muted">Store new model/dimension in database config</small>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">When to Use</h6>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info" role="alert">
+                        <small>
+                            <i class="fas fa-exchange-alt me-1"></i>
+                            <strong>Model Changed:</strong> Use when switching to an embedding model with different output dimensions (e.g., from <code>all-minilm</code> to <code>nomic-embed-text</code>).
+                        </small>
+                    </div>
+                    <div class="alert alert-warning" role="alert">
+                        <small>
+                            <i class="fas fa-clock me-1"></i>
+                            <strong>Time Warning:</strong> This operation processes ALL memories and may take significant time for large databases.
+                        </small>
+                    </div>
+                    <div class="alert alert-danger" role="alert">
+                        <small>
+                            <i class="fas fa-search-minus me-1"></i>
+                            <strong>Search Unavailable:</strong> During migration, vector search will not work as embeddings are being regenerated.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h6 class="card-title mb-0">
+                        <i class="fas fa-book me-1"></i>
+                        Documentation
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="card-text small">
+                        Learn about embedding models, their dimensions, and how to choose the right one for your use case.
+                    </p>
+                    <div class="d-grid gap-2">
+                        <a href="https://github.com/petabridge/memorizer-v1/blob/dev/docs/embedding-models.md"
+                           class="btn btn-outline-primary btn-sm" target="_blank">
+                            <i class="fas fa-microchip me-1"></i>
+                            Embedding Models Guide
+                        </a>
+                        <a href="https://github.com/petabridge/memorizer-v1/blob/dev/docs/embedding-migration.md"
+                           class="btn btn-outline-secondary btn-sm" target="_blank">
+                            <i class="fas fa-exchange-alt me-1"></i>
+                            Migration Documentation
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Create progress stream client for dimension migration
+        const progressClient = new ProgressStreamClient({
+            sseUrl: '/ui/tools/dimension-migration-progress',
+            progressBarId: 'progressBar',
+            progressTextId: 'progressText',
+            progressCardId: 'progressCard',
+            resultsCardId: 'resultsCard',
+            resultsContentId: 'resultsContent',
+            startButtonId: 'startButton',
+            formId: 'dimensionMigrationForm',
+            jobName: 'Dimension migration'
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load initial status
+            loadDimensionStatus();
+
+            // Form submit handler
+            const form = document.getElementById('dimensionMigrationForm');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    startDimensionMigration();
+                });
+            }
+
+            // Refresh button
+            document.getElementById('refreshButton')?.addEventListener('click', loadDimensionStatus);
+            document.getElementById('retryButton')?.addEventListener('click', loadDimensionStatus);
+        });
+
+        function loadDimensionStatus() {
+            const statusContent = document.getElementById('statusContent');
+            statusContent.innerHTML = `
+                <div class="text-center py-3">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Loading dimension status...</p>
+                </div>
+            `;
+
+            fetch('@Url.Action("GetDimensionStatus", "Tools")')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        renderDimensionStatus(data);
+                    } else {
+                        statusContent.innerHTML = `
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-circle me-2"></i>
+                                Failed to load dimension status: ${data.message}
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    statusContent.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            Failed to connect to server. Please try again.
+                        </div>
+                    `;
+                });
+        }
+
+        function renderDimensionStatus(data) {
+            const statusContent = document.getElementById('statusContent');
+            const actionCard = document.getElementById('actionCard');
+            const noMigrationNeeded = document.getElementById('noMigrationNeeded');
+            const migrationNeeded = document.getElementById('migrationNeeded');
+            const apiUnavailable = document.getElementById('apiUnavailable');
+            const mismatchDescription = document.getElementById('mismatchDescription');
+
+            // Build status display
+            let statusHtml = '<div class="row">';
+
+            // Configured Model
+            statusHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 bg-light">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">Configured Model</h6>
+                            <p class="card-text">
+                                <strong><code>${data.configuredModel || 'Not configured'}</code></strong>
+                            </p>
+                            <small class="text-muted">
+                                ${data.embeddingApiAvailable
+                                    ? `<span class="text-success"><i class="fas fa-check-circle me-1"></i>API Available</span>`
+                                    : `<span class="text-warning"><i class="fas fa-exclamation-triangle me-1"></i>API Unavailable</span>`
+                                }
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Detected Dimensions
+            statusHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 bg-light">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">Detected Model Dimensions</h6>
+                            <p class="card-text">
+                                <strong class="fs-4">${data.detectedDimensions ?? 'Unknown'}</strong>
+                            </p>
+                            <small class="text-muted">From live model probe</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Stored Config
+            statusHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 bg-light">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">Stored Configuration</h6>
+                            <p class="card-text">
+                                <strong>${data.storedModel ? `<code>${data.storedModel}</code>` : 'None'}</strong>
+                                ${data.storedDimensions ? ` - <strong class="fs-5">${data.storedDimensions}</strong> dimensions` : ''}
+                            </p>
+                            <small class="text-muted">From embedding_config table</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Schema Dimensions
+            statusHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 bg-light">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">Database Schema</h6>
+                            <p class="card-text">
+                                <strong class="fs-4">VECTOR(${data.schemaDimensions ?? '?'})</strong>
+                            </p>
+                            <small class="text-muted">Current column definition</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            statusHtml += '</div>';
+
+            // Status indicator
+            if (data.hasMismatch) {
+                statusHtml += `
+                    <div class="alert alert-warning mt-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Dimension Mismatch Detected</strong>
+                    </div>
+                `;
+            } else {
+                statusHtml += `
+                    <div class="alert alert-success mt-3">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>All dimensions aligned</strong>
+                    </div>
+                `;
+            }
+
+            statusContent.innerHTML = statusHtml;
+
+            // Show action card
+            actionCard.style.display = 'block';
+
+            // Show appropriate section
+            noMigrationNeeded.style.display = 'none';
+            migrationNeeded.style.display = 'none';
+            apiUnavailable.style.display = 'none';
+
+            if (!data.embeddingApiAvailable) {
+                apiUnavailable.style.display = 'block';
+            } else if (data.requiresMigration) {
+                migrationNeeded.style.display = 'block';
+                mismatchDescription.textContent = data.mismatchDescription || 'Dimensions do not match.';
+            } else {
+                noMigrationNeeded.style.display = 'block';
+            }
+        }
+
+        function startDimensionMigration() {
+            if (!confirm('Are you sure you want to start dimension migration? This will make search unavailable until all embeddings are regenerated.')) {
+                return;
+            }
+
+            // Disable form and show progress
+            progressClient.disableStartButton();
+            progressClient.showProgressCard();
+            progressClient.updateProgress(0, 'Starting dimension migration...');
+
+            fetch('@Url.Action("StartDimensionMigration", "Tools")', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    progressClient.showAlert('success', data.message);
+                    progressClient.updateProgress(5, 'Migration started. Changing schema...');
+                    // Start SSE progress stream
+                    progressClient.start();
+                } else {
+                    if (data.isRunning) {
+                        progressClient.showAlert('warning', 'A migration is already in progress.');
+                        progressClient.disableStartButton();
+                        progressClient.showProgressCard();
+                        progressClient.start();
+                    } else {
+                        progressClient.showAlert('danger', data.message);
+                        progressClient.enableStartButton();
+                        progressClient.hideProgressCard();
+                    }
+                }
+            })
+            .catch(error => {
+                progressClient.showAlert('danger', 'Failed to start dimension migration. Please try again.');
+                progressClient.enableStartButton();
+                progressClient.hideProgressCard();
+            });
+        }
+    </script>
+}

@@ -111,6 +111,38 @@ public static class Routes
             }
         });
 
+        // SSE endpoint for dimension migration progress
+        app.MapGet("/ui/tools/dimension-migration-progress",
+            async (IActorRegistry actorRegistry, CancellationToken ct) =>
+        {
+            var dimensionMigrationActor = await actorRegistry.GetAsync<DimensionMigrationActorKey>(ct);
+            var subscriberId = Guid.NewGuid().ToString();
+
+            var subscription = await dimensionMigrationActor.Ask<DimensionMigrationProgressSubscription>(
+                new SubscribeToDimensionMigrationProgress(subscriberId),
+                ct);
+
+            return TypedResults.ServerSentEvents(StreamProgress());
+
+            async IAsyncEnumerable<SseItem<ProgressEvent>> StreamProgress()
+            {
+                try
+                {
+                    await foreach (var progress in subscription.Reader.ReadAllAsync(ct))
+                    {
+                        yield return new SseItem<ProgressEvent>(progress, "progress")
+                        {
+                            EventId = Guid.NewGuid().ToString()
+                        };
+                    }
+                }
+                finally
+                {
+                    dimensionMigrationActor.Tell(new UnsubscribeFromDimensionMigrationProgress(subscriberId), ActorRefs.NoSender);
+                }
+            }
+        });
+
         return app;
     }
 }

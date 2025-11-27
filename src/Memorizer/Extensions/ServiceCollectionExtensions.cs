@@ -40,6 +40,18 @@ public static class ServiceCollectionExtensions
                 client.Timeout = settings.Timeout;
             });
 
+        // Register EmbeddingDimensionService with its own HttpClient
+        // (can't rely on AutoRegister since it needs HttpClient configured)
+        services.AddHttpClient<IEmbeddingDimensionService, EmbeddingDimensionService>((sp, client) =>
+        {
+            EmbeddingSettings settings = sp.GetRequiredService<EmbeddingSettings>();
+            client.BaseAddress = settings.ApiUrl;
+            client.Timeout = settings.Timeout;
+        });
+
+        // Register dimension mismatch state holder for UI warnings
+        services.AddSingleton<IDimensionMismatchState, DimensionMismatchState>();
+
         return services;
     }
 
@@ -103,6 +115,11 @@ public static class ServiceCollectionExtensions
                 var versionPurgeActorProps = resolver.Props<VersionPurgeActor>();
                 var versionPurgeActor = system.ActorOf(versionPurgeActorProps, "version-purge");
                 registry.Register<VersionPurgeActorKey>(versionPurgeActor);
+
+                // Create and register the DimensionMigrationActor
+                var dimensionMigrationActorProps = resolver.Props<DimensionMigrationActor>();
+                var dimensionMigrationActor = system.ActorOf(dimensionMigrationActorProps, "dimension-migration");
+                registry.Register<DimensionMigrationActorKey>(dimensionMigrationActor);
             });
 
             // TODO: Configure Akka.Persistence.Sql with PostgreSQL

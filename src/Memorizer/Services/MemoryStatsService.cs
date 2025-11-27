@@ -1,4 +1,3 @@
-using Memorizer.Settings;
 using Npgsql;
 using Registrator.Net;
 
@@ -25,9 +24,14 @@ public class MemoryStats
     public long AverageMemorySizeBytes { get; set; }
 
     /// <summary>
-    /// Configured embedding dimensions
+    /// Current embedding dimensions (from database config or schema)
     /// </summary>
     public int EmbeddingDimensions { get; set; }
+
+    /// <summary>
+    /// Current embedding model name
+    /// </summary>
+    public string? EmbeddingModel { get; set; }
 
     /// <summary>
     /// Total count of version snapshots across all memories
@@ -59,14 +63,14 @@ public class MemoryStats
 public class MemoryStatsService : IMemoryStatsService
 {
     private readonly NpgsqlDataSource _dataSource;
-    private readonly EmbeddingSettings _embeddingSettings;
-    
-    public MemoryStatsService(NpgsqlDataSource dataSource, EmbeddingSettings embeddingSettings)
+    private readonly IEmbeddingDimensionService _dimensionService;
+
+    public MemoryStatsService(NpgsqlDataSource dataSource, IEmbeddingDimensionService dimensionService)
     {
         _dataSource = dataSource;
-        _embeddingSettings = embeddingSettings;
+        _dimensionService = dimensionService;
     }
-    
+
     public async Task<MemoryStats> GetStatsAsync(CancellationToken cancellationToken = default)
     {
         int totalMemories = 0;
@@ -102,11 +106,16 @@ public class MemoryStatsService : IMemoryStatsService
             }
         }
 
+        // Get embedding dimensions from dimension service (queries DB config/schema)
+        var embeddingConfig = await _dimensionService.GetActiveConfigAsync(cancellationToken);
+        var effectiveDimensions = await _dimensionService.GetEffectiveDimensionsAsync(cancellationToken);
+
         return new MemoryStats
         {
             TotalMemories = totalMemories,
             AverageMemorySizeBytes = avgSizeBytes,
-            EmbeddingDimensions = _embeddingSettings.Dimensions,
+            EmbeddingDimensions = effectiveDimensions,
+            EmbeddingModel = embeddingConfig?.ModelName,
             TotalVersions = totalVersions,
             TotalAuditEvents = totalEvents,
             MemoriesStorageBytes = memoriesStorageBytes,

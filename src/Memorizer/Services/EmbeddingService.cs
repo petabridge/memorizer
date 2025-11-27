@@ -20,16 +20,19 @@ public interface IEmbeddingService
 public class EmbeddingService : IEmbeddingService
 {
     private readonly HttpClient _httpClient;
-    private readonly EmbeddingSettings _settings ;
+    private readonly EmbeddingSettings _settings;
+    private readonly IEmbeddingDimensionService _dimensionService;
     private readonly ILogger<EmbeddingService> _logger;
 
     public EmbeddingService(
         HttpClient httpClient,
         EmbeddingSettings settings,
+        IEmbeddingDimensionService dimensionService,
         ILogger<EmbeddingService> logger)
     {
         _httpClient = httpClient;
         _settings = settings;
+        _dimensionService = dimensionService;
         _logger = logger;
         _httpClient.Timeout = _settings.Timeout;
     }
@@ -71,9 +74,12 @@ public class EmbeddingService : IEmbeddingService
             _logger.LogError(ex, "Error generating embedding: {ErrorMessage}", ex.Message);
 
             // Fallback to a random embedding in case of error
+            // Use effective dimensions from the dimension service (detected > stored > schema > 384)
             _logger.LogWarning("Falling back to random embedding generation");
+            var dimensions = await _dimensionService.GetEffectiveDimensionsAsync(cancellationToken);
+
             Random random = new();
-            float[] embedding = new float[_settings.Dimensions];
+            float[] embedding = new float[dimensions];
             for (int i = 0; i < embedding.Length; i++)
             {
                 embedding[i] = (float)random.NextDouble();

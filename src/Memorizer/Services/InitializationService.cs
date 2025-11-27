@@ -22,10 +22,13 @@ public sealed class InitializationService : BackgroundService
     {
         // Run migrations first as they are critical
         await RunMigrationsAsync(stoppingToken);
-        
+
+        // Validate embedding dimensions and set mismatch state for UI warnings
+        await ValidateEmbeddingDimensions(stoppingToken);
+
         // Check and trigger metadata embedding migration if needed
         await CheckAndTriggerEmbeddingMigration(stoppingToken);
-        
+
         // Then add default prompt
         await AddDefaultPrompt(stoppingToken);
     }
@@ -244,6 +247,63 @@ This demonstrates how Mermaid diagrams render in both light and dark themes!";
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create system memory: {Message}", ex.Message);
+        }
+    }
+
+    private async Task ValidateEmbeddingDimensions(CancellationToken ct = default)
+    {
+        try
+        {
+            var dimensionService = _services.GetRequiredService<IEmbeddingDimensionService>();
+            var mismatchState = _services.GetRequiredService<IDimensionMismatchState>();
+
+            _logger.LogInformation("Validating embedding dimensions...");
+
+            var validation = await dimensionService.ValidateAsync(ct);
+            mismatchState.Update(validation);
+
+            if (validation.HasMismatch)
+            {
+                // Log as ERROR to ensure visibility in production logs
+                _logger.LogError(
+                    "╔══════════════════════════════════════════════════════════════════╗");
+                _logger.LogError(
+                    "║  EMBEDDING DIMENSION MISMATCH DETECTED                           ║");
+                _logger.LogError(
+                    "╚══════════════════════════════════════════════════════════════════╝");
+                _logger.LogError(
+                    "Mismatch Details: {Description}", validation.MismatchDescription);
+                _logger.LogError(
+                    "  - Configured Model: {Model}", validation.ConfiguredModel);
+                _logger.LogError(
+                    "  - Detected Dimensions: {Detected}", validation.DetectedModelDimensions?.ToString() ?? "Unknown (API unavailable)");
+                _logger.LogError(
+                    "  - Stored Dimensions: {Stored}", validation.StoredDimensions?.ToString() ?? "None");
+                _logger.LogError(
+                    "  - Schema Dimensions: VECTOR({Schema})", validation.DatabaseSchemaDimensions?.ToString() ?? "Unknown");
+                _logger.LogError(
+                    "ACTION REQUIRED: Navigate to /ui/tools/dimension-migration to run the migration tool");
+                _logger.LogError(
+                    "DOCUMENTATION: https://github.com/petabridge/memorizer-v1/blob/dev/docs/embedding-models.md");
+            }
+            else if (!validation.EmbeddingApiAvailable)
+            {
+                _logger.LogWarning(
+                    "Embedding API unavailable - unable to detect model dimensions. " +
+                    "Trusting stored/schema configuration.");
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Embedding dimensions validated: model={Model}, dimensions={Dimensions}",
+                    validation.ConfiguredModel,
+                    validation.DetectedModelDimensions ?? validation.StoredDimensions ?? validation.DatabaseSchemaDimensions);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to validate embedding dimensions: {Message}", ex.Message);
+            // Don't fail startup - just log the warning
         }
     }
 

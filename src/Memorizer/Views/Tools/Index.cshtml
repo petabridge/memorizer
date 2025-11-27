@@ -84,6 +84,29 @@
             <div class="card h-100">
                 <div class="card-body">
                     <h5 class="card-title">
+                        <i class="fas fa-expand-arrows-alt me-2"></i>
+                        Dimension Migration
+                    </h5>
+                    <p class="card-text">
+                        Migrate embedding dimensions when changing to a different model.
+                    </p>
+                    <p class="text-muted small">
+                        Use when switching to an embedding model with different output dimensions (e.g., from 384 to 768). Handles schema changes and embedding regeneration.
+                    </p>
+                </div>
+                <div class="card-footer">
+                    <a href="@Url.Action("DimensionMigration", "Tools")" class="btn btn-danger">
+                        <i class="fas fa-database me-1"></i>
+                        Migrate Dimensions
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
                         <i class="fas fa-chart-bar me-2"></i>
                         Performance Analytics
                     </h5>

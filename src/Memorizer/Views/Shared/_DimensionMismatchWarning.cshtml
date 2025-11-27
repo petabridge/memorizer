@@ -1,0 +1,36 @@
+@inject Memorizer.Services.IDimensionMismatchState MismatchState
+@{
+    var validation = MismatchState.LastValidation;
+    var showWarning = validation?.HasMismatch ?? false;
+}
+
+@if (showWarning)
+{
+    <div class="alert alert-warning alert-dismissible fade show dimension-mismatch-banner mt-3" role="alert">
+        <div class="d-flex align-items-center">
+            <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
+            <div class="flex-grow-1">
+                <h5 class="alert-heading mb-1">
+                    Embedding Dimension Mismatch Detected
+                </h5>
+                <p class="mb-1">
+                    @(validation?.MismatchDescription ?? "Your configured embedding model outputs different dimensions than the database schema.")
+                </p>
+                <p class="mb-0 small">
+                    <a href="https://github.com/petabridge/memorizer-v1/blob/dev/docs/embedding-models.md"
+                       target="_blank"
+                       class="alert-link">
+                        <i class="fas fa-book me-1"></i>Learn about embedding models and dimensions
+                    </a>
+                </p>
+            </div>
+            <div class="ms-3">
+                <a href="@Url.Action("DimensionMigration", "Tools")" class="btn btn-warning">
+                    <i class="fas fa-wrench me-1"></i>
+                    Run Migration Tool
+                </a>
+            </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+}

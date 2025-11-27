@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Hosting;
 using Memorizer.Actors;
+using Memorizer.Services;
 using Memorizer.Settings;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
@@ -13,20 +14,29 @@ public class ToolsController : Controller
     private readonly IActorRef _titleGenerationActor;
     private readonly IActorRef _embeddingRegenerationActor;
     private readonly IActorRef _versionPurgeActor;
+    private readonly IActorRef _dimensionMigrationActor;
     private readonly LlmSettings _llmSettings;
+    private readonly IEmbeddingDimensionService _dimensionService;
+    private readonly IDimensionMismatchState _mismatchState;
     private readonly ILogger<ToolsController> _logger;
 
     public ToolsController(
         IRequiredActor<TitleGenerationActorKey> titleGenerationActor,
         IRequiredActor<EmbeddingRegenerationActorKey> embeddingRegenerationActor,
         IRequiredActor<VersionPurgeActorKey> versionPurgeActor,
+        IRequiredActor<DimensionMigrationActorKey> dimensionMigrationActor,
         LlmSettings llmSettings,
+        IEmbeddingDimensionService dimensionService,
+        IDimensionMismatchState mismatchState,
         ILogger<ToolsController> logger)
     {
         _titleGenerationActor = titleGenerationActor.ActorRef;
         _embeddingRegenerationActor = embeddingRegenerationActor.ActorRef;
         _versionPurgeActor = versionPurgeActor.ActorRef;
+        _dimensionMigrationActor = dimensionMigrationActor.ActorRef;
         _llmSettings = llmSettings;
+        _dimensionService = dimensionService;
+        _mismatchState = mismatchState;
         _logger = logger;
     }
 
@@ -353,4 +363,192 @@ public class ToolsController : Controller
             return Json(new { success = false, message = $"Error: {ex.Message}" });
         }
     }
+
+    #region Dimension Migration
+
+    /// <summary>
+    /// Display the dimension migration tool page
+    /// </summary>
+    [HttpGet]
+    [Route("dimension-migration")]
+    public IActionResult DimensionMigration()
+    {
+        return View();
+    }
+
+    /// <summary>
+    /// Get the current dimension validation status
+    /// </summary>
+    [HttpGet]
+    [Route("dimension-status")]
+    public async Task<IActionResult> GetDimensionStatus()
+    {
+        try
+        {
+            // Re-validate to get fresh status
+            var validation = await _dimensionService.ValidateAsync();
+            _mismatchState.Update(validation);
+
+            return Json(new {
+                success = true,
+                configuredModel = validation.ConfiguredModel,
+                detectedDimensions = validation.DetectedModelDimensions,
+                storedDimensions = validation.StoredDimensions,
+                storedModel = validation.StoredModel,
+                schemaDimensions = validation.DatabaseSchemaDimensions,
+                hasMismatch = validation.HasMismatch,
+                mismatchDescription = validation.MismatchDescription,
+                requiresMigration = validation.RequiresMigration,
+                embeddingApiAvailable = validation.EmbeddingApiAvailable
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting dimension status: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Get the status of dimension migration operations
+    /// </summary>
+    [HttpGet]
+    [Route("dimension-migration-status")]
+    public async Task<IActionResult> GetDimensionMigrationStatus()
+    {
+        try
+        {
+            var status = await _dimensionMigrationActor.Ask<DimensionMigrationStatus>(
+                new GetDimensionMigrationStatus(), TimeSpan.FromSeconds(5));
+
+            return Json(new {
+                success = true,
+                status = status.Status,
+                isRunning = status.IsRunning,
+                oldDimensions = status.OldDimensions,
+                newDimensions = status.NewDimensions,
+                oldModel = status.OldModel,
+                newModel = status.NewModel,
+                totalMemories = status.TotalMemories,
+                processed = status.Processed,
+                successful = status.Successful,
+                failed = status.Failed,
+                startTime = status.StartTime,
+                duration = status.Duration?.TotalSeconds,
+                migrationId = status.MigrationId,
+                requestedBy = status.RequestedBy,
+                errorMessage = status.ErrorMessage
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting dimension migration status: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Start a dimension migration to update the embedding schema and regenerate all embeddings
+    /// </summary>
+    [HttpPost]
+    [Route("start-dimension-migration")]
+    public async Task<IActionResult> StartDimensionMigration()
+    {
+        try
+        {
+            // First check if there's actually a mismatch
+            var validation = await _dimensionService.ValidateAsync();
+
+            if (!validation.RequiresMigration)
+            {
+                return Json(new {
+                    success = false,
+                    message = "No dimension migration required. Configured model dimensions match the database schema.",
+                    hasMismatch = false
+                });
+            }
+
+            if (!validation.EmbeddingApiAvailable)
+            {
+                return Json(new {
+                    success = false,
+                    message = "Embedding API is not available. Cannot detect model dimensions to perform migration.",
+                    embeddingApiAvailable = false
+                });
+            }
+
+            _logger.LogInformation(
+                "Starting dimension migration: {Description}",
+                validation.MismatchDescription);
+
+            var startMessage = new StartDimensionMigration(
+                RequestedBy: User.Identity?.Name ?? "Anonymous"
+            );
+
+            // Use Ask to wait for the actor to start the job
+            var status = await _dimensionMigrationActor.Ask<DimensionMigrationStatus>(
+                startMessage, TimeSpan.FromSeconds(30));
+
+            return Json(new {
+                success = status.IsRunning || status.Status == "No migration required",
+                message = status.IsRunning
+                    ? $"Dimension migration started: {validation.StoredDimensions ?? validation.DatabaseSchemaDimensions} → {validation.DetectedModelDimensions} dimensions"
+                    : status.ErrorMessage ?? status.Status,
+                isRunning = status.IsRunning,
+                migrationId = status.MigrationId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting dimension migration: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// Resume an interrupted dimension migration
+    /// </summary>
+    [HttpPost]
+    [Route("resume-dimension-migration")]
+    public async Task<IActionResult> ResumeDimensionMigration([FromBody] ResumeMigrationRequest request)
+    {
+        try
+        {
+            if (request.MigrationId == Guid.Empty)
+            {
+                return Json(new { success = false, message = "Migration ID is required" });
+            }
+
+            _logger.LogInformation("Resuming dimension migration {MigrationId}", request.MigrationId);
+
+            var resumeMessage = new ResumeDimensionMigration(
+                MigrationId: request.MigrationId,
+                RequestedBy: User.Identity?.Name ?? "Anonymous"
+            );
+
+            var status = await _dimensionMigrationActor.Ask<DimensionMigrationStatus>(
+                resumeMessage, TimeSpan.FromSeconds(30));
+
+            return Json(new {
+                success = status.IsRunning,
+                message = status.IsRunning
+                    ? $"Dimension migration resumed"
+                    : status.ErrorMessage ?? status.Status,
+                isRunning = status.IsRunning,
+                migrationId = status.MigrationId
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resuming dimension migration: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
+    }
+
+    public class ResumeMigrationRequest
+    {
+        public Guid MigrationId { get; set; }
+    }
+
+    #endregion
 } 
