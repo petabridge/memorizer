@@ -1,3 +1,24 @@
+#### 1.9.0-beta1 November 27th 2025 ####
+
+**Features**
+- [Add memory versioning with full audit trail and diff support](https://github.com/petabridge/memorizer-v1/pull/96) - Comprehensive version tracking system that records all changes to memories with complete history
+  - **Edit Tool**: Targeted text replacements with automatic version snapshots
+  - **UpdateMetadata Tool**: Update memory metadata (type, tags, confidence, title) without changing content
+  - **RevertToVersion Tool**: Restore previous versions of memories
+  - **Visual Diffs**: Line-by-line comparison between versions in Web UI
+  - **Event Audit Log**: Complete operation history for compliance and debugging
+
+**Bug Fixes**
+- [Rename Search tool to SearchMemories](https://github.com/petabridge/memorizer-v1/pull/105) - Fixes compatibility issues with Qwen Code CLI and Gemini that disallow tools named "search"
+
+**Updates**
+- [Bump Npgsql from 9.0.4 to 10.0.0](https://github.com/petabridge/memorizer-v1/pull/100) - Major PostgreSQL driver update with performance improvements
+- [Bump Microsoft.AspNetCore.Mvc.Testing from 9.0.10 to 10.0.0](https://github.com/petabridge/memorizer-v1/pull/98) - Updated to .NET 10 testing framework
+- Updated OpenTelemetry packages to 1.14.0 for improved observability
+- Updated OllamaSharp from 5.3.6 to 5.4.11 for latest model support
+- Updated Akka.Streams from 1.5.55 to 1.5.56
+- Updated Microsoft.NET.Test.Sdk from 18.0.0 to 18.0.1
+
 #### 1.8.0 November 25th 2025 ####
 
 **Features**

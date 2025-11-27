@@ -3,21 +3,28 @@
     <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/dariogriffo/postg-mem</PackageProjectUrl>
-    <VersionPrefix>1.8.0</VersionPrefix>
+    <VersionPrefix>1.9.0-beta1</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
     <PackageReleaseNotes>**Features**
-- [.NET 10 SSE support](https://github.com/petabridge/memorizer-v1/pull/88) - Upgraded to .NET 10 with improved Server-Sent Events capabilities
-- [Add Mermaid.js support and dark/light theme switcher](https://github.com/petabridge/memorizer-v1/pull/92) - Enhanced documentation visualization with automatic theme detection
-- [Unified Embedding Regeneration Tool](https://github.com/petabridge/memorizer-v1/pull/91) - Streamlined tool for regenerating embeddings across the database
-
-**Updates**
-- [Updated Model Context Protocol (MCP) packages to 0.4.0-preview.3](https://github.com/petabridge/memorizer-v1/pull/93) - Latest MCP protocol improvements and bug fixes
-- Updated Akka.NET and .NET dependencies to latest versions - Including Akka.Persistence.Sql.Hosting, Akka.Hosting, Akka.Hosting.TestKit, and Microsoft.NET.Test.Sdk
+- [Add memory versioning with full audit trail and diff support](https://github.com/petabridge/memorizer-v1/pull/96) - Comprehensive version tracking system that records all changes to memories with complete history
+  - **Edit Tool**: Targeted text replacements with automatic version snapshots
+  - **UpdateMetadata Tool**: Update memory metadata (type, tags, confidence, title) without changing content
+  - **RevertToVersion Tool**: Restore previous versions of memories
+  - **Visual Diffs**: Line-by-line comparison between versions in Web UI
+  - **Event Audit Log**: Complete operation history for compliance and debugging
 
 **Bug Fixes**
-- [Fix footer link styling in light and dark themes](https://github.com/petabridge/memorizer-v1/pull/94) - Improved visibility and consistency of footer links across themes</PackageReleaseNotes>
+- [Rename Search tool to SearchMemories](https://github.com/petabridge/memorizer-v1/pull/105) - Fixes compatibility issues with Qwen Code CLI and Gemini that disallow tools named "search"
+
+**Updates**
+- [Bump Npgsql from 9.0.4 to 10.0.0](https://github.com/petabridge/memorizer-v1/pull/100) - Major PostgreSQL driver update with performance improvements
+- [Bump Microsoft.AspNetCore.Mvc.Testing from 9.0.10 to 10.0.0](https://github.com/petabridge/memorizer-v1/pull/98) - Updated to .NET 10 testing framework
+- Updated OpenTelemetry packages to 1.14.0 for improved observability
+- Updated OllamaSharp from 5.3.6 to 5.4.11 for latest model support
+- Updated Akka.Streams from 1.5.55 to 1.5.56
+- Updated Microsoft.NET.Test.Sdk from 18.0.0 to 18.0.1</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>
