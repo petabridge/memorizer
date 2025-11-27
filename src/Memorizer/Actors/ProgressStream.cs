@@ -115,6 +115,33 @@ public sealed class ProgressJobManager
     }
 
     /// <summary>
+    /// Update progress from an external source (e.g., piggybacking on another actor's progress).
+    /// Use this when this job manager is forwarding progress from another actor's work.
+    /// </summary>
+    public void ReportProgress(int processedCount, int totalItems, int successCount, int failureCount, string? statusMessage = null)
+    {
+        ProcessedCount = processedCount;
+        TotalItems = totalItems;
+        SuccessCount = successCount;
+        FailureCount = failureCount;
+
+        var evt = new ProgressEvent(
+            TotalItems: TotalItems,
+            TotalProcessed: ProcessedCount,
+            TotalSuccessful: SuccessCount,
+            TotalFailed: FailureCount,
+            Outstanding: TotalItems - ProcessedCount,
+            Status: CurrentStatus,
+            RequestedBy: RequestedBy,
+            Duration: DateTime.UtcNow - StartTime,
+            FailedIds: FailedIds.Count > 0 ? FailedIds.ToList() : null,
+            Message: statusMessage
+        );
+
+        Broadcast(evt);
+    }
+
+    /// <summary>
     /// Complete the job successfully. Sets final status and broadcasts completion event.
     /// The AutoCompleteOnFinished stage will gracefully close all subscriber streams.
     /// </summary>

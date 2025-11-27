@@ -192,7 +192,10 @@ class ProgressStreamClient {
         const progress = JSON.parse(event.data);
         const percentComplete = progress.percentComplete;
         const totalItems = progress.totalProcessed + progress.outstanding;
-        const statusText = `Processing ${progress.totalProcessed} of ${totalItems} items (${progress.totalSuccessful} successful, ${progress.totalFailed} failed)`;
+
+        // Use the message from the server if available, otherwise construct a default status text
+        const statusText = progress.message ||
+            `Processing ${progress.totalProcessed} of ${totalItems} items (${progress.totalSuccessful} successful, ${progress.totalFailed} failed)`;
 
         this.updateProgress(percentComplete, statusText);
 

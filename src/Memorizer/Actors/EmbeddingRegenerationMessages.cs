@@ -51,6 +51,18 @@ public record BatchEmbeddingRegenerationCompleted(
 );
 
 /// <summary>
+/// Progress update published to EventStream during embedding regeneration.
+/// Subscribers can use this to track real-time progress.
+/// </summary>
+public record EmbeddingRegenerationProgress(
+    string RequestedBy,
+    int TotalItems,
+    int ProcessedCount,
+    int SuccessCount,
+    int FailureCount
+);
+
+/// <summary>
 /// Request the current status of the embedding regeneration batch job
 /// </summary>
 public record GetEmbeddingRegenerationStatus();

@@ -245,6 +245,9 @@ public sealed class EmbeddingRegenerationActor : ReceiveActor
         {
             _outstandingOnCurrentPage--;
 
+            // Publish progress event for subscribers (like DimensionMigrationActor)
+            PublishProgress();
+
             if (_outstandingOnCurrentPage == 0)
             {
                 // Current page complete, check if we should continue
@@ -258,6 +261,21 @@ public sealed class EmbeddingRegenerationActor : ReceiveActor
                 }
             }
         }
+    }
+
+    private void PublishProgress()
+    {
+        if (_jobManager == null) return;
+
+        var progress = new EmbeddingRegenerationProgress(
+            RequestedBy: _jobManager.RequestedBy,
+            TotalItems: _jobManager.TotalItems,
+            ProcessedCount: _jobManager.ProcessedCount,
+            SuccessCount: _jobManager.SuccessCount,
+            FailureCount: _jobManager.FailureCount
+        );
+
+        Context.System.EventStream.Publish(progress);
     }
 
     private void CompleteBatch()

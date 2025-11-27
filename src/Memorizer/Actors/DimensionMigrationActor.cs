@@ -127,6 +127,9 @@ public sealed class DimensionMigrationActor : ReceiveActor
             _jobManager?.RemoveSubscriber(msg.SubscriberId);
         });
 
+        // Handle progress updates from EmbeddingRegenerationActor - forward to our subscribers
+        Receive<EmbeddingRegenerationProgress>(HandleRegenerationProgress);
+
         // Handle completion from EmbeddingRegenerationActor
         ReceiveAsync<BatchEmbeddingRegenerationCompleted>(HandleRegenerationCompleted);
     }
@@ -223,7 +226,8 @@ public sealed class DimensionMigrationActor : ReceiveActor
             // Update migration status
             await UpdateMigrationStatus(_currentMigrationId.Value, "regenerating");
 
-            // Subscribe to completion events
+            // Subscribe to progress and completion events from EmbeddingRegenerationActor
+            Context.System.EventStream.Subscribe(Self, typeof(EmbeddingRegenerationProgress));
             Context.System.EventStream.Subscribe(Self, typeof(BatchEmbeddingRegenerationCompleted));
 
             // Tell EmbeddingRegenerationActor to regenerate all embeddings
@@ -313,6 +317,7 @@ public sealed class DimensionMigrationActor : ReceiveActor
                 _logger.Info("Schema already changed, resuming embedding regeneration");
                 await UpdateMigrationStatus(_currentMigrationId.Value, "regenerating");
 
+                Context.System.EventStream.Subscribe(Self, typeof(EmbeddingRegenerationProgress));
                 Context.System.EventStream.Subscribe(Self, typeof(BatchEmbeddingRegenerationCompleted));
 
                 _embeddingRegenerationActor.ActorRef.Tell(
@@ -325,6 +330,7 @@ public sealed class DimensionMigrationActor : ReceiveActor
                 await PerformSchemaChange(_newDimensions);
                 await UpdateMigrationStatus(_currentMigrationId.Value, "regenerating");
 
+                Context.System.EventStream.Subscribe(Self, typeof(EmbeddingRegenerationProgress));
                 Context.System.EventStream.Subscribe(Self, typeof(BatchEmbeddingRegenerationCompleted));
 
                 _embeddingRegenerationActor.ActorRef.Tell(
@@ -347,6 +353,33 @@ public sealed class DimensionMigrationActor : ReceiveActor
             ));
 
             Become(Idle);
+        }
+    }
+
+    private void HandleRegenerationProgress(EmbeddingRegenerationProgress msg)
+    {
+        // Only process progress for our migration's regeneration request
+        if (!msg.RequestedBy.Contains(_currentMigrationId?.ToString() ?? "no-migration"))
+        {
+            return;
+        }
+
+        // Forward progress to our job manager for SSE subscribers
+        // Add 1 to account for the schema change step we already completed
+        if (_jobManager != null)
+        {
+            // Update our job manager with the regeneration progress
+            // The +1 accounts for the schema change step
+            var totalWithSchema = msg.TotalItems + 1;
+            var processedWithSchema = msg.ProcessedCount + 1; // +1 for schema step
+
+            _jobManager.ReportProgress(
+                processedCount: processedWithSchema,
+                totalItems: totalWithSchema,
+                successCount: msg.SuccessCount + 1, // +1 for successful schema change
+                failureCount: msg.FailureCount,
+                statusMessage: $"Regenerating embeddings: {msg.ProcessedCount}/{msg.TotalItems} " +
+                              $"({msg.SuccessCount} successful, {msg.FailureCount} failed)");
         }
     }
 
@@ -402,6 +435,7 @@ public sealed class DimensionMigrationActor : ReceiveActor
         }
         finally
         {
+            Context.System.EventStream.Unsubscribe(Self, typeof(EmbeddingRegenerationProgress));
             Context.System.EventStream.Unsubscribe(Self, typeof(BatchEmbeddingRegenerationCompleted));
             await ReleaseDistributedLock();
             _currentMigrationId = null;
