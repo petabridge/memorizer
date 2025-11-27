@@ -9,8 +9,11 @@ Key features:
 - Retrieve memories by ID
 - Semantic search through memories using vector similarity
 - Filter search results using tags
+- Edit memory content with automatic versioning and change tracking
+- Update memory metadata (title, type, tags, confidence) independently
+- Revert memories to previous versions with full audit trail
 - Create relationships between memories to form knowledge graphs
-- UI for manually adding, editing, deleting, or viewing memories
+- Web UI for manually adding, editing, deleting, viewing memories, and managing versions
 - MCP (Model Context Protocol) integration for easy use with AI agents
 
 ## Technologies
@@ -99,7 +102,8 @@ Once the application is running (via `docker-compose up -d`), you can access the
 
 ### Features
 
-- **Memory Management**: Create, view, edit, and delete memories
+- **Memory Management**: Create, view, edit, and delete memories with full CRUD operations
+- **Version Control**: View version history, compare versions with visual diffs, and revert to previous versions
 - **Search & Filter**: Search memories using semantic similarity and filter by tags
 - **Statistics Dashboard**: View memory counts, tag distributions, and system statistics
 - **MCP Configuration**: Get the MCP configuration JSON for connecting clients at `/ui/mcp-config`
@@ -115,14 +119,22 @@ The Web UI provides a user-friendly interface for all Memorizer functionality, m
 
 > You have access to a long-term memory system via the Model Context Protocol (MCP) at the endpoint `memorizer`. Use the following tools:
 >
-> - `store`: Store a new memory. Parameters: `type`, `content` (markdown), `source`, `tags`, `confidence`, `relatedTo` (optional, memory ID), `relationshipType` (optional).
-> - `search`: Search for similar memories. Parameters: `query`, `limit`, `minSimilarity`, `filterTags`.
-> - `get`: Retrieve a memory by ID. Parameter: `id`.
+> **Storage & Retrieval:**
+> - `store`: Store a new memory. Parameters: `type`, `text` (markdown), `source`, `title`, `tags`, `confidence`, `relatedTo` (optional, memory ID), `relationshipType` (optional).
+> - `searchMemories`: Search for similar memories using semantic similarity. Parameters: `query`, `limit`, `minSimilarity`, `filterTags`.
+> - `get`: Retrieve a memory by ID. Parameters: `id`, `includeVersionHistory`, `versionNumber`.
 > - `getMany`: Retrieve multiple memories by their IDs. Parameter: `ids` (list of IDs).
 > - `delete`: Delete a memory by ID. Parameter: `id`.
-> - `createRelationship`: Create a relationship between two memories. Parameters: `fromId`, `toId`, `type`.
 >
-> Use these tools to remember, recall, relate, and manage information as needed to assist the user. You can also manually retrieve or relate memories by their IDs when necessary.
+> **Editing & Updates:**
+> - `edit`: Edit memory content using find-and-replace (ideal for checking off to-do items, updating sections). Parameters: `id`, `old_text`, `new_text`, `replace_all`.
+> - `updateMetadata`: Update memory metadata (title, type, tags, confidence) without changing content. Parameters: `id`, `title`, `type`, `tags`, `confidence`.
+>
+> **Relationships & Versioning:**
+> - `createRelationship`: Create a relationship between two memories. Parameters: `fromId`, `toId`, `type` (e.g., 'example-of', 'explains', 'related-to').
+> - `revertToVersion`: Revert a memory to a previous version. Parameters: `id`, `versionNumber`, `changedBy`.
+>
+> All edits and updates are automatically versioned, allowing you to track changes and revert if needed. Use these tools to remember, recall, edit, relate, and manage information as needed to assist the user.
 
 ---
 
