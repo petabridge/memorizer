@@ -142,6 +142,8 @@ The Web UI provides a user-friendly interface for all Memorizer functionality, m
 
 - [Configuration & Advanced Setup](docs/configuration.md)
 - [Security Configuration](docs/security.md)
+- [Embedding Models & Dimensions](docs/embedding-models.md)
+- [Embedding Dimension Migration](docs/embedding-migration.md)
 - [Local Development](docs/local-development.md)
 - [Schema Migrations](docs/schema-migrations.md)
 - [Architecture Decision Records](docs/adr/README.md)
