@@ -267,6 +267,20 @@ footer a:hover {
     text-decoration: underline;
 }
 
+/* Warning button styling for dark mode - ensure text visibility */
+[data-theme="dark"] .btn-warning {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #000;
+}
+
+[data-theme="dark"] .btn-warning:hover,
+[data-theme="dark"] .btn-warning:focus {
+    background-color: #ffca2c;
+    border-color: #ffc720;
+    color: #000;
+}
+
 /* Spinner styling */
 [data-theme="dark"] .spinner-border.text-primary {
     color: var(--brand-primary) !important;
