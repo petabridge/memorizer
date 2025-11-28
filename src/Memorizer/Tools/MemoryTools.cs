@@ -239,8 +239,9 @@ public class MemoryTools
             {"query.filterTags", filterTags != null ? string.Join(", ", filterTags) : "none"}
         }));
 
-        // Search for similar memories
-        List<Memory> memories = await _storage.Search(
+        // Search for similar memories using metadata embeddings (title + tags)
+        // This is optimized for keyword-style LLM queries vs full content embeddings
+        List<Memory> memories = await _storage.SearchWithMetadataEmbedding(
             query,
             limit,
             minSimilarity,
@@ -267,7 +268,7 @@ public class MemoryTools
                 {"original.threshold", minSimilarity.ToString()}
             }));
 
-            memories = await _storage.Search(
+            memories = await _storage.SearchWithMetadataEmbedding(
                 query,
                 limit,
                 fallbackThreshold,

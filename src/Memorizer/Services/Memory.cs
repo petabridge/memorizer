@@ -569,15 +569,16 @@ public class Storage : IStorage
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
-        // First, get the source memory's embedding
-        const string getEmbeddingSql = "SELECT embedding FROM memories WHERE id = @id";
+        // Get the source memory's metadata embedding (title + tags)
+        // Using metadata embeddings for better keyword-style similarity matching
+        const string getEmbeddingSql = "SELECT embedding_metadata FROM memories WHERE id = @id";
         await using NpgsqlCommand getEmbeddingCmd = new(getEmbeddingSql, connection);
         getEmbeddingCmd.Parameters.AddWithValue("id", memoryId);
 
         var embeddingResult = await getEmbeddingCmd.ExecuteScalarAsync(cancellationToken);
         if (embeddingResult is null || embeddingResult is DBNull)
         {
-            return []; // No embedding for this memory
+            return []; // No metadata embedding for this memory
         }
 
         var sourceEmbedding = (Vector)embeddingResult;
@@ -587,10 +588,10 @@ public class Storage : IStorage
         // similarity = 1 - distance, so distance = 1 - similarity
         double maxDistance = 1.0 - minSimilarity;
 
-        // Query for similar memories, excluding self and checking for existing relationships
+        // Query for similar memories using metadata embeddings, excluding self and checking for existing relationships
         const string sql = @"
             SELECT m.id, m.title, m.type,
-                   1 - (m.embedding <=> @embedding) AS similarity,
+                   1 - (m.embedding_metadata <=> @embedding) AS similarity,
                    CASE WHEN EXISTS (
                        SELECT 1 FROM memory_relationships r
                        WHERE (r.from_memory_id = @sourceId AND r.to_memory_id = m.id)
@@ -598,9 +599,9 @@ public class Storage : IStorage
                    ) THEN true ELSE false END AS has_relationship
             FROM memories m
             WHERE m.id != @sourceId
-              AND m.embedding IS NOT NULL
-              AND m.embedding <=> @embedding < @maxDistance
-            ORDER BY m.embedding <=> @embedding
+              AND m.embedding_metadata IS NOT NULL
+              AND m.embedding_metadata <=> @embedding < @maxDistance
+            ORDER BY m.embedding_metadata <=> @embedding
             LIMIT @limit";
 
         await using NpgsqlCommand cmd = new(sql, connection);
