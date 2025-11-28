@@ -197,6 +197,7 @@
 <script src="~/js/mermaid-integration.js"></script>
 <script>
 let memoryId = '@(ViewBag.MemoryId?.ToString() ?? "")';
+let currentMemoryData = null; // Store the current memory data for version history display
 
 async function deleteMemory() {
     if (!confirm('Are you sure you want to delete this memory? This action cannot be undone.')) {
@@ -265,6 +266,9 @@ async function loadMemory() {
 
 function populateMemoryView(memory) {
     try {
+        // Store memory data globally for version history display
+        currentMemoryData = memory;
+
         // Set title
         const title = memory.title || 'Untitled Memory';
         document.getElementById('memoryTitle').textContent = title;
@@ -468,34 +472,73 @@ function displayVersionHistory(versions) {
     loadingEl.style.display = 'none';
     contentEl.style.display = 'block';
 
-    // Show empty message only if there are truly no version snapshots
-    // (versions.length === 0 means no edits have been made yet)
-    if (!versions || versions.length === 0) {
+    // Build the complete version list including the current version
+    // Version snapshots only contain historical versions (before edits)
+    // We need to add the current version at the beginning
+    let allVersions = versions ? [...versions] : [];
+
+    // Check if the current version is already in the list
+    // (This happens when current version equals the highest snapshot version,
+    // e.g., for newly created or migrated memories)
+    const hasCurrentInSnapshots = allVersions.some(v => v.versionNumber === currentVersion);
+
+    if (!hasCurrentInSnapshots && currentMemoryData && currentVersion > 0) {
+        // Synthesize a current version entry from the live memory data
+        // Use updatedAt if available, otherwise fall back to createdAt
+        const currentVersionEntry = {
+            versionNumber: currentVersion,
+            versionedAt: currentMemoryData.updatedAt || currentMemoryData.createdAt,
+            events: [], // Current version doesn't have events yet (they describe changes TO reach this version)
+            isCurrent: true // Flag to identify this as the live/current version
+        };
+        allVersions.unshift(currentVersionEntry);
+    }
+
+    // Show empty message only if there are truly no versions at all
+    if (allVersions.length === 0) {
         emptyEl.style.display = 'block';
         return;
     }
 
     timelineEl.innerHTML = '';
 
-    versions.forEach((version, index) => {
-        const isLatest = index === 0;
-        const hasPrevious = index < versions.length - 1;
+    allVersions.forEach((version, index) => {
+        const hasPrevious = index < allVersions.length - 1;
         const isCurrentVersion = version.versionNumber === currentVersion;
 
         // Parse events to display what changed - use displayText from strongly-typed events
-        let changeDescription = 'Version snapshot';
+        let changeDescription = version.isCurrent ? 'Current state' : 'Version snapshot';
         if (version.events && version.events.length > 0) {
             // Use displayText property which contains the rich change description
             changeDescription = version.events.map(e => e.displayText || formatEventType(e.eventType)).join(', ');
         }
 
-        // Version snapshots are historical - they represent the state BEFORE an edit
-        // The most recent snapshot (index 0) shows what was changed to become the current version
+        // Build button group - current version only gets compare button (if applicable)
+        let buttons = '';
+        if (!isCurrentVersion) {
+            buttons += `
+                <a href="/ui/view/${memoryId}/version/${version.versionNumber}" class="btn btn-outline-info btn-sm" title="View this version">
+                    <i class="fas fa-eye"></i>
+                </a>`;
+        }
+        if (hasPrevious) {
+            buttons += `
+                <a href="/ui/view/${memoryId}/compare/${allVersions[index + 1].versionNumber}/${version.versionNumber}" class="btn btn-outline-primary btn-sm" title="Compare with previous">
+                    <i class="fas fa-code-compare"></i>
+                </a>`;
+        }
+        if (!isCurrentVersion) {
+            buttons += `
+                <button class="btn btn-outline-warning btn-sm" onclick="promptRevert(${version.versionNumber})" title="Revert to this version">
+                    <i class="fas fa-undo"></i>
+                </button>`;
+        }
+
         const versionItem = document.createElement('div');
         versionItem.className = 'version-item d-flex align-items-start mb-3 pb-3 border-bottom';
         versionItem.innerHTML = `
             <div class="version-marker me-3">
-                <span class="badge ${isCurrentVersion ? 'bg-primary' : 'bg-secondary'} rounded-pill">v${version.versionNumber}${isCurrentVersion ? ' (current)' : ''}</span>
+                <span class="badge ${isCurrentVersion ? 'bg-primary' : 'bg-secondary'} rounded-pill">v${version.versionNumber}</span>
             </div>
             <div class="version-content flex-grow-1">
                 <div class="d-flex justify-content-between align-items-start">
@@ -513,19 +556,7 @@ function displayVersionHistory(versions) {
                         </small>
                     </div>
                     <div class="btn-group btn-group-sm">
-                        <a href="/ui/view/${memoryId}/version/${version.versionNumber}" class="btn btn-outline-info btn-sm" title="View this version">
-                            <i class="fas fa-eye"></i>
-                        </a>
-                        ${hasPrevious ? `
-                        <a href="/ui/view/${memoryId}/compare/${versions[index + 1].versionNumber}/${version.versionNumber}" class="btn btn-outline-primary btn-sm" title="Compare with previous">
-                            <i class="fas fa-code-compare"></i>
-                        </a>
-                        ` : ''}
-                        ${!isCurrentVersion ? `
-                        <button class="btn btn-outline-warning btn-sm" onclick="promptRevert(${version.versionNumber})" title="Revert to this version">
-                            <i class="fas fa-undo"></i>
-                        </button>
-                        ` : ''}
+                        ${buttons}
                     </div>
                 </div>
             </div>

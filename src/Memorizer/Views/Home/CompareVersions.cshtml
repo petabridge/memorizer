@@ -44,12 +44,23 @@
 
                 <!-- Compare content (hidden initially) -->
                 <div id="compareContent" style="display: none;">
-                    <!-- Summary -->
+                    <!-- Version Selector -->
                     <div class="alert alert-secondary mb-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div>
-                                <i class="fas fa-info-circle me-2"></i>
-                                Comparing <strong>Version @ViewBag.FromVersion</strong> to <strong>Version @ViewBag.ToVersion</strong>
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="d-flex align-items-center flex-wrap gap-2">
+                                <i class="fas fa-code-compare me-2"></i>
+                                <span>Compare</span>
+                                <select id="fromVersionSelect" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                                    <!-- Options populated by JS -->
+                                </select>
+                                <span>to</span>
+                                <select id="toVersionSelect" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                                    <!-- Options populated by JS -->
+                                </select>
+                                <button id="compareBtn" class="btn btn-primary btn-sm" onclick="navigateToComparison()">
+                                    <i class="fas fa-sync-alt me-1"></i>
+                                    Compare
+                                </button>
                             </div>
                             <div id="diffStats">
                                 <!-- Stats will be populated here -->
@@ -90,11 +101,11 @@
                         <div class="btn-group" role="group">
                             <a id="viewFromVersionLink" href="#" class="btn btn-outline-info">
                                 <i class="fas fa-eye me-1"></i>
-                                View Version @ViewBag.FromVersion
+                                <span id="viewFromVersionLabel">View Version</span>
                             </a>
                             <a id="viewToVersionLink" href="#" class="btn btn-outline-info">
                                 <i class="fas fa-eye me-1"></i>
-                                View Version @ViewBag.ToVersion
+                                <span id="viewToVersionLabel">View Version</span>
                             </a>
                         </div>
                     </div>
@@ -107,22 +118,60 @@
 @section Scripts {
 <script>
 const memoryId = '@ViewBag.MemoryId';
-const fromVersion = @ViewBag.FromVersion;
-const toVersion = @ViewBag.ToVersion;
+let fromVersion = @ViewBag.FromVersion;
+let toVersion = @ViewBag.ToVersion;
+let currentVersion = 1; // Will be updated when memory loads
+let availableVersions = []; // All available version numbers
 
 document.addEventListener('DOMContentLoaded', loadComparison);
 
 async function loadComparison() {
     try {
+        // First, load the memory to get current version
+        const memoryResponse = await fetch(`/api/memory/${memoryId}`);
+        if (!memoryResponse.ok) {
+            throw new Error('Memory not found');
+        }
+        const memory = await memoryResponse.json();
+        currentVersion = memory.currentVersion || 1;
+
+        // Load version history to populate dropdowns
+        const versionsResponse = await fetch(`/api/memory/${memoryId}/versions`);
+        const versionSnapshots = versionsResponse.ok ? await versionsResponse.json() : [];
+
+        // Build list of available versions (snapshots + current)
+        availableVersions = versionSnapshots.map(v => v.versionNumber);
+        if (!availableVersions.includes(currentVersion)) {
+            availableVersions.unshift(currentVersion);
+        }
+        availableVersions.sort((a, b) => a - b); // Sort ascending
+
+        // Validate requested versions exist
+        if (!availableVersions.includes(fromVersion)) {
+            showError(`Version ${fromVersion} does not exist. Available versions: ${availableVersions.join(', ')}`);
+            return;
+        }
+        if (!availableVersions.includes(toVersion)) {
+            showError(`Version ${toVersion} does not exist. Available versions: ${availableVersions.join(', ')}`);
+            return;
+        }
+
+        // Populate version selectors
+        populateVersionSelectors();
+
+        // Load comparison
         const response = await fetch(`/api/memory/${memoryId}/versions/compare?fromVersion=${fromVersion}&toVersion=${toVersion}`);
         if (!response.ok) {
-            throw new Error('Failed to load comparison');
+            const errorText = await response.text();
+            throw new Error(errorText || 'Failed to load comparison');
         }
         const comparison = await response.json();
 
         // Set version links
         document.getElementById('viewFromVersionLink').href = `/ui/view/${memoryId}/version/${fromVersion}`;
         document.getElementById('viewToVersionLink').href = `/ui/view/${memoryId}/version/${toVersion}`;
+        document.getElementById('viewFromVersionLabel').textContent = `View Version ${fromVersion}`;
+        document.getElementById('viewToVersionLabel').textContent = `View Version ${toVersion}`;
 
         // Display diff stats
         displayDiffStats(comparison);
@@ -141,9 +190,65 @@ async function loadComparison() {
 
     } catch (error) {
         console.error('Error loading comparison:', error);
-        document.getElementById('loadingSpinner').innerHTML =
-            '<div class="alert alert-danger">Failed to load comparison. Please try again.</div>';
+        showError(error.message || 'Failed to load comparison. Please try again.');
     }
+}
+
+function showError(message) {
+    document.getElementById('loadingSpinner').innerHTML =
+        `<div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            ${escapeHtml(message)}
+            <br><br>
+            <a href="/ui/view/${memoryId}" class="btn btn-outline-danger btn-sm">
+                <i class="fas fa-arrow-left me-1"></i>
+                Back to Memory
+            </a>
+        </div>`;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function populateVersionSelectors() {
+    const fromSelect = document.getElementById('fromVersionSelect');
+    const toSelect = document.getElementById('toVersionSelect');
+
+    fromSelect.innerHTML = '';
+    toSelect.innerHTML = '';
+
+    availableVersions.forEach(v => {
+        const isCurrent = v === currentVersion;
+        const label = isCurrent ? `Version ${v} (current)` : `Version ${v}`;
+
+        const fromOption = document.createElement('option');
+        fromOption.value = v;
+        fromOption.textContent = label;
+        fromOption.selected = v === fromVersion;
+        fromSelect.appendChild(fromOption);
+
+        const toOption = document.createElement('option');
+        toOption.value = v;
+        toOption.textContent = label;
+        toOption.selected = v === toVersion;
+        toSelect.appendChild(toOption);
+    });
+}
+
+function navigateToComparison() {
+    const newFromVersion = parseInt(document.getElementById('fromVersionSelect').value);
+    const newToVersion = parseInt(document.getElementById('toVersionSelect').value);
+
+    if (newFromVersion === newToVersion) {
+        alert('Please select two different versions to compare.');
+        return;
+    }
+
+    // Navigate to the new comparison URL
+    window.location.href = `/ui/view/${memoryId}/compare/${newFromVersion}/${newToVersion}`;
 }
 
 function displayDiffStats(comparison) {
