@@ -5,6 +5,7 @@ using Memory = Memorizer.Models.Memory;
 using System.Linq;
 using System.Diagnostics;
 using Memorizer.Services;
+using Memorizer.Settings;
 using Memorizer.Telemetry;
 using Microsoft.Extensions.Logging;
 
@@ -15,11 +16,13 @@ public class MemoryTools
 {
     private readonly IStorage _storage;
     private readonly ILogger<MemoryTools> _logger;
+    private readonly SearchSettings _searchSettings;
 
-    public MemoryTools(IStorage storage, ILogger<MemoryTools> logger)
+    public MemoryTools(IStorage storage, ILogger<MemoryTools> logger, SearchSettings searchSettings)
     {
         _storage = storage;
         _logger = logger;
+        _searchSettings = searchSettings;
     }
 
     [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples.")]
@@ -312,7 +315,7 @@ public class MemoryTools
 
         // Format the results
         StringBuilder result = new();
-        
+
         if (usedFallback)
         {
             result.AppendLine($"No results found at similarity threshold {minSimilarity:F1}, but found {memories.Count} memories at relaxed threshold {actualThreshold:F1}:");
@@ -323,58 +326,59 @@ public class MemoryTools
         }
         result.AppendLine();
 
-        // Collect all related memory IDs for suggestion
-        var relatedMemoryIds = new HashSet<Guid>();
+        // Collect all memory IDs for retrieval suggestion
+        var memoryIds = new List<Guid>();
 
         foreach (var memory in memories)
         {
+            memoryIds.Add(memory.Id);
+
             result.AppendLine($"ID: {memory.Id}");
             if (memory.Title != null)
             {
                 result.AppendLine($"Title: {memory.Title}");
             }
             result.AppendLine($"Type: {memory.Type}");
-            result.AppendLine($"Text: {memory.Text}");
-            result.AppendLine($"Source: {memory.Source}");
+
+            // Only include full content if configured to do so
+            if (_searchSettings.ReturnFullContent)
+            {
+                result.AppendLine($"Text: {memory.Text}");
+                result.AppendLine($"Source: {memory.Source}");
+            }
+
             result.AppendLine(
                 $"Tags: {(memory.Tags != null ? string.Join(", ", memory.Tags) : "none")}"
             );
-            result.AppendLine($"Confidence: {memory.Confidence:F2}");
+
+            if (_searchSettings.ReturnFullContent)
+            {
+                result.AppendLine($"Confidence: {memory.Confidence:F2}");
+            }
+
             if (memory.Similarity.HasValue)
             {
                 double percent = 100 * (1 - memory.Similarity.Value);
                 result.AppendLine($"Similarity: {percent:F1}%");
             }
-            // List relationships and collect related IDs
-            if (memory.Relationships is { Count: > 0 })
+
+            // Only show relationships if returning full content
+            if (_searchSettings.ReturnFullContent && memory.Relationships is { Count: > 0 })
             {
-                result.AppendLine($"🔗 Relationships ({memory.Relationships.Count}):");
-                foreach (var rel in memory.Relationships)
-                {
-                    var relatedId = rel.FromMemoryId == memory.Id ? rel.ToMemoryId : rel.FromMemoryId;
-                    var direction = rel.FromMemoryId == memory.Id ? "→" : "←";
-                    var relatedTitle = rel.RelatedMemoryTitle ?? "Untitled";
-                    var relatedType = rel.RelatedMemoryType ?? "unknown";
-                    
-                    result.AppendLine($"  • [{rel.Type.ToUpper()}] {direction} \"{relatedTitle}\" ({relatedType}) [ID: {relatedId}]");
-                    
-                    // Collect related memory IDs (excluding the current memory)
-                    if (rel.FromMemoryId != memory.Id)
-                        relatedMemoryIds.Add(rel.FromMemoryId);
-                    if (rel.ToMemoryId != memory.Id)
-                        relatedMemoryIds.Add(rel.ToMemoryId);
-                }
+                result.AppendLine($"Relationships: {memory.Relationships.Count}");
             }
+
             result.AppendLine($"Created: {memory.CreatedAt:yyyy-MM-dd HH:mm:ss}");
             result.AppendLine();
         }
 
-        // Add suggestion to load related memories if any exist
-        if (relatedMemoryIds.Count > 0)
+        // Add retrieval instructions for lightweight results
+        if (!_searchSettings.ReturnFullContent)
         {
-            result.AppendLine("💡 Suggestion: These memories have relationships to other memories in the database.");
-            result.AppendLine($"Consider using GetMany with these IDs to load related context: [{string.Join(", ", relatedMemoryIds)}]");
-            result.AppendLine("This can provide additional relevant information and context for your task.");
+            result.AppendLine("---");
+            result.AppendLine("To retrieve the full content of these memories, use one of the following:");
+            result.AppendLine($"• Get tool with a specific memory ID to fetch one memory");
+            result.AppendLine($"• GetMany tool with IDs: [{string.Join(", ", memoryIds)}]");
         }
 
         activity?.SetStatus(ActivityStatusCode.Ok, $"Found {memories.Count} results" + (usedFallback ? " (with fallback)" : ""));

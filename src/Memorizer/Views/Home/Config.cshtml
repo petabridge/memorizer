@@ -134,6 +134,30 @@
                 </div>
             </div>
 
+            <!-- Search Configuration -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-search me-2"></i>
+                        MCP Search Settings
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Return Full Content:</strong></td>
+                            <td><span id="searchReturnFullContent" class="badge"></span></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-muted small">
+                                When disabled (default), MCP search returns lightweight results (ID, title, type, tags, similarity)
+                                to optimize context window usage. Agents use Get/GetMany to retrieve full content.
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
             <!-- Feature Status Summary -->
             <div class="card border-info">
                 <div class="card-header bg-info text-white">
@@ -199,6 +223,9 @@ function displayConfiguration(config) {
     // Server Settings
     setBadge('canonicalUrlConfigured', config.serverSettings.canonicalUrlConfigured, 'Configured', 'Not Configured');
     setText('canonicalUrl', config.serverSettings.canonicalUrl || 'Not Set');
+
+    // Search Settings
+    setBadge('searchReturnFullContent', config.searchSettings.returnFullContent, 'Enabled', 'Disabled (Lightweight)');
 
     // Feature Status Summary
     displayFeatureStatusSummary(config);

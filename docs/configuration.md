@@ -50,6 +50,16 @@ MEMORIZER_Server__CanonicalUrl=example.com:8080
 
 For security-related configuration (CORS, database security, etc.), see [docs/security.md](security.md).
 
+### Search Settings
+
+Configure how MCP search results are returned to agents:
+
+```bash
+MEMORIZER_Search__ReturnFullContent=false
+```
+
+- `MEMORIZER_Search__ReturnFullContent`: When `false` (default), MCP search returns lightweight results containing only ID, title, type, tags, similarity score, and creation date. Agents should use `Get` or `GetMany` tools to retrieve full memory content. When `true`, search returns the full memory body in results. **Default is `false` to optimize context window usage for LLM agents.**
+
 > ⚠️ **IMPORTANT**: Changing the `Dimensions` configuration after the database has been initialized will cause runtime errors. PostgreSQL's `pgvector` extension uses fixed-dimension columns that cannot accept vectors of different sizes. If you need to change dimensions:
 > 1. For new deployments: Set the desired dimension value before first run
 > 2. For existing databases: You must manually migrate the database by either:
