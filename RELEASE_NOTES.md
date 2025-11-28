@@ -1,3 +1,24 @@
+#### 1.9.0-beta2 November 28th 2025 ####
+
+**Features**
+- [Add memory similarity discovery feature](https://github.com/petabridge/memorizer-v1/pull/117) - Surface related memories using vector similarity search with optional relationship persistence
+  - On-demand similarity queries with configurable threshold (50-95%)
+  - UI slider to adjust similarity sensitivity
+  - Create bidirectional `similar-to` relationships with scores
+  - Helps evaluate embedding model quality and build knowledge graphs
+- [Add automatic embedding dimension detection and migration](https://github.com/petabridge/memorizer-v1/pull/107) - Automatically detect and migrate embeddings when switching between models with different dimensions
+  - Detects dimension mismatches at startup
+  - Provides UI warnings and migration tools
+  - Preserves existing data during model transitions
+
+**Bug Fixes**
+- [Fix version history display and add version selector to compare view](https://github.com/petabridge/memorizer-v1/pull/116) - Improved version history UI with proper comparison capabilities
+- [Fix dimension migration bugs and add integration tests](https://github.com/petabridge/memorizer-v1/pull/115) - Resolved issues with embedding dimension migration process
+
+**Documentation**
+- [Add Qwen3 embedding models and reorganize README](https://github.com/petabridge/memorizer-v1/pull/114) - Updated embedding model documentation with Qwen3 support
+- [Add embedding documentation links to README](https://github.com/petabridge/memorizer-v1/pull/108) - Improved documentation for embedding configuration
+
 #### 1.9.0-beta1 November 27th 2025 ####
 
 **Features**
