@@ -61,6 +61,9 @@ curl http://localhost:11434/api/embeddings -d '{
 | `bge-large-en-v1.5` | 1024 | 1.3GB | Slow | Best | English text, high quality |
 | `bge-m3` | 1024 | 1.2GB | Slow | Best | Multilingual |
 | `snowflake-arctic-embed` | 1024 | 1.1GB | Slow | Best | Retrieval tasks |
+| `qwen3-embedding:0.6b` | 1024 | 639MB | Fast | Better | Lightweight multilingual |
+| `qwen3-embedding:4b` | 2560 | 2.5GB | Medium | Best | High quality multilingual |
+| `qwen3-embedding:8b` | 4096 | 4.7GB | Slow | State-of-art | Maximum quality, code retrieval |
 
 ### Detailed Model Information
 
@@ -123,6 +126,46 @@ ollama pull bge-m3
 - **Strengths**: Multilingual (100+ languages), long context
 - **Weaknesses**: Slower, large model
 - **Use when**: Multilingual content, long documents
+
+#### Qwen3 Embedding Series (State-of-the-Art)
+
+The [Qwen3 Embedding](https://ollama.com/library/qwen3-embedding) series offers state-of-the-art performance, ranking **#1 on the MTEB multilingual leaderboard** (score 70.58 as of June 2025).
+
+```bash
+# Lightweight option
+ollama pull qwen3-embedding:0.6b
+
+# Balanced option
+ollama pull qwen3-embedding:4b
+
+# Maximum quality
+ollama pull qwen3-embedding:8b
+```
+
+**qwen3-embedding:0.6b**
+- **Dimensions**: Up to 1024 (configurable 32-1024)
+- **Context**: 32K tokens
+- **Size**: 639MB
+- **Use when**: Need multilingual support with limited resources
+
+**qwen3-embedding:4b**
+- **Dimensions**: Up to 2560 (configurable 32-2560)
+- **Context**: 40K tokens
+- **Size**: 2.5GB
+- **Use when**: Balanced quality and resource usage
+
+**qwen3-embedding:8b**
+- **Dimensions**: Up to 4096 (configurable 32-4096)
+- **Context**: 40K tokens
+- **Size**: 4.7GB
+- **Use when**: Maximum quality, code retrieval, complex semantic search
+
+**Key strengths of Qwen3 Embedding:**
+- 100+ language support including programming languages
+- Exceptional code retrieval performance
+- Very long context windows (32K-40K tokens)
+- Configurable output dimensions
+- State-of-the-art benchmark scores
 
 ## Configuration
 
@@ -198,13 +241,19 @@ Start
   ▼
 Do you have GPU acceleration?
   │
-  ├─ No ──► all-minilm (384D)
+  ├─ No ──► all-minilm (384D) or qwen3-embedding:0.6b (1024D)
   │
   ▼ Yes
   │
+Is state-of-the-art quality critical?
+  │
+  ├─ Yes ──► qwen3-embedding:8b (4096D)
+  │
+  ▼ No
+  │
 Is multilingual support needed?
   │
-  ├─ Yes ──► bge-m3 (1024D)
+  ├─ Yes ──► qwen3-embedding:4b (2560D) or bge-m3 (1024D)
   │
   ▼ No
   │
@@ -214,9 +263,9 @@ Are your documents long (>500 words)?
   │
   ▼ No
   │
-Is maximum quality critical?
+Is code retrieval important?
   │
-  ├─ Yes ──► mxbai-embed-large (1024D)
+  ├─ Yes ──► qwen3-embedding:4b (2560D)
   │
   ▼ No
   │
@@ -228,11 +277,12 @@ nomic-embed-text (768D)
 | Use Case | Recommended Model | Why |
 |----------|------------------|-----|
 | Personal notes | `all-minilm` | Fast, works on any hardware |
-| Code snippets | `nomic-embed-text` | Better semantic understanding |
-| Documentation | `nomic-embed-text` | Long context support |
-| Research papers | `bge-large-en-v1.5` | High quality retrieval |
-| Multilingual content | `bge-m3` | 100+ language support |
-| Maximum accuracy | `mxbai-embed-large` | Best benchmark scores |
+| Code snippets | `qwen3-embedding:4b` | Excellent code retrieval, programming language support |
+| Documentation | `nomic-embed-text` | Long context support, good balance |
+| Research papers | `bge-large-en-v1.5` | High quality retrieval for English |
+| Multilingual content | `qwen3-embedding:4b` | 100+ languages, state-of-the-art quality |
+| Maximum accuracy | `qwen3-embedding:8b` | #1 on MTEB leaderboard |
+| Limited resources | `qwen3-embedding:0.6b` | Good quality at small size |
 
 ## Storage Considerations
 
@@ -243,6 +293,8 @@ Higher dimension models require more database storage:
 | 384 | ~1.5 KB | ~15 MB |
 | 768 | ~3 KB | ~30 MB |
 | 1024 | ~4 KB | ~40 MB |
+| 2560 | ~10 KB | ~100 MB |
+| 4096 | ~16 KB | ~160 MB |
 
 Note: These are estimates for the embedding vectors only. Actual storage includes text content, metadata embeddings, and indexes.
 
