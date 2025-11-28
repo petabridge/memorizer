@@ -1,3 +1,20 @@
+#### 1.9.0-beta3 November 28th 2025 ####
+
+**Improvements**
+- [Switch search and similarity to use metadata embeddings](https://github.com/petabridge/memorizer-v1/pull/120) - MCP search and similarity discovery now use metadata embeddings (title + tags) instead of full content embeddings for significantly better keyword query results
+  - Treats metadata as higher weight than body content for similarity matching
+  - Aligns MCP tool behavior with web UI search
+- [Add lightweight search results to optimize context window usage](https://github.com/petabridge/memorizer-v1/pull/121) - MCP search returns lightweight results by default to prevent swamping agent context windows
+  - Returns ID, title, type, tags, similarity score, and creation date
+  - Agents use `Get` or `GetMany` tools to retrieve full content as needed
+  - Configurable via `Search:ReturnFullContent` setting (default: `false`)
+
+**Bug Fixes**
+- [Fix warning button text visibility in dark mode](https://github.com/petabridge/memorizer-v1/pull/119) - Dimension mismatch warning button now visible in dark theme
+
+**Updates**
+- [Bump OpenTelemetry.Instrumentation.AspNetCore from 1.12.0 to 1.14.0](https://github.com/petabridge/memorizer-v1/pull/109)
+
 #### 1.9.0-beta2 November 28th 2025 ####
 
 **Features**
