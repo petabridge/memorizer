@@ -1,6 +1,8 @@
 using Memorizer.Models;
 using Memorizer.Services;
+using Memorizer.Settings;
 using Microsoft.AspNetCore.Mvc;
+using SimilarMemory = Memorizer.Models.SimilarMemory;
 
 // ReSharper disable ClassNeverInstantiated.Global
 
@@ -11,10 +13,12 @@ namespace Memorizer.Controllers;
 public class MemoryController : ControllerBase
 {
     private readonly IStorage _storage;
+    private readonly SimilaritySettings _similaritySettings;
 
-    public MemoryController(IStorage storage)
+    public MemoryController(IStorage storage, SimilaritySettings similaritySettings)
     {
         _storage = storage;
+        _similaritySettings = similaritySettings;
     }
 
     /// <summary>
@@ -404,6 +408,107 @@ public class MemoryController : ControllerBase
             Message = $"Purged {purged} old version(s), keeping latest {request.VersionsToKeep}"
         });
     }
+
+    // ==================== Similar Memory Discovery Endpoints ====================
+
+    /// <summary>
+    /// Get similarity settings (thresholds and limits) for the UI
+    /// </summary>
+    [HttpGet("similarity/settings")]
+    public ActionResult<SimilaritySettingsResponse> GetSimilaritySettings()
+    {
+        return Ok(new SimilaritySettingsResponse
+        {
+            DefaultThreshold = _similaritySettings.DefaultThreshold,
+            MinThreshold = _similaritySettings.MinThreshold,
+            MaxThreshold = _similaritySettings.MaxThreshold,
+            DefaultLimit = _similaritySettings.DefaultLimit
+        });
+    }
+
+    /// <summary>
+    /// Get memories similar to the specified memory using vector similarity search
+    /// </summary>
+    [HttpGet("{id}/similar")]
+    public async Task<ActionResult<SimilarMemoriesResponse>> GetSimilarMemories(
+        Guid id,
+        [FromQuery] double? threshold = null,
+        [FromQuery] int? limit = null)
+    {
+        var memory = await _storage.Get(id);
+        if (memory == null)
+        {
+            return NotFound();
+        }
+
+        // Use configured defaults if not specified
+        var effectiveThreshold = threshold ?? _similaritySettings.DefaultThreshold;
+        var effectiveLimit = limit ?? _similaritySettings.DefaultLimit;
+
+        // Clamp threshold to configured bounds
+        effectiveThreshold = Math.Clamp(effectiveThreshold, _similaritySettings.MinThreshold, _similaritySettings.MaxThreshold);
+
+        var similarMemories = await _storage.GetSimilarMemories(id, effectiveThreshold, effectiveLimit);
+
+        return Ok(new SimilarMemoriesResponse
+        {
+            SourceMemoryId = id,
+            Threshold = effectiveThreshold,
+            Limit = effectiveLimit,
+            SimilarMemories = similarMemories
+        });
+    }
+
+    /// <summary>
+    /// Create bidirectional 'similar-to' relationships between memories with similarity scores
+    /// </summary>
+    [HttpPost("{id}/similar")]
+    public async Task<ActionResult<CreateSimilarRelationshipsResponse>> CreateSimilarRelationships(
+        Guid id,
+        [FromBody] CreateSimilarRelationshipsRequest request)
+    {
+        var sourceMemory = await _storage.Get(id);
+        if (sourceMemory == null)
+        {
+            return NotFound();
+        }
+
+        if (request.Relationships == null || request.Relationships.Count == 0)
+        {
+            return BadRequest("At least one relationship must be specified");
+        }
+
+        var createdRelationships = new List<MemoryRelationship>();
+        var errors = new List<string>();
+
+        foreach (var rel in request.Relationships)
+        {
+            // Validate the target memory exists
+            var targetMemory = await _storage.Get(rel.TargetMemoryId);
+            if (targetMemory == null)
+            {
+                errors.Add($"Target memory {rel.TargetMemoryId} not found");
+                continue;
+            }
+
+            // Create bidirectional relationships
+            // Source -> Target
+            var forwardRel = await _storage.CreateRelationship(id, rel.TargetMemoryId, "similar-to", rel.Score);
+            createdRelationships.Add(forwardRel);
+
+            // Target -> Source (same score, bidirectional)
+            var backwardRel = await _storage.CreateRelationship(rel.TargetMemoryId, id, "similar-to", rel.Score);
+            createdRelationships.Add(backwardRel);
+        }
+
+        return Ok(new CreateSimilarRelationshipsResponse
+        {
+            SourceMemoryId = id,
+            RelationshipsCreated = createdRelationships.Count,
+            Relationships = createdRelationships,
+            Errors = errors
+        });
+    }
 }
 
 public class MemoryListResponse
@@ -482,4 +587,51 @@ public class PurgeResult
 {
     public int VersionsPurged { get; set; }
     public string Message { get; set; } = string.Empty;
+}
+
+// ==================== Similarity Discovery DTOs ====================
+
+public class SimilaritySettingsResponse
+{
+    public double DefaultThreshold { get; set; }
+    public double MinThreshold { get; set; }
+    public double MaxThreshold { get; set; }
+    public int DefaultLimit { get; set; }
+}
+
+public class SimilarMemoriesResponse
+{
+    public Guid SourceMemoryId { get; set; }
+    public double Threshold { get; set; }
+    public int Limit { get; set; }
+    public List<SimilarMemory> SimilarMemories { get; set; } = [];
+}
+
+public class CreateSimilarRelationshipsRequest
+{
+    /// <summary>
+    /// List of relationships to create (each will be created bidirectionally)
+    /// </summary>
+    public List<SimilarRelationshipItem> Relationships { get; set; } = [];
+}
+
+public class SimilarRelationshipItem
+{
+    /// <summary>
+    /// ID of the target memory to create a relationship with
+    /// </summary>
+    public Guid TargetMemoryId { get; set; }
+
+    /// <summary>
+    /// Similarity score (0.0 to 1.0)
+    /// </summary>
+    public double Score { get; set; }
+}
+
+public class CreateSimilarRelationshipsResponse
+{
+    public Guid SourceMemoryId { get; set; }
+    public int RelationshipsCreated { get; set; }
+    public List<MemoryRelationship> Relationships { get; set; } = [];
+    public List<string> Errors { get; set; } = [];
 } 

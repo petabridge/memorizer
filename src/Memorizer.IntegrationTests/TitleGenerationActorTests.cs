@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Pgvector;
 using Xunit.Abstractions;
+using SimilarMemory = Memorizer.Models.SimilarMemory;
 
 namespace Memorizer.IntegrationTests;
 
@@ -180,8 +181,14 @@ public class TitleGenerationActorTests : TestKit
         public Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string relationshipType, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
 
+        public Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string relationshipType, double? score, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
         public Task<List<MemoryRelationship>> GetRelationships(Guid memoryId, string? relationshipType = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
+
+        public Task<List<SimilarMemory>> GetSimilarMemories(Guid memoryId, double minSimilarity = 0.7, int limit = 10, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<SimilarMemory>());
 
         Task<List<string>> IStorage.GetDistinctMemoryTypes(CancellationToken cancellationToken)
             => Task.FromResult(new List<string> { "test", "mock" });
@@ -259,8 +266,14 @@ public class TitleGenerationActorTests : TestKit
         public Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string relationshipType, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
 
+        public Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string relationshipType, double? score, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
         public Task<List<MemoryRelationship>> GetRelationships(Guid memoryId, string? relationshipType = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
+
+        public Task<List<SimilarMemory>> GetSimilarMemories(Guid memoryId, double minSimilarity = 0.7, int limit = 10, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<SimilarMemory>());
 
         public Task<List<Memory>> GetMemoriesWithoutTitles(int limit, CancellationToken cancellationToken = default)
             => Task.FromResult(new List<Memory>());

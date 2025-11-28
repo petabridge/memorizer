@@ -112,6 +112,85 @@
                         </div>
                     </div>
 
+                    <!-- Similar Memories Discovery section -->
+                    <div id="similarMemoriesSection" class="mt-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-brain me-2"></i>
+                                        Similar Memories
+                                    </h5>
+                                    <button type="button" class="btn btn-sm btn-light" onclick="toggleSimilarMemoriesSettings()" title="Adjust similarity settings">
+                                        <i class="fas fa-sliders-h"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <!-- Settings panel (collapsed by default) -->
+                                <div id="similarMemoriesSettings" class="mb-3" style="display:none;">
+                                    <div class="card bg-light similar-settings-card">
+                                        <div class="card-body py-2">
+                                            <div class="row align-items-center g-3">
+                                                <div class="col-md-8">
+                                                    <label for="similarityThreshold" class="form-label mb-1 small">
+                                                        Similarity Threshold: <span id="thresholdValue" class="fw-bold">70%</span>
+                                                    </label>
+                                                    <input type="range" class="form-range" id="similarityThreshold"
+                                                           min="50" max="95" step="5" value="70"
+                                                           oninput="updateThresholdDisplay(this.value)">
+                                                    <div class="d-flex justify-content-between small text-muted">
+                                                        <span>More results</span>
+                                                        <span>More similar</span>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <button type="button" class="btn btn-primary btn-sm w-100" onclick="loadSimilarMemories()">
+                                                        <i class="fas fa-search me-1"></i>
+                                                        Search
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Loading state -->
+                                <div id="similarMemoriesLoading" class="text-center py-3">
+                                    <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                        <span class="visually-hidden">Finding similar memories...</span>
+                                    </div>
+                                    <p class="text-muted small mt-2 mb-0">Searching for similar memories...</p>
+                                </div>
+
+                                <!-- Empty state -->
+                                <div id="similarMemoriesEmpty" style="display:none;">
+                                    <p class="text-muted mb-0">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        No similar memories found. Try lowering the similarity threshold.
+                                    </p>
+                                </div>
+
+                                <!-- Results -->
+                                <div id="similarMemoriesContent" style="display:none;">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <small class="text-muted">
+                                            Found <span id="similarMemoriesCount">0</span> similar memories
+                                        </small>
+                                        <button type="button" class="btn btn-success btn-sm" id="createRelationshipsBtn"
+                                                onclick="createSelectedRelationships()" style="display:none;">
+                                            <i class="fas fa-link me-1"></i>
+                                            Link Selected (<span id="selectedCount">0</span>)
+                                        </button>
+                                    </div>
+                                    <div id="similarMemoriesList">
+                                        <!-- Similar memories will be inserted here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Version History section -->
                     <div class="mt-4">
                         <div class="card">
@@ -623,5 +702,201 @@ async function confirmRevert() {
         btn.disabled = false;
     }
 }
+
+// =====================
+// Similar Memories Functions
+// =====================
+
+let similaritySettings = {
+    defaultThreshold: 0.7,
+    minThreshold: 0.5,
+    maxThreshold: 0.95,
+    defaultLimit: 10
+};
+let selectedSimilarMemories = new Map(); // Map of id -> {score, title}
+
+// Load similarity settings from server
+async function loadSimilaritySettings() {
+    try {
+        const response = await fetch('/api/memory/similarity/settings');
+        if (response.ok) {
+            similaritySettings = await response.json();
+            // Update slider bounds and default value
+            const slider = document.getElementById('similarityThreshold');
+            slider.min = Math.round(similaritySettings.minThreshold * 100);
+            slider.max = Math.round(similaritySettings.maxThreshold * 100);
+            slider.value = Math.round(similaritySettings.defaultThreshold * 100);
+            updateThresholdDisplay(slider.value);
+        }
+    } catch (error) {
+        console.warn('Could not load similarity settings, using defaults:', error);
+    }
+}
+
+function toggleSimilarMemoriesSettings() {
+    const settings = document.getElementById('similarMemoriesSettings');
+    settings.style.display = settings.style.display === 'none' ? 'block' : 'none';
+}
+
+function updateThresholdDisplay(value) {
+    document.getElementById('thresholdValue').textContent = value + '%';
+}
+
+async function loadSimilarMemories() {
+    const loadingEl = document.getElementById('similarMemoriesLoading');
+    const emptyEl = document.getElementById('similarMemoriesEmpty');
+    const contentEl = document.getElementById('similarMemoriesContent');
+    const listEl = document.getElementById('similarMemoriesList');
+
+    // Show loading state
+    loadingEl.style.display = 'block';
+    emptyEl.style.display = 'none';
+    contentEl.style.display = 'none';
+
+    try {
+        const threshold = document.getElementById('similarityThreshold').value / 100;
+        const response = await fetch(`/api/memory/${memoryId}/similar?threshold=${threshold}&limit=${similaritySettings.defaultLimit}`);
+
+        if (!response.ok) {
+            throw new Error('Failed to load similar memories');
+        }
+
+        const data = await response.json();
+        loadingEl.style.display = 'none';
+
+        if (!data.similarMemories || data.similarMemories.length === 0) {
+            emptyEl.style.display = 'block';
+            return;
+        }
+
+        // Clear previous selection
+        selectedSimilarMemories.clear();
+        updateSelectionUI();
+
+        // Display results
+        document.getElementById('similarMemoriesCount').textContent = data.similarMemories.length;
+        listEl.innerHTML = '';
+
+        data.similarMemories.forEach(mem => {
+            const similarityPercent = (mem.similarity * 100).toFixed(1);
+            const hasRelationship = mem.hasExistingRelationship;
+
+            const item = document.createElement('div');
+            item.className = 'similar-memory-item d-flex align-items-start p-3 border-bottom';
+            item.innerHTML = `
+                <div class="form-check me-3" style="min-width: 25px;">
+                    ${!hasRelationship ? `
+                    <input class="form-check-input similar-memory-checkbox" type="checkbox"
+                           id="similar-${mem.id}" data-id="${mem.id}" data-score="${mem.similarity}" data-title="${escapeHtml(mem.title)}"
+                           onchange="toggleSimilarMemorySelection('${mem.id}', ${mem.similarity}, '${escapeHtml(mem.title).replace(/'/g, "\\'")}')">
+                    ` : ''}
+                </div>
+                <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1">
+                                <a href="/ui/view/${mem.id}" class="text-decoration-none">
+                                    ${escapeHtml(mem.title || 'Untitled')}
+                                </a>
+                            </h6>
+                            <span class="badge bg-secondary me-2">${escapeHtml(mem.type)}</span>
+                            ${hasRelationship ?
+                                '<span class="badge bg-success"><i class="fas fa-check me-1"></i>Already linked</span>' :
+                                ''}
+                        </div>
+                        <div class="text-end">
+                            <div class="similarity-score ${getSimilarityClass(mem.similarity)}">
+                                ${similarityPercent}%
+                            </div>
+                            <small class="text-muted">similarity</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+            listEl.appendChild(item);
+        });
+
+        contentEl.style.display = 'block';
+    } catch (error) {
+        console.error('Error loading similar memories:', error);
+        loadingEl.style.display = 'none';
+        emptyEl.innerHTML = '<p class="text-danger mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Error loading similar memories. Please try again.</p>';
+        emptyEl.style.display = 'block';
+    }
+}
+
+function getSimilarityClass(similarity) {
+    if (similarity >= 0.9) return 'similarity-very-high';
+    if (similarity >= 0.8) return 'similarity-high';
+    if (similarity >= 0.7) return 'similarity-medium';
+    return 'similarity-low';
+}
+
+function toggleSimilarMemorySelection(id, score, title) {
+    if (selectedSimilarMemories.has(id)) {
+        selectedSimilarMemories.delete(id);
+    } else {
+        selectedSimilarMemories.set(id, { score, title });
+    }
+    updateSelectionUI();
+}
+
+function updateSelectionUI() {
+    const count = selectedSimilarMemories.size;
+    const btn = document.getElementById('createRelationshipsBtn');
+    const countSpan = document.getElementById('selectedCount');
+
+    countSpan.textContent = count;
+    btn.style.display = count > 0 ? 'inline-block' : 'none';
+}
+
+async function createSelectedRelationships() {
+    if (selectedSimilarMemories.size === 0) return;
+
+    const btn = document.getElementById('createRelationshipsBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Linking...';
+    btn.disabled = true;
+
+    try {
+        const relationships = Array.from(selectedSimilarMemories.entries()).map(([id, data]) => ({
+            targetMemoryId: id,
+            score: data.score
+        }));
+
+        const response = await fetch(`/api/memory/${memoryId}/similar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ relationships })
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to create relationships');
+        }
+
+        const result = await response.json();
+
+        // Show success message
+        const count = result.relationshipsCreated / 2; // Divide by 2 since bidirectional
+        alert(`Successfully linked ${count} similar ${count === 1 ? 'memory' : 'memories'}.`);
+
+        // Reload the page to show updated relationships
+        window.location.reload();
+    } catch (error) {
+        console.error('Error creating relationships:', error);
+        alert('Failed to create relationships. Please try again.');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+// Initialize similar memories on page load
+document.addEventListener('DOMContentLoaded', function() {
+    // Load similarity settings then load similar memories
+    loadSimilaritySettings().then(() => {
+        // Small delay to let the memory load first
+        setTimeout(() => loadSimilarMemories(), 500);
+    });
+});
 </script>
 }

@@ -280,3 +280,129 @@ footer a:hover {
 .theme-toggle-btn:hover {
     transform: scale(1.1);
 }
+
+/* =================================================================
+   SIMILAR MEMORIES DISCOVERY STYLES
+   ================================================================= */
+
+/* Similar memory item */
+.similar-memory-item {
+    transition: background-color 0.2s ease;
+}
+
+.similar-memory-item:hover {
+    background-color: var(--surface-card-alt);
+}
+
+.similar-memory-item:last-child {
+    border-bottom: none !important;
+}
+
+/* Similarity score display */
+.similarity-score {
+    font-size: 1.25rem;
+    font-weight: bold;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+}
+
+/* Light mode similarity colors */
+.similarity-very-high {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.similarity-high {
+    background-color: #cce5ff;
+    color: #004085;
+}
+
+.similarity-medium {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.similarity-low {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Dark mode similarity colors */
+[data-theme="dark"] .similarity-very-high {
+    background-color: #1e4620;
+    color: #75d47b;
+}
+
+[data-theme="dark"] .similarity-high {
+    background-color: #1a365d;
+    color: #90cdf4;
+}
+
+[data-theme="dark"] .similarity-medium {
+    background-color: #5c4813;
+    color: #f6e05e;
+}
+
+[data-theme="dark"] .similarity-low {
+    background-color: #5c1f1f;
+    color: #f56565;
+}
+
+/* Similar settings card */
+.similar-settings-card {
+    background-color: var(--surface-card-alt) !important;
+}
+
+[data-theme="dark"] .similar-settings-card {
+    background-color: var(--surface-card-alt) !important;
+    border-color: var(--border-default) !important;
+}
+
+/* Slider styling */
+.form-range {
+    cursor: pointer;
+}
+
+[data-theme="dark"] .form-range::-webkit-slider-track {
+    background-color: var(--border-default);
+}
+
+[data-theme="dark"] .form-range::-moz-range-track {
+    background-color: var(--border-default);
+}
+
+/* Similar memory checkbox alignment and visibility */
+.similar-memory-checkbox {
+    margin-top: 0.25rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 2px solid #6c757d;
+    cursor: pointer;
+}
+
+.similar-memory-checkbox:checked {
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
+}
+
+/* Border color in dark mode for similar items */
+[data-theme="dark"] .similar-memory-item {
+    border-color: var(--border-default) !important;
+}
+
+/* Light mode slider track - better contrast */
+.form-range::-webkit-slider-runnable-track {
+    background-color: #dee2e6;
+}
+
+.form-range::-moz-range-track {
+    background-color: #dee2e6;
+}
+
+.form-range::-webkit-slider-thumb {
+    background-color: var(--brand-primary);
+}
+
+.form-range::-moz-range-thumb {
+    background-color: var(--brand-primary);
+}
