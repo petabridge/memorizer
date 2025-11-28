@@ -8,6 +8,7 @@ using Registrator.Net;
 using MemoryRelationship = Memorizer.Models.MemoryRelationship;
 using MemoryEvent = Memorizer.Models.MemoryEvent;
 using MemoryVersion = Memorizer.Models.MemoryVersion;
+using SimilarMemory = Memorizer.Models.SimilarMemory;
 
 namespace Memorizer.Services;
 
@@ -45,7 +46,11 @@ public interface IStorage
 
     Task<List<Memorizer.Models.Memory>> GetMany(IEnumerable<Guid> ids, CancellationToken cancellationToken = default);
     Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string type, CancellationToken cancellationToken = default);
+    Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string type, double? score, CancellationToken cancellationToken = default);
     Task<List<MemoryRelationship>> GetRelationships(Guid memoryId, string? type = null, CancellationToken cancellationToken = default);
+
+    // Similarity discovery
+    Task<List<SimilarMemory>> GetSimilarMemories(Guid memoryId, double minSimilarity = 0.7, int limit = 10, CancellationToken cancellationToken = default);
     
     // Pagination support
     Task<(List<Memorizer.Models.Memory> Memories, int TotalCount)> GetMemoriesPaginated(
@@ -487,19 +492,25 @@ public class Storage : IStorage
         return memories;
     }
 
-    public async Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string type, CancellationToken cancellationToken = default)
+    public Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string type, CancellationToken cancellationToken = default)
+    {
+        return CreateRelationship(fromId, toId, type, null, cancellationToken);
+    }
+
+    public async Task<MemoryRelationship> CreateRelationship(Guid fromId, Guid toId, string type, double? score, CancellationToken cancellationToken = default)
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         const string sql = @"
-            INSERT INTO memory_relationships (id, from_memory_id, to_memory_id, type, created_at)
-            VALUES (@id, @from, @to, @type, @createdAt)";
+            INSERT INTO memory_relationships (id, from_memory_id, to_memory_id, type, created_at, score)
+            VALUES (@id, @from, @to, @type, @createdAt, @score)";
         var rel = new MemoryRelationship
         {
             Id = Guid.NewGuid(),
             FromMemoryId = fromId,
             ToMemoryId = toId,
             Type = type,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            Score = score
         };
         await using NpgsqlCommand cmd = new(sql, connection);
         cmd.Parameters.AddWithValue("id", rel.Id);
@@ -507,6 +518,7 @@ public class Storage : IStorage
         cmd.Parameters.AddWithValue("to", rel.ToMemoryId);
         cmd.Parameters.AddWithValue("type", type);
         cmd.Parameters.AddWithValue("createdAt", rel.CreatedAt);
+        cmd.Parameters.AddWithValue("score", score.HasValue ? score.Value : DBNull.Value);
         await cmd.ExecuteNonQueryAsync(cancellationToken);
         return rel;
     }
@@ -514,26 +526,26 @@ public class Storage : IStorage
     public async Task<List<MemoryRelationship>> GetRelationships(Guid memoryId, string? type = null, CancellationToken cancellationToken = default)
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        
+
         // Single query with JOIN to get relationships and related memory titles/types - NO RECURSION!
         string sql = @"
             SELECT r.id, r.from_memory_id, r.to_memory_id, r.type, r.created_at,
-                   m.title as related_title, m.type as related_type
+                   m.title as related_title, m.type as related_type, r.score
             FROM memory_relationships r
             LEFT JOIN memories m ON r.to_memory_id = m.id
             WHERE r.from_memory_id = @id";
-            
+
         if (!string.IsNullOrEmpty(type))
             sql += " AND r.type = @type";
-            
+
         await using NpgsqlCommand cmd = new(sql, connection);
         cmd.Parameters.AddWithValue("id", memoryId);
         if (!string.IsNullOrEmpty(type))
             cmd.Parameters.AddWithValue("type", type);
-            
+
         List<MemoryRelationship> rels = [];
         await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        
+
         while (await reader.ReadAsync(cancellationToken))
         {
             var rel = new MemoryRelationship
@@ -544,12 +556,76 @@ public class Storage : IStorage
                 Type = reader.GetString(3),
                 CreatedAt = reader.GetDateTime(4),
                 RelatedMemoryTitle = reader.IsDBNull(5) ? null : reader.GetString(5),
-                RelatedMemoryType = reader.IsDBNull(6) ? null : reader.GetString(6)
+                RelatedMemoryType = reader.IsDBNull(6) ? null : reader.GetString(6),
+                Score = reader.IsDBNull(7) ? null : reader.GetDouble(7)
             };
             rels.Add(rel);
         }
-        
+
         return rels;
+    }
+
+    public async Task<List<SimilarMemory>> GetSimilarMemories(Guid memoryId, double minSimilarity = 0.7, int limit = 10, CancellationToken cancellationToken = default)
+    {
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        // First, get the source memory's embedding
+        const string getEmbeddingSql = "SELECT embedding FROM memories WHERE id = @id";
+        await using NpgsqlCommand getEmbeddingCmd = new(getEmbeddingSql, connection);
+        getEmbeddingCmd.Parameters.AddWithValue("id", memoryId);
+
+        var embeddingResult = await getEmbeddingCmd.ExecuteScalarAsync(cancellationToken);
+        if (embeddingResult is null || embeddingResult is DBNull)
+        {
+            return []; // No embedding for this memory
+        }
+
+        var sourceEmbedding = (Vector)embeddingResult;
+
+        // Convert similarity threshold to distance threshold
+        // pgvector uses cosine distance where 0 = identical, 2 = opposite
+        // similarity = 1 - distance, so distance = 1 - similarity
+        double maxDistance = 1.0 - minSimilarity;
+
+        // Query for similar memories, excluding self and checking for existing relationships
+        const string sql = @"
+            SELECT m.id, m.title, m.type,
+                   1 - (m.embedding <=> @embedding) AS similarity,
+                   CASE WHEN EXISTS (
+                       SELECT 1 FROM memory_relationships r
+                       WHERE (r.from_memory_id = @sourceId AND r.to_memory_id = m.id)
+                          OR (r.from_memory_id = m.id AND r.to_memory_id = @sourceId)
+                   ) THEN true ELSE false END AS has_relationship
+            FROM memories m
+            WHERE m.id != @sourceId
+              AND m.embedding IS NOT NULL
+              AND m.embedding <=> @embedding < @maxDistance
+            ORDER BY m.embedding <=> @embedding
+            LIMIT @limit";
+
+        await using NpgsqlCommand cmd = new(sql, connection);
+        cmd.Parameters.AddWithValue("embedding", sourceEmbedding);
+        cmd.Parameters.AddWithValue("sourceId", memoryId);
+        cmd.Parameters.AddWithValue("maxDistance", maxDistance);
+        cmd.Parameters.AddWithValue("limit", limit);
+
+        List<SimilarMemory> results = [];
+        await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var similar = new SimilarMemory
+            {
+                Id = reader.GetGuid(0),
+                Title = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                Type = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                Similarity = reader.GetDouble(3),
+                HasExistingRelationship = reader.GetBoolean(4)
+            };
+            results.Add(similar);
+        }
+
+        return results;
     }
 
     public async Task<(List<Memorizer.Models.Memory> Memories, int TotalCount)> GetMemoriesPaginated(

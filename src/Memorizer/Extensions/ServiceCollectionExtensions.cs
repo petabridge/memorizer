@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddServerSettings();
         services.AddCorsSettings();
         services.AddVersioningSettings();
+        services.AddSimilaritySettings();
         if(initialize)
             services.AddHostedService<InitializationService>();
         services.AutoRegisterTypesInAssemblies(typeof(Storage).Assembly);
@@ -171,6 +172,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<VersioningSettings>(sp =>
             sp.GetRequiredService<IConfiguration>().GetSection("Versioning").Get<VersioningSettings>() ??
             new VersioningSettings());
+
+        return services;
+    }
+
+    public static IServiceCollection AddSimilaritySettings(
+        this IServiceCollection services)
+    {
+        services.AddSingleton<SimilaritySettings>(sp =>
+            sp.GetRequiredService<IConfiguration>().GetSection("Similarity").Get<SimilaritySettings>() ??
+            new SimilaritySettings());
 
         return services;
     }
