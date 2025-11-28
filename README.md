@@ -27,6 +27,18 @@ Key features:
 
 ---
 
+## 📖 Documentation
+
+- [Configuration & Advanced Setup](docs/configuration.md)
+- [Security Configuration](docs/security.md)
+- [Embedding Models & Dimensions](docs/embedding-models.md)
+- [Embedding Dimension Migration](docs/embedding-migration.md)
+- [Local Development](docs/local-development.md)
+- [Schema Migrations](docs/schema-migrations.md)
+- [Architecture Decision Records](docs/adr/README.md)
+
+---
+
 ## Installation with Docker
 
 ### 🐳 Quick Start (Public Image)
@@ -137,16 +149,6 @@ The Web UI provides a user-friendly interface for all Memorizer functionality, m
 > All edits and updates are automatically versioned, allowing you to track changes and revert if needed. Use these tools to remember, recall, edit, relate, and manage information as needed to assist the user.
 
 ---
-
-## 📖 Documentation
-
-- [Configuration & Advanced Setup](docs/configuration.md)
-- [Security Configuration](docs/security.md)
-- [Embedding Models & Dimensions](docs/embedding-models.md)
-- [Embedding Dimension Migration](docs/embedding-migration.md)
-- [Local Development](docs/local-development.md)
-- [Schema Migrations](docs/schema-migrations.md)
-- [Architecture Decision Records](docs/adr/README.md)
 
 ## License
 
