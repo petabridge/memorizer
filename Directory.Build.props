@@ -3,7 +3,7 @@
     <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/dariogriffo/postg-mem</PackageProjectUrl>
-    <VersionPrefix>1.9.0-beta1</VersionPrefix>
+    <VersionPrefix>1.9.0</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
@@ -14,17 +14,49 @@
   - **RevertToVersion Tool**: Restore previous versions of memories
   - **Visual Diffs**: Line-by-line comparison between versions in Web UI
   - **Event Audit Log**: Complete operation history for compliance and debugging
+- [Add memory similarity discovery feature](https://github.com/petabridge/memorizer-v1/pull/117) - Surface related memories using vector similarity search with optional relationship persistence
+  - On-demand similarity queries with configurable threshold (50-95%)
+  - UI slider to adjust similarity sensitivity
+  - Create bidirectional `similar-to` relationships with scores
+  - Helps evaluate embedding model quality and build knowledge graphs
+- [Add automatic embedding dimension detection and migration](https://github.com/petabridge/memorizer-v1/pull/107) - Automatically detect and migrate embeddings when switching between models with different dimensions
+  - Detects dimension mismatches at startup
+  - Provides UI warnings and migration tools
+  - Preserves existing data during model transitions
+
+**Improvements**
+- [Switch search and similarity to use metadata embeddings](https://github.com/petabridge/memorizer-v1/pull/120) - MCP search and similarity discovery now use metadata embeddings (title + tags) instead of full content embeddings for significantly better keyword query results
+  - Treats metadata as higher weight than body content for similarity matching
+  - Aligns MCP tool behavior with web UI search
+- [Add lightweight search results to optimize context window usage](https://github.com/petabridge/memorizer-v1/pull/121) - MCP search returns lightweight results by default to prevent swamping agent context windows
+  - Returns ID, title, type, tags, similarity score, and creation date
+  - Agents use `Get` or `GetMany` tools to retrieve full content as needed
+  - Configurable via `Search:ReturnFullContent` setting (default: `false`)
 
 **Bug Fixes**
 - [Rename Search tool to SearchMemories](https://github.com/petabridge/memorizer-v1/pull/105) - Fixes compatibility issues with Qwen Code CLI and Gemini that disallow tools named "search"
+- [Fix version history display and add version selector to compare view](https://github.com/petabridge/memorizer-v1/pull/116) - Improved version history UI with proper comparison capabilities
+- [Fix dimension migration bugs and add integration tests](https://github.com/petabridge/memorizer-v1/pull/115) - Resolved issues with embedding dimension migration process
+- [Fix warning button text visibility in dark mode](https://github.com/petabridge/memorizer-v1/pull/119) - Dimension mismatch warning button now visible in dark theme
+
+**Documentation**
+- [Add Qwen3 embedding models and reorganize README](https://github.com/petabridge/memorizer-v1/pull/114) - Updated embedding model documentation with Qwen3 support
+- [Add embedding documentation links to README](https://github.com/petabridge/memorizer-v1/pull/108) - Improved documentation for embedding configuration
 
 **Updates**
 - [Bump Npgsql from 9.0.4 to 10.0.0](https://github.com/petabridge/memorizer-v1/pull/100) - Major PostgreSQL driver update with performance improvements
 - [Bump Microsoft.AspNetCore.Mvc.Testing from 9.0.10 to 10.0.0](https://github.com/petabridge/memorizer-v1/pull/98) - Updated to .NET 10 testing framework
-- Updated OpenTelemetry packages to 1.14.0 for improved observability
-- Updated OllamaSharp from 5.3.6 to 5.4.11 for latest model support
-- Updated Akka.Streams from 1.5.55 to 1.5.56
-- Updated Microsoft.NET.Test.Sdk from 18.0.0 to 18.0.1</PackageReleaseNotes>
+- [Bump OpenTelemetry.Instrumentation.AspNetCore from 1.12.0 to 1.14.0](https://github.com/petabridge/memorizer-v1/pull/109)
+- [Bump OpenTelemetry.Instrumentation.Http from 1.12.0 to 1.14.0](https://github.com/petabridge/memorizer-v1/pull/110)
+- [Bump OpenTelemetry.Instrumentation.Runtime from 1.12.0 to 1.14.0](https://github.com/petabridge/memorizer-v1/pull/111)
+- [Bump OpenTelemetry.Exporter.OpenTelemetryProtocol from 1.12.0 to 1.14.0](https://github.com/petabridge/memorizer-v1/pull/103)
+- [Bump OpenTelemetry.Extensions.Hosting from 1.12.0 to 1.14.0](https://github.com/petabridge/memorizer-v1/pull/104)
+- [Bump OllamaSharp from 5.3.6 to 5.4.11](https://github.com/petabridge/memorizer-v1/pull/101) - Latest model support
+- [Bump Akka.Streams from 1.5.55 to 1.5.56](https://github.com/petabridge/memorizer-v1/pull/97)
+- [Bump Microsoft.NET.Test.Sdk from 18.0.0 to 18.0.1](https://github.com/petabridge/memorizer-v1/pull/99)
+- [Bump DiffPlex from 1.7.2 to 1.9.0](https://github.com/petabridge/memorizer-v1/pull/102)
+- [Bump xunit.runner.visualstudio from 3.1.4 to 3.1.5](https://github.com/petabridge/memorizer-v1/pull/113)
+- [Bump Registrator.Net from 3.1.0 to 3.2.4](https://github.com/petabridge/memorizer-v1/pull/112)</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>
