@@ -32,10 +32,10 @@
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.9.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="Akka.Hosting" Version="1.5.55.1" />
+    <PackageVersion Include="Akka.Hosting" Version="1.5.57" />
     <PackageVersion Include="Akka.Hosting.TestKit" Version="1.5.55.1" />
     <PackageVersion Include="Akka.Persistence.Sql.Hosting" Version="1.5.55.1" />
-    <PackageVersion Include="Akka.Streams" Version="1.5.56" />
+    <PackageVersion Include="Akka.Streams" Version="1.5.57" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(MsftVersion)" />
   </ItemGroup>
 </Project>
