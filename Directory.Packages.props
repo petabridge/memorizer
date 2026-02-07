@@ -16,7 +16,7 @@
     <PackageVersion Include="Microsoft.Extensions.Http" Version="$(MsftVersion)" />
     <PackageVersion Include="ModelContextProtocol" Version="0.4.0-preview.3" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
-    <PackageVersion Include="Npgsql" Version="10.0.0" />
+    <PackageVersion Include="Npgsql" Version="10.0.1" />
     <PackageVersion Include="OllamaSharp" Version="5.4.12" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
