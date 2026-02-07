@@ -35,7 +35,7 @@ This document contains detailed configuration, setup, and advanced usage instruc
 Configure the application settings in the `.env` file or as environment variables:
 
 ```bash
-MEMORIZER_ConnectionStrings__Storage=Host=localhost;Port=5432;Database=memorizer;Username=postgres;Password=postgres
+MEMORIZER_ConnectionStrings__Storage=Host=localhost;Port=5432;Database=postgmem;Username=postgres;Password=postgres
 MEMORIZER_Embeddings__ApiUrl=http://localhost:11434
 MEMORIZER_Embeddings__Model=all-minilm:33m-l12-v2-fp16
 MEMORIZER_Embeddings__Dimensions=384

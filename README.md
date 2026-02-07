@@ -96,29 +96,35 @@ This starts the same services but uses your locally built image.
 
 ## Upgrading to Memorizer 2.0
 
+> [!NOTE]
+> **The upgrade from Memorizer 1.x to 2.0 is designed to work automatically.** All schema migrations run on startup and have been thoroughly tested. Your existing memories will be preserved and continue to work as expected.
+
 > [!CAUTION]
-> **Back up your database before upgrading.** Memorizer 2.0 runs automatic schema migrations on startup that alter tables and add new columns. These migrations are not reversible. If something goes wrong, you will need to restore from your backup.
+> **We recommend backing up your database before upgrading**, as a standard best practice. Memorizer 2.0 runs automatic schema migrations on startup that alter tables and add new columns. While we've tested these migrations extensively, having a backup ensures you can recover in the unlikely event that something goes wrong.
 
 ### Backup Instructions
+
+> [!NOTE]
+> The container names below (e.g., `memorizer-postgres`) are based on the default [`docker-compose.yml`](docker-compose.yml). If you've customized your Docker Compose file, adjust the container name accordingly.
 
 Before pulling the new Memorizer 2.0 image, create a PostgreSQL dump of your existing database:
 
 ```bash
 # Create a full database backup
-docker exec memorizer-postgres pg_dump -U postgres memorizer > memorizer-backup-$(date +%Y%m%d).sql
+docker exec memorizer-postgres pg_dump -U postgres postgmem > memorizer-backup-$(date +%Y%m%d).sql
 
 # Or use pg_dump with compression
-docker exec memorizer-postgres pg_dump -U postgres -Fc memorizer > memorizer-backup-$(date +%Y%m%d).dump
+docker exec memorizer-postgres pg_dump -U postgres -Fc postgmem > memorizer-backup-$(date +%Y%m%d).dump
 ```
 
 To restore from a backup if needed:
 
 ```bash
 # Restore from SQL dump
-docker exec -i memorizer-postgres psql -U postgres memorizer < memorizer-backup-20250207.sql
+docker exec -i memorizer-postgres psql -U postgres postgmem < memorizer-backup-20250207.sql
 
 # Or restore from compressed dump
-docker exec -i memorizer-postgres pg_restore -U postgres -d memorizer memorizer-backup-20250207.dump
+docker exec -i memorizer-postgres pg_restore -U postgres -d postgmem memorizer-backup-20250207.dump
 ```
 
 ### Breaking Changes in 2.0
@@ -127,6 +133,11 @@ docker exec -i memorizer-postgres pg_restore -U postgres -d memorizer memorizer-
 - **Web UI moved from `/ui` to `/`**. The Web UI is now at the root path.
 - **New database tables**: Workspaces, projects, provider settings, data migrations, and archetype tracking are added automatically on first startup.
 - **Existing memories are preserved**: All your V1 memories will continue to work. They will appear as "Unfiled" until you organize them into workspaces and projects.
+
+### After Upgrading
+
+> [!TIP]
+> Once the upgrade is complete, ask your AI agent to suggest workspaces and projects to organize your existing memories into. Memorizer 2.0's workspace and project system helps you keep memories structured and easy to find - and your agent can analyze your existing memories to recommend a good organizational scheme.
 
 ---
 

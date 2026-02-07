@@ -161,7 +161,7 @@ Always use secure connection strings in production:
 
 ```bash
 # Use SSL/TLS for database connections
-MEMORIZER_ConnectionStrings__Storage="Host=db.example.com;Port=5432;Database=memorizer;Username=app_user;Password=<secure-password>;SSL Mode=Require;Trust Server Certificate=false"
+MEMORIZER_ConnectionStrings__Storage="Host=db.example.com;Port=5432;Database=postgmem;Username=app_user;Password=<secure-password>;SSL Mode=Require;Trust Server Certificate=false"
 ```
 
 ### Credentials

@@ -17,7 +17,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=memorizer
+      - POSTGRES_DB=postgmem
     ports:
       - "5432:5432"
     volumes:

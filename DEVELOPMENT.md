@@ -38,7 +38,7 @@ The `docker-compose.dev.yml` file starts these services:
 **PostgreSQL:**
 - Host: `localhost`
 - Port: `5432`
-- Database: `memorizer`
+- Database: `postgmem`
 - Username: `postgres`
 - Password: `postgres`
 
@@ -54,7 +54,7 @@ The application is pre-configured via `appsettings.json`:
 ```json
 {
   "ConnectionStrings": {
-    "Storage": "Host=localhost;Port=5432;Database=memorizer;Username=postgres;Password=postgres"
+    "Storage": "Host=localhost;Port=5432;Database=postgmem;Username=postgres;Password=postgres"
   },
   "Embeddings": {
     "ApiUrl": "http://localhost:11434",
