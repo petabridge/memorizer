@@ -6,7 +6,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <EnableSdkContainerSupport>true</EnableSdkContainerSupport>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-        <ContainerRepository>memorizer</ContainerRepository>
+        <ContainerRepository>petabridge/memorizer</ContainerRepository>
         <ContainerTitle>Memorizer</ContainerTitle>
         <ContainerDescription>A .NET-based service that allows AI agents to store, retrieve, and search through memories using vector embeddings. Leverages PostgreSQL with pgvector extension for efficient similarity search capabilities.</ContainerDescription>
         <ContainerImageTags>$(VersionPrefix);latest</ContainerImageTags>
