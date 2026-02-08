@@ -1,10 +1,10 @@
 # Memorizer
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/petabridge/memorizer)](https://hub.docker.com/r/petabridge/memorizer) ![GitHub License](https://img.shields.io/github/license/petabridge/memorizer-v1) ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/petabridge/memorizer-v1/pr_validation.yml) ![GitHub Release](https://img.shields.io/github/v/release/petabridge/memorizer-v1)
+[![Docker Pulls](https://img.shields.io/docker/pulls/petabridge/memorizer)](https://hub.docker.com/r/petabridge/memorizer) ![GitHub License](https://img.shields.io/github/license/petabridge/memorizer) ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/petabridge/memorizer/pr_validation.yml) ![GitHub Release](https://img.shields.io/github/v/release/petabridge/memorizer)
 
 Memorizer is a .NET-based service that allows AI agents to store, retrieve, and search through memories using vector embeddings. It leverages PostgreSQL with the pgvector extension to provide efficient similarity search capabilities.
 
-![Memorizer - Memory List](docs/images/memory-list-dark.png)
+![Memorizer - Memory List](https://raw.githubusercontent.com/petabridge/memorizer/refs/heads/dev/docs/images/memory-list-dark.png)
 
 Key features:
 - **Workspaces & Projects** - Organize memories into hierarchical workspaces and projects with status tracking
@@ -21,7 +21,7 @@ Key features:
 - MCP (Model Context Protocol) integration for easy use with AI agents
 - **Light & Dark theme** support
 
-![Memorizer - Workspace Detail](docs/images/workspace-detail-dark.png)
+![Memorizer - Workspace Detail](https://raw.githubusercontent.com/petabridge/memorizer/refs/heads/dev/docs/images/workspace-detail-dark.png)
 
 ## Technologies
 
