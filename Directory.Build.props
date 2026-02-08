@@ -7,7 +7,34 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
-    <PackageReleaseNotes>Memorizer V2 merge - adds workspaces, projects, provider settings, structured memory types (documents, records, references), and unit tests. See RELEASE_NOTES.md for details.</PackageReleaseNotes>
+    <PackageReleaseNotes>**Major Release - Memorizer V2 Merge**
+
+This release merges all Memorizer V2 features into the open-source repository, bringing significant new capabilities for organizing and managing AI agent memories.
+
+&gt; [!CAUTION]
+&gt; **Back up your database before upgrading.** Memorizer 2.0 runs automatic schema migrations on startup that alter tables and add new columns. These migrations are not reversible. Create a `pg_dump` of your database before pulling the new image. See the [Upgrading to Memorizer 2.0](README.md#upgrading-to-memorizer-20) section in the README for backup instructions.
+
+**Breaking Changes**
+- MCP endpoint moved from `/` to `/mcp`. Update client configs from `http://localhost:5000` to `http://localhost:5000/mcp`
+- Web UI moved from `/ui` to `/`. The Web UI is now at the root path.
+
+**New Features**
+- **Workspaces**: Organize memories into isolated workspaces with independent configurations
+- **Projects**: Group related memories within workspaces for better organization
+- **Provider Settings**: Configure AI providers (embedding models, LLM endpoints) per-workspace
+- **Structured Memory Types**: Support for documents, records, and references with distinct behaviors
+- **Memory Archiving**: Archive memories instead of deleting them, with restore capability
+- **System Memories**: Hidden system index memories for semantic project/workspace search
+- **Unit Tests**: New unit test project for core domain logic
+
+**Database Migrations**
+- Migrations 011-019 run automatically on startup
+- Existing V1 databases will be upgraded seamlessly with new tables for workspaces, projects, provider settings, and structured memory types
+
+**V2 Release History (from private development)**
+- 2.0.9: Fix broken navigation links, add Archetype field to MemorySummaryDto
+- 2.0.8: Fix archived memories filtering, add archetype visibility to MCP tools
+- 2.0.7: Add system memories for semantic project/workspace search</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>

@@ -23,7 +23,7 @@ public class IntegrationTests : TestKit
     private IStorage _storage = null!;
     private IEmbeddingService _embeddingService = null!;
 
-    public IntegrationTests(IntegrationTestFixture fixture, ITestOutputHelper output) 
+    public IntegrationTests(IntegrationTestFixture fixture, ITestOutputHelper output)
         : base(output: output)
     {
         _fixture = fixture;

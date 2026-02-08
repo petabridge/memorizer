@@ -2,8 +2,8 @@
 
 ## GitHub Workflow
 
-- **Always create pull requests against `petabridge/memorizer-v1`**, not any fork
-- Use `gh pr create --repo petabridge/memorizer-v1` when creating PRs
+- **Always create pull requests against `petabridge/memorizer`**, not any fork
+- Use `gh pr create --repo petabridge/memorizer` when creating PRs
 
 ## NuGet Package Management
 
