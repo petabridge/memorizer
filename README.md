@@ -127,6 +127,16 @@ docker exec -i postgmem-postgres psql -U postgres postgmem < memorizer-backup-20
 docker exec -i postgmem-postgres pg_restore -U postgres -d postgmem memorizer-backup-20250207.dump
 ```
 
+### Updating
+
+```bash
+# make sure you have created a backup before starting here
+git pull
+docker-compose down
+docker-compose pull memorizer
+docker-compose up -d
+```
+
 ### Breaking Changes in 2.0
 
 - **MCP endpoint moved from `/` to `/mcp`**. Update your MCP client configurations from `http://localhost:5000` to `http://localhost:5000/mcp`.
