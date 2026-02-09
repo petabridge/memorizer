@@ -111,20 +111,20 @@ Before pulling the new Memorizer 2.0 image, create a PostgreSQL dump of your exi
 
 ```bash
 # Create a full database backup
-docker exec memorizer-postgres pg_dump -U postgres postgmem > memorizer-backup-$(date +%Y%m%d).sql
+docker exec postgmem-postgres pg_dump -U postgres postgmem > memorizer-backup-$(date +%Y%m%d).sql
 
 # Or use pg_dump with compression
-docker exec memorizer-postgres pg_dump -U postgres -Fc postgmem > memorizer-backup-$(date +%Y%m%d).dump
+docker exec postgmem-postgres pg_dump -U postgres -Fc postgmem > memorizer-backup-$(date +%Y%m%d).dump
 ```
 
 To restore from a backup if needed:
 
 ```bash
 # Restore from SQL dump
-docker exec -i memorizer-postgres psql -U postgres postgmem < memorizer-backup-20250207.sql
+docker exec -i postgmem-postgres psql -U postgres postgmem < memorizer-backup-20250207.sql
 
 # Or restore from compressed dump
-docker exec -i memorizer-postgres pg_restore -U postgres -d postgmem memorizer-backup-20250207.dump
+docker exec -i postgmem-postgres pg_restore -U postgres -d postgmem memorizer-backup-20250207.dump
 ```
 
 ### Updating
