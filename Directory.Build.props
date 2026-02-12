@@ -3,38 +3,19 @@
     <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/petabridge/memorizer-v1</PackageProjectUrl>
-    <VersionPrefix>2.0.0</VersionPrefix>
+    <VersionPrefix>2.0.1</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
-    <PackageReleaseNotes>**Major Release - Memorizer V2 Merge**
+    <PackageReleaseNotes>**Improvements**
+- [Add link to homepage on sidebar Memorizer logo](https://github.com/petabridge/memorizer/pull/148) - Sidebar logo is now clickable and navigates to the Memorizer homepage
 
-This release merges all Memorizer V2 features into the open-source repository, bringing significant new capabilities for organizing and managing AI agent memories.
+**Bug Fixes**
+- [Fix Docker commands in README for PostgreSQL backup](https://github.com/petabridge/memorizer/pull/139) - Corrected container name from `memorizer-postgres` to `postgmem-postgres` in backup instructions
 
-&gt; [!CAUTION]
-&gt; **Back up your database before upgrading.** Memorizer 2.0 runs automatic schema migrations on startup that alter tables and add new columns. These migrations are not reversible. Create a `pg_dump` of your database before pulling the new image. See the [Upgrading to Memorizer 2.0](README.md#upgrading-to-memorizer-20) section in the README for backup instructions.
-
-**Breaking Changes**
-- MCP endpoint moved from `/` to `/mcp`. Update client configs from `http://localhost:5000` to `http://localhost:5000/mcp`
-- Web UI moved from `/ui` to `/`. The Web UI is now at the root path.
-
-**New Features**
-- **Workspaces**: Organize memories into isolated workspaces with independent configurations
-- **Projects**: Group related memories within workspaces for better organization
-- **Provider Settings**: Configure AI providers (embedding models, LLM endpoints) per-workspace
-- **Structured Memory Types**: Support for documents, records, and references with distinct behaviors
-- **Memory Archiving**: Archive memories instead of deleting them, with restore capability
-- **System Memories**: Hidden system index memories for semantic project/workspace search
-- **Unit Tests**: New unit test project for core domain logic
-
-**Database Migrations**
-- Migrations 011-019 run automatically on startup
-- Existing V1 databases will be upgraded seamlessly with new tables for workspaces, projects, provider settings, and structured memory types
-
-**V2 Release History (from private development)**
-- 2.0.9: Fix broken navigation links, add Archetype field to MemorySummaryDto
-- 2.0.8: Fix archived memories filtering, add archetype visibility to MCP tools
-- 2.0.7: Add system memories for semantic project/workspace search</PackageReleaseNotes>
+**Documentation**
+- [Add commands reference documentation for Memorizer](https://github.com/petabridge/memorizer/pull/141) - New reference guide documenting all available Memorizer commands
+- [Update README with detailed update instructions](https://github.com/petabridge/memorizer/pull/140) - Added step-by-step bash commands for the upgrade process</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>

@@ -1,3 +1,15 @@
+#### 2.0.1 February 12th 2026 ####
+
+**Improvements**
+- [Add link to homepage on sidebar Memorizer logo](https://github.com/petabridge/memorizer/pull/148) - Sidebar logo is now clickable and navigates to the Memorizer homepage
+
+**Bug Fixes**
+- [Fix Docker commands in README for PostgreSQL backup](https://github.com/petabridge/memorizer/pull/139) - Corrected container name from `memorizer-postgres` to `postgmem-postgres` in backup instructions
+
+**Documentation**
+- [Add commands reference documentation for Memorizer](https://github.com/petabridge/memorizer/pull/141) - New reference guide documenting all available Memorizer commands
+- [Update README with detailed update instructions](https://github.com/petabridge/memorizer/pull/140) - Added step-by-step bash commands for the upgrade process
+
 #### 2.0.0 February 7th 2026 ####
 
 **Major Release - Memorizer V2 Merge**
