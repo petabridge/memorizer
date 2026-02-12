@@ -85,8 +85,8 @@ public class MemoryStatsService : IMemoryStatsService
         // Get all stats in a single query for efficiency
         const string sql = @"
             SELECT
-                (SELECT COUNT(*) FROM memories) as total_memories,
-                (SELECT COALESCE(AVG(LENGTH(text)), 0) FROM memories) as avg_size,
+                (SELECT COUNT(*) FROM memories WHERE archetype IN (0, 1)) as total_memories,
+                (SELECT COALESCE(AVG(LENGTH(text)), 0) FROM memories WHERE archetype IN (0, 1)) as avg_size,
                 (SELECT COUNT(*) FROM memory_versions) as total_versions,
                 (SELECT COUNT(*) FROM memory_events) as total_events,
                 (SELECT pg_total_relation_size('memories')) as memories_storage,
