@@ -1,6 +1,7 @@
 using Akka.Hosting;
 using Akka.Hosting.TestKit;
 using Memorizer.Extensions;
+using Memorizer.Models.Enums;
 using Memorizer.Models.ValueTypes;
 using Memorizer.Services;
 using Memorizer.Settings;
@@ -109,4 +110,76 @@ public class MemoryStatsServiceTests : TestKit
         // Average size should now be positive
         Assert.True(updatedStats.AverageMemorySizeBytes > 0);
     }
-} 
+
+    [Fact]
+    public async Task MemoryStats_ExcludesSystemMemories()
+    {
+        _storage = Host.Services.GetRequiredService<IStorage>();
+        _statsService = Host.Services.GetRequiredService<IMemoryStatsService>();
+
+        var initialStats = await _statsService.GetStatsAsync();
+
+        // Add a regular document memory
+        await _storage.StoreMemory("test", "regular document memory", "test",
+            new[] { "test" }, new Confidence(1.0), "Regular Memory",
+            archetype: ArchetypeEnum.Document);
+
+        // Add a system memory (should be excluded from stats)
+        await _storage.StoreMemory("test", "system indexing memory", "test",
+            new[] { "system" }, new Confidence(1.0), "System Memory",
+            archetype: ArchetypeEnum.System);
+
+        var updatedStats = await _statsService.GetStatsAsync();
+
+        // Only the regular memory should be counted, not the system one
+        Assert.Equal(initialStats.TotalMemories + 1, updatedStats.TotalMemories);
+    }
+
+    [Fact]
+    public async Task GetMemoriesPaginated_ExcludesSystemMemories()
+    {
+        _storage = Host.Services.GetRequiredService<IStorage>();
+
+        // Get initial paginated count
+        var (_, initialCount) = await _storage.GetMemoriesPaginated(page: 1, pageSize: 1000);
+
+        // Add regular memories
+        await _storage.StoreMemory("test", "paginated test memory 1", "test",
+            new[] { "test" }, new Confidence(1.0), "Paginated Test 1",
+            archetype: ArchetypeEnum.Document);
+        await _storage.StoreMemory("test", "paginated test memory 2", "test",
+            new[] { "test" }, new Confidence(1.0), "Paginated Test 2",
+            archetype: ArchetypeEnum.Record);
+
+        // Add a system memory (should be excluded)
+        await _storage.StoreMemory("test", "system memory for pagination test", "test",
+            new[] { "system" }, new Confidence(1.0), "System Paginated Test",
+            archetype: ArchetypeEnum.System);
+
+        var (memories, totalCount) = await _storage.GetMemoriesPaginated(page: 1, pageSize: 1000);
+
+        // Count should only increase by 2 (the regular memories), not 3
+        Assert.Equal(initialCount + 2, totalCount);
+
+        // No system memories should appear in results
+        Assert.DoesNotContain(memories, m => m.Archetype == ArchetypeEnum.System);
+    }
+
+    [Fact]
+    public async Task CountMemoriesWithoutMetadataEmbeddings_ExcludesSystemMemories()
+    {
+        _storage = Host.Services.GetRequiredService<IStorage>();
+
+        var initialCount = await _storage.CountMemoriesWithoutMetadataEmbeddings();
+
+        // Add a system memory - it should NOT be counted even if it lacks metadata embeddings
+        await _storage.StoreMemory("test", "system memory for embedding count test", "test",
+            new[] { "system" }, new Confidence(1.0), "System Embedding Test",
+            archetype: ArchetypeEnum.System);
+
+        var updatedCount = await _storage.CountMemoriesWithoutMetadataEmbeddings();
+
+        // System memory should not increase the count
+        Assert.Equal(initialCount, updatedCount);
+    }
+}

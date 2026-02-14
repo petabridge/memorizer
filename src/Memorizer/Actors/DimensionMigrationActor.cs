@@ -569,6 +569,8 @@ public sealed class DimensionMigrationActor : ReceiveActor
 
     #region Database Operations
 
+    // Intentionally counts ALL memories (including System and Archived) because dimension migration
+    // must regenerate embeddings for every memory type to maintain database consistency.
     private async Task<int> GetTotalMemoryCount()
     {
         await using var conn = await _dataSource.OpenConnectionAsync();
@@ -609,6 +611,7 @@ public sealed class DimensionMigrationActor : ReceiveActor
         // Get total memory count
         await using var conn = await _dataSource.OpenConnectionAsync();
 
+        // Intentionally counts ALL memories (including System and Archived) for migration tracking
         await using var countCmd = new NpgsqlCommand("SELECT COUNT(*) FROM memories", conn);
         var totalMemories = Convert.ToInt32(await countCmd.ExecuteScalarAsync());
 

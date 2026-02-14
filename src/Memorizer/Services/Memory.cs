@@ -891,7 +891,8 @@ public class Storage : IStorage
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         
         // Get total count first
-        const string countSql = "SELECT COUNT(*) FROM memories";
+        // Exclude System (3) and Archived (2) memories from user-facing lists
+        const string countSql = "SELECT COUNT(*) FROM memories WHERE archetype IN (0, 1)";
         await using NpgsqlCommand countCmd = new(countSql, connection);
         var countResult = await countCmd.ExecuteScalarAsync(cancellationToken);
         var totalCount = countResult is null ? 0L : Convert.ToInt64(countResult);
@@ -900,6 +901,7 @@ public class Storage : IStorage
         const string sql = @"
             SELECT id, type_legacy, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, owner_type, owner_id, archetype
             FROM memories
+            WHERE archetype IN (0, 1)
             ORDER BY created_at DESC
             LIMIT @limit OFFSET @offset";
 
@@ -1616,7 +1618,7 @@ public class Storage : IStorage
     // Metadata embedding support
     public async Task<int> CountMemoriesWithoutMetadataEmbeddings(CancellationToken cancellationToken = default)
     {
-        const string sql = "SELECT COUNT(*) FROM memories WHERE embedding_metadata IS NULL";
+        const string sql = "SELECT COUNT(*) FROM memories WHERE embedding_metadata IS NULL AND archetype IN (0, 1)";
         
         await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var command = new NpgsqlCommand(sql, connection);
@@ -1627,7 +1629,9 @@ public class Storage : IStorage
 
     public async Task<List<Memorizer.Models.Memory>> GetMemoriesWithoutMetadataEmbeddings(int limit, bool includeExisting = false, CancellationToken cancellationToken = default)
     {
-        var whereClause = includeExisting ? "" : "WHERE embedding_metadata IS NULL";
+        var whereClause = includeExisting
+            ? "WHERE archetype IN (0, 1)"
+            : "WHERE embedding_metadata IS NULL AND archetype IN (0, 1)";
         var sql = $@"
             SELECT id, type_legacy, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, owner_type, owner_id, archetype
             FROM memories
@@ -2005,7 +2009,7 @@ public class Storage : IStorage
 
         const string sql = @"
             SELECT
-                (SELECT COUNT(*) FROM memories) as total_memories,
+                (SELECT COUNT(*) FROM memories WHERE archetype IN (0, 1)) as total_memories,
                 (SELECT COUNT(*) FROM memory_versions) as total_versions,
                 (SELECT COUNT(*) FROM memory_events) as total_events,
                 (SELECT AVG(version_count) FROM (

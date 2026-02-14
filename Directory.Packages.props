@@ -28,7 +28,7 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Dapper" Version="2.1.66" />
     <PackageVersion Include="DiffPlex" Version="1.9.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.3" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Spectre.Console" Version="0.54.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.9.0" />
@@ -37,7 +37,7 @@
     <PackageVersion Include="Akka.Hosting" Version="1.5.55.1" />
     <PackageVersion Include="Akka.Hosting.TestKit" Version="1.5.58" />
     <PackageVersion Include="Akka.Persistence.Sql.Hosting" Version="1.5.55.1" />
-    <PackageVersion Include="Akka.Streams" Version="1.5.58" />
+    <PackageVersion Include="Akka.Streams" Version="1.5.60" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(MsftVersion)" />
   </ItemGroup>
 </Project>
