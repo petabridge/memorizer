@@ -371,25 +371,34 @@ public class SearchEvalController : ControllerBase
         {
             workspaceId = evalWorkspace.Workspace.Id;
 
-            // Search for all corpus-tagged memories
-            // Use a very low threshold to find all tagged memories
-            var corpusMemories = await _storage.Search(
-                CorpusTag,
-                limit: 100,
-                minSimilarity: new SimilarityScore(0.01),
-                filterTags: [CorpusTag],
-                cancellationToken: cancellationToken);
-
-            foreach (var memory in corpusMemories)
+            // Paginate through ALL memories in the eval workspace.
+            // Using GetMemoriesByOwnerAsync avoids vector search dependency
+            // which was causing incomplete mappings (only finding memories
+            // semantically similar to the tag string "search-eval-corpus").
+            var owner = MemoryOwner.ForWorkspace(workspaceId);
+            int page = 1;
+            const int pageSize = 50;
+            while (true)
             {
-                if (memory.Tags == null) continue;
-                var corpusIdTag = memory.Tags.FirstOrDefault(t => t.StartsWith("corpus-id:"));
-                if (corpusIdTag != null)
+                var memories = await _storage.GetMemoriesByOwnerAsync(owner, page, pageSize, cancellationToken);
+                if (memories.Count == 0) break;
+
+                foreach (var memory in memories)
                 {
-                    var corpusId = corpusIdTag["corpus-id:".Length..];
-                    corpusToMemory[corpusId] = memory.Id;
-                    memoryToCorpus[memory.Id] = corpusId;
+                    if (memory.Tags == null) continue;
+                    // Only include memories that have the corpus tag
+                    if (!memory.Tags.Contains(CorpusTag)) continue;
+                    var corpusIdTag = memory.Tags.FirstOrDefault(t => t.StartsWith("corpus-id:"));
+                    if (corpusIdTag != null)
+                    {
+                        var corpusId = corpusIdTag["corpus-id:".Length..];
+                        corpusToMemory[corpusId] = memory.Id;
+                        memoryToCorpus[memory.Id] = corpusId;
+                    }
                 }
+
+                if (memories.Count < pageSize) break;
+                page++;
             }
         }
 
