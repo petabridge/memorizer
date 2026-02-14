@@ -2994,8 +2994,11 @@ public class Storage : IStorage
         var taggedResults = await HybridSearchSystemMemories(query, ProjectSystemMemoryType, limit, cancellationToken);
 
         var results = new List<(ProjectId, double)>();
-        foreach (var (tags, similarity) in taggedResults)
+        foreach (var (tags, similarity, hadFtsMatch) in taggedResults)
         {
+            // Keep FTS matches (textually relevant); filter vector-only matches by similarity
+            if (!hadFtsMatch && similarity < minSimilarity) continue;
+
             var projectTag = tags.FirstOrDefault(t => t.StartsWith("project:"));
             if (projectTag != null && Guid.TryParse(projectTag.Substring("project:".Length), out var projectGuid))
             {
@@ -3089,7 +3092,7 @@ public class Storage : IStorage
     /// Shared hybrid search for system memories (projects, workspaces).
     /// Combines vector search + FTS with RRF fusion, returning tags and similarity for each match.
     /// </summary>
-    private async Task<List<(string[] Tags, double Similarity)>> HybridSearchSystemMemories(
+    private async Task<List<(string[] Tags, double Similarity, bool HadFtsMatch)>> HybridSearchSystemMemories(
         string query,
         string systemMemoryType,
         int limit,
@@ -3161,14 +3164,14 @@ public class Storage : IStorage
         // Use a stable key to identify entries — the entity tag (project:{guid} or workspace:{guid})
         string? EntityKey(string[] tags) => tags.FirstOrDefault(t => t.StartsWith("project:") || t.StartsWith("workspace:"));
 
-        var rrfScores = new Dictionary<string, (double Score, string[] Tags, double Distance)>();
+        var rrfScores = new Dictionary<string, (double Score, string[] Tags, double Distance, bool HadFtsMatch)>();
 
         foreach (var (tags, distance, rank) in vectorResults)
         {
             var key = EntityKey(tags);
             if (key == null) continue;
             double score = vectorWeight / (k + rank);
-            rrfScores[key] = (score, tags, distance);
+            rrfScores[key] = (score, tags, distance, false);
         }
 
         foreach (var (tags, _, rank) in ftsResults)
@@ -3179,18 +3182,18 @@ public class Storage : IStorage
 
             if (rrfScores.TryGetValue(key, out var existing))
             {
-                rrfScores[key] = (existing.Score + score, existing.Tags, existing.Distance);
+                rrfScores[key] = (existing.Score + score, existing.Tags, existing.Distance, true);
             }
             else
             {
-                rrfScores[key] = (score, tags, 1.0); // distance=1.0 (no vector match)
+                rrfScores[key] = (score, tags, 1.0, true); // distance=1.0 (no vector match)
             }
         }
 
         return rrfScores.Values
             .OrderByDescending(x => x.Score)
             .Take(limit)
-            .Select(x => (x.Tags, 1.0 - x.Distance)) // convert distance to similarity
+            .Select(x => (x.Tags, 1.0 - x.Distance, x.HadFtsMatch)) // convert distance to similarity
             .ToList();
     }
 
@@ -3207,8 +3210,11 @@ public class Storage : IStorage
         var taggedResults = await HybridSearchSystemMemories(query, WorkspaceSystemMemoryType, limit, cancellationToken);
 
         var results = new List<(WorkspaceId, double)>();
-        foreach (var (tags, similarity) in taggedResults)
+        foreach (var (tags, similarity, hadFtsMatch) in taggedResults)
         {
+            // Keep FTS matches (textually relevant); filter vector-only matches by similarity
+            if (!hadFtsMatch && similarity < minSimilarity) continue;
+
             var workspaceTag = tags.FirstOrDefault(t => t.StartsWith("workspace:"));
             if (workspaceTag != null && Guid.TryParse(workspaceTag.Substring("workspace:".Length), out var workspaceGuid))
             {
