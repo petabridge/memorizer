@@ -347,6 +347,47 @@ public class SearchEvalController : ControllerBase
 
     public record CompareRequest(string Query, int Limit = 5, double Threshold = 0.7);
 
+    /// <summary>
+    /// Test project and workspace search with a query.
+    /// </summary>
+    [HttpPost("compare-org-search")]
+    public async Task<ActionResult> CompareOrgSearch(
+        [FromBody] CompareRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Query))
+            return BadRequest(new { message = "query is required" });
+
+        var projects = await _storage.SearchProjectsAsync(request.Query, cancellationToken: cancellationToken);
+        var workspaces = await _storage.SearchWorkspacesAsync(request.Query, cancellationToken: cancellationToken);
+
+        return Ok(new
+        {
+            query = request.Query,
+            projects = new
+            {
+                count = projects.Count,
+                results = projects.Take(request.Limit).Select(p => new
+                {
+                    id = p.Project.Id.Value,
+                    name = p.Project.Name,
+                    description = p.Project.Description?[..Math.Min(p.Project.Description.Length, 100)],
+                    status = p.Project.Status.ToString()
+                })
+            },
+            workspaces = new
+            {
+                count = workspaces.Count,
+                results = workspaces.Take(request.Limit).Select(w => new
+                {
+                    id = w.Workspace.Id.Value,
+                    name = w.Workspace.Name,
+                    path = string.Join(" > ", w.Path.Select(p => p.Name))
+                })
+            }
+        });
+    }
+
     #region Private helpers
 
     private async Task<List<EvaluationCorpusEntry>?> LoadCorpusAsync()
