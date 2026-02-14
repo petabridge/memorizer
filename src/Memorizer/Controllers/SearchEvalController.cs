@@ -142,6 +142,7 @@ public class SearchEvalController : ControllerBase
                 ("Search", (q, limit, sim, ct) => _storage.Search(q, limit, sim, cancellationToken: ct)),
                 ("SearchWithFullEmbedding", (q, limit, sim, ct) => _storage.SearchWithFullEmbedding(q, limit, sim, cancellationToken: ct)),
                 ("SearchWithMetadataEmbedding", (q, limit, sim, ct) => _storage.SearchWithMetadataEmbedding(q, limit, sim, cancellationToken: ct)),
+                ("HybridSearch", (q, limit, sim, ct) => _storage.HybridSearch(q, limit, sim, cancellationToken: ct)),
             };
 
             foreach (var threshold in thresholds)
@@ -300,6 +301,51 @@ public class SearchEvalController : ControllerBase
             return StatusCode(500, new { message = $"Error: {ex.Message}" });
         }
     }
+
+    /// <summary>
+    /// Compare search methods head-to-head for a single query against production data.
+    /// </summary>
+    [HttpPost("compare")]
+    public async Task<ActionResult> CompareQuery(
+        [FromBody] CompareRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Query))
+            return BadRequest(new { message = "query is required" });
+
+        var limit = request.Limit > 0 ? request.Limit : 5;
+        var threshold = new SimilarityScore(request.Threshold > 0 ? request.Threshold : 0.7);
+
+        var methods = new (string Name, Func<Task<List<Memory>>> Run)[]
+        {
+            ("SearchWithMetadataEmbedding", () => _storage.SearchWithMetadataEmbedding(
+                request.Query, limit, threshold, cancellationToken: cancellationToken)),
+            ("HybridSearch", () => _storage.HybridSearch(
+                request.Query, limit, cancellationToken: cancellationToken)),
+        };
+
+        var results = new List<object>();
+        foreach (var (name, run) in methods)
+        {
+            var memories = await run();
+            results.Add(new
+            {
+                method = name,
+                count = memories.Count,
+                results = memories.Select(m => new
+                {
+                    id = m.Id.Value,
+                    title = m.Title,
+                    similarity = m.Similarity.HasValue ? (double)m.Similarity.Value : (double?)null,
+                    tags = m.Tags?[..Math.Min(m.Tags.Length, 3)]
+                })
+            });
+        }
+
+        return Ok(new { query = request.Query, threshold = (double)threshold, limit, methods = results });
+    }
+
+    public record CompareRequest(string Query, int Limit = 5, double Threshold = 0.7);
 
     #region Private helpers
 

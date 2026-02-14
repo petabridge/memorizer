@@ -211,6 +211,9 @@ public class TitleGenerationActorTests : TestKit
         public Task<(List<Memory> FullResults, List<Memory> MetadataResults)> CompareSearchMethods(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
 
+        public Task<List<Memory>> HybridSearch(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, ProjectId? projectId = null, bool includeUnassigned = false, bool includeArchived = false, bool includeSystem = false, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
         // Versioning support
         public Task<List<MemoryEvent>> GetEvents(MemoryId memoryId, int? limit = null, CancellationToken cancellationToken = default)
             => Task.FromResult(new List<MemoryEvent>());

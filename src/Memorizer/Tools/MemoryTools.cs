@@ -290,9 +290,8 @@ public class MemoryTools
         // Convert projectId to typed ProjectId
         ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
 
-        // Search for similar memories using metadata embeddings (title + tags)
-        // This is optimized for keyword-style LLM queries vs full content embeddings
-        List<Memory> memories = await _storage.SearchWithMetadataEmbedding(
+        // Use hybrid search combining vector similarity + PostgreSQL full-text search via RRF
+        List<Memory> memories = await _storage.HybridSearch(
             query,
             limit,
             new SimilarityScore(minSimilarity),
@@ -323,7 +322,7 @@ public class MemoryTools
                 {"original.threshold", minSimilarity.ToString()}
             }));
 
-            memories = await _storage.SearchWithMetadataEmbedding(
+            memories = await _storage.HybridSearch(
                 query,
                 limit,
                 new SimilarityScore(fallbackThreshold),

@@ -140,6 +140,18 @@ public interface IStorage
         CancellationToken cancellationToken = default
     );
 
+    Task<List<Memorizer.Models.Memory>> HybridSearch(
+        string query,
+        int limit = 10,
+        SimilarityScore? minSimilarity = null,
+        string[]? filterTags = null,
+        ProjectId? projectId = null,
+        bool includeUnassigned = false,
+        bool includeArchived = false,
+        bool includeSystem = false,
+        CancellationToken cancellationToken = default
+    );
+
     // Versioning support
     Task<List<MemoryEvent>> GetEvents(MemoryId memoryId, int? limit = null, CancellationToken cancellationToken = default);
     Task<List<MemoryVersion>> GetVersionHistory(MemoryId memoryId, int? limit = null, CancellationToken cancellationToken = default);
@@ -1387,6 +1399,199 @@ public class Storage : IStorage
         var fullEmbeddingResults = await SearchWithFullEmbedding(query, limit, minSimilarity, filterTags, includeArchived: false, cancellationToken);
         var metadataEmbeddingResults = await SearchWithMetadataEmbedding(query, limit, minSimilarity, filterTags, projectId: null, includeUnassigned: false, includeArchived: false, includeSystem: false, cancellationToken);
         return (fullEmbeddingResults, metadataEmbeddingResults);
+    }
+
+    private static string BuildOwnerFilter(ProjectId? projectId, bool includeUnassigned)
+    {
+        if (!projectId.HasValue) return "";
+
+        if (includeUnassigned)
+        {
+            return @"AND ((owner_type = 1 AND owner_id = @projectId)
+                   OR (owner_type = 0 AND owner_id = '00000000-0000-0000-0000-000000000000'))";
+        }
+
+        return "AND owner_type = 1 AND owner_id = @projectId";
+    }
+
+    private static string BuildArchetypeFilter(bool includeArchived, bool includeSystem)
+    {
+        return (includeArchived, includeSystem) switch
+        {
+            (false, false) => "AND archetype IN (0, 1)",
+            (true, false) => "AND archetype IN (0, 1, 2)",
+            (false, true) => "AND archetype IN (0, 1, 3)",
+            (true, true) => ""
+        };
+    }
+
+    public async Task<List<Memorizer.Models.Memory>> HybridSearch(
+        string query,
+        int limit = 10,
+        SimilarityScore? minSimilarity = null,
+        string[]? filterTags = null,
+        ProjectId? projectId = null,
+        bool includeUnassigned = false,
+        bool includeArchived = false,
+        bool includeSystem = false,
+        CancellationToken cancellationToken = default
+    )
+    {
+        // Generate embedding for the query
+        float[] queryEmbedding = await _embeddingService.Generate(query, cancellationToken);
+
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        int fetchLimit = Math.Max(limit * 3, 30);
+        string ownerFilter = BuildOwnerFilter(projectId, includeUnassigned);
+        string archetypeFilter = BuildArchetypeFilter(includeArchived, includeSystem);
+
+        // Leg 1: Vector search (metadata embedding, no hard distance threshold)
+        string vectorSql = $@"
+            SELECT id, type_legacy, content, text, source, embedding, embedding_metadata,
+                   tags, confidence, created_at, updated_at, title, current_version,
+                   owner_type, owner_id, archetype,
+                   embedding_metadata <=> @embedding AS similarity
+            FROM memories
+            WHERE embedding_metadata IS NOT NULL
+            {ownerFilter}
+            {archetypeFilter}
+            ORDER BY embedding_metadata <=> @embedding
+            LIMIT @fetchLimit";
+
+        var vectorResults = new List<(Memorizer.Models.Memory Memory, double Distance)>();
+        await using (var cmd = new NpgsqlCommand(vectorSql, connection))
+        {
+            cmd.Parameters.AddWithValue("embedding", new Vector(queryEmbedding));
+            cmd.Parameters.AddWithValue("fetchLimit", fetchLimit);
+            if (projectId.HasValue)
+                cmd.Parameters.AddWithValue("projectId", projectId.Value.Value);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var memory = ReadMemoryFromReader(reader, withSimilarity: false);
+                var distance = reader.GetDouble(16);
+                vectorResults.Add((memory, distance));
+            }
+        }
+
+        // Leg 2: Full-text search
+        string ftsSql = $@"
+            SELECT id, type_legacy, content, text, source, embedding, embedding_metadata,
+                   tags, confidence, created_at, updated_at, title, current_version,
+                   owner_type, owner_id, archetype,
+                   ts_rank_cd(search_vector, websearch_to_tsquery('english', @query)) AS fts_rank
+            FROM memories
+            WHERE search_vector @@ websearch_to_tsquery('english', @query)
+            {ownerFilter}
+            {archetypeFilter}
+            ORDER BY fts_rank DESC
+            LIMIT @fetchLimit";
+
+        var ftsResults = new List<(Memorizer.Models.Memory Memory, double FtsRank)>();
+        await using (var cmd = new NpgsqlCommand(ftsSql, connection))
+        {
+            cmd.Parameters.AddWithValue("query", query);
+            cmd.Parameters.AddWithValue("fetchLimit", fetchLimit);
+            if (projectId.HasValue)
+                cmd.Parameters.AddWithValue("projectId", projectId.Value.Value);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var memory = ReadMemoryFromReader(reader, withSimilarity: false);
+                var ftsRank = reader.GetDouble(16);
+                ftsResults.Add((memory, ftsRank));
+            }
+        }
+
+        // RRF Fusion (k=60)
+        const int k = 60;
+
+        // Adaptive weighting: short queries favor FTS, longer queries weight equally
+        int wordCount = query.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        double ftsWeight = wordCount <= 2 ? 1.5 : 1.0;
+        double vectorWeight = 1.0;
+
+        var rrfScores = new Dictionary<MemoryId, (double Score, Memorizer.Models.Memory Memory)>();
+
+        // Score vector results
+        for (int i = 0; i < vectorResults.Count; i++)
+        {
+            var (memory, _) = vectorResults[i];
+            int rank = i + 1; // 1-based rank
+            double score = vectorWeight / (k + rank);
+            rrfScores[memory.Id] = (score, memory);
+        }
+
+        // Score FTS results and merge
+        for (int i = 0; i < ftsResults.Count; i++)
+        {
+            var (memory, _) = ftsResults[i];
+            int rank = i + 1;
+            double score = ftsWeight / (k + rank);
+
+            if (rrfScores.TryGetValue(memory.Id, out var existing))
+            {
+                rrfScores[memory.Id] = (existing.Score + score, existing.Memory);
+            }
+            else
+            {
+                rrfScores[memory.Id] = (score, memory);
+            }
+        }
+
+        // Tag normalization and boosting
+        static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant();
+        var normalizedFilterTags = filterTags?.Select(NormalizeTag).ToHashSet() ?? new HashSet<string>();
+        const double tagBoostFactor = 1.1; // 10% boost for tag match
+
+        var ranked = rrfScores.Values
+            .Select(entry =>
+            {
+                double score = entry.Score;
+                if (normalizedFilterTags.Count > 0 && entry.Memory.Tags != null)
+                {
+                    bool tagMatch = entry.Memory.Tags.Select(NormalizeTag).Any(t => normalizedFilterTags.Contains(t));
+                    if (tagMatch) score *= tagBoostFactor;
+                }
+                return (entry.Memory, Score: score);
+            })
+            .OrderByDescending(x => x.Score)
+            .Take(limit)
+            .ToList();
+
+        // Set similarity scores on the final results from vector leg distances
+        var vectorDistanceLookup = vectorResults.ToDictionary(v => v.Memory.Id, v => v.Distance);
+        var memories = new List<Memorizer.Models.Memory>();
+        var memoryIds = new List<MemoryId>();
+
+        foreach (var (memory, _) in ranked)
+        {
+            if (vectorDistanceLookup.TryGetValue(memory.Id, out var distance))
+            {
+                memory.Similarity = SimilarityScore.FromDistance(distance);
+            }
+            memories.Add(memory);
+            memoryIds.Add(memory.Id);
+        }
+
+        // Batch fetch relationships for all found memories
+        if (memoryIds.Count > 0)
+        {
+            var relationships = await GetRelationshipsForMany(memoryIds, cancellationToken);
+            var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
+            foreach (var memory in memories)
+            {
+                if (relLookup.TryGetValue(memory.Id, out var rels))
+                    memory.Relationships = rels;
+                else
+                    memory.Relationships = new List<MemoryRelationship>();
+            }
+        }
+
+        return memories;
     }
 
     // Metadata embedding support

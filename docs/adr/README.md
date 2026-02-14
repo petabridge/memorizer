@@ -19,4 +19,5 @@ An ADR is a document that captures an important architectural decision made alon
 4. [Migration from Ollama to OllamaSharp](2025-05-23-migration-from-ollama-to-ollama-sharp.md) - Switches to OllamaSharp package for better .NET ecosystem integration and dependency injection support
 5. [Chunking Integration Test Design](2025-05-23-chunking-integration-test-design.md) - Comprehensive testing strategy for asynchronous chunking system with TestContainers and actor verification
 6. [Preserve Original Memories During Chunking](2025-01-27-preserve-original-memories-during-chunking.md) - Ensures original memory content is never modified during chunking, preventing data loss and maintaining user trust
-7. [Memory Search Result Ranking and Tag Handling](2025-05-23-memory-search-ranking.md) - Similarity is primary, tags are a soft boost, always show something, and rationale/consequences documented 
+7. [Memory Search Result Ranking and Tag Handling](2025-05-23-memory-search-ranking.md) - Similarity is primary, tags are a soft boost, always show something, and rationale/consequences documented
+8. [Hybrid Search with PostgreSQL FTS and RRF](2026-02-14-hybrid-search-rrf.md) - Combines vector search with PostgreSQL full-text search via Reciprocal Rank Fusion, fixing zero-result failures for short keyword queries
