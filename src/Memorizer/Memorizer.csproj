@@ -63,6 +63,8 @@
 
     <ItemGroup>
         <EmbeddedResource Include="SeedData\seed-data.json" />
+        <EmbeddedResource Include="SearchEval\synthetic_corpus.json" />
+        <EmbeddedResource Include="SearchEval\evaluation_queries.json" />
     </ItemGroup>
 
 </Project>

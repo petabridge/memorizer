@@ -1,0 +1,182 @@
+[
+  {
+    "query": "docker compose",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["docker-compose-basics", "container-networking"],
+    "expectedTopResult": "docker-compose-basics"
+  },
+  {
+    "query": "postgres backup",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["postgresql-backup-strategies", "postgres-replication-setup"],
+    "expectedTopResult": "postgresql-backup-strategies"
+  },
+  {
+    "query": "JWT tokens",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["jwt-token-management", "oauth2-implementation"],
+    "expectedTopResult": "jwt-token-management"
+  },
+  {
+    "query": "GitHub Actions",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["github-actions-dotnet", "deployment-strategies"],
+    "expectedTopResult": "github-actions-dotnet"
+  },
+  {
+    "query": "connection pooling",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["connection-pooling-config"],
+    "expectedTopResult": "connection-pooling-config"
+  },
+  {
+    "query": "Blazor components",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["blazor-component-patterns", "javascript-interop"],
+    "expectedTopResult": "blazor-component-patterns"
+  },
+  {
+    "query": "Terraform",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["terraform-infrastructure"],
+    "expectedTopResult": "terraform-infrastructure"
+  },
+  {
+    "query": "DNS records",
+    "queryType": "short-keyword",
+    "expectedRelevant": ["dns-configuration"],
+    "expectedTopResult": "dns-configuration"
+  },
+  {
+    "query": "How do I set up OAuth2 authentication in my API?",
+    "queryType": "natural-language",
+    "expectedRelevant": ["oauth2-implementation", "api-key-authentication", "cors-configuration"],
+    "expectedTopResult": "oauth2-implementation"
+  },
+  {
+    "query": "What's the best way to handle database migrations in Entity Framework?",
+    "queryType": "natural-language",
+    "expectedRelevant": ["ef-core-migrations", "mysql-to-postgres-migration"],
+    "expectedTopResult": "ef-core-migrations"
+  },
+  {
+    "query": "How should I configure OpenTelemetry for my .NET application?",
+    "queryType": "natural-language",
+    "expectedRelevant": ["opentelemetry-setup", "metrics-collection", "structured-logging"],
+    "expectedTopResult": "opentelemetry-setup"
+  },
+  {
+    "query": "What are the options for deploying to Azure?",
+    "queryType": "natural-language",
+    "expectedRelevant": ["azure-app-service", "deployment-strategies"],
+    "expectedTopResult": "azure-app-service"
+  },
+  {
+    "query": "How do I implement dependency injection in ASP.NET Core?",
+    "queryType": "natural-language",
+    "expectedRelevant": ["dependency-injection-patterns", "aspnet-configuration", "middleware-pipeline"],
+    "expectedTopResult": "dependency-injection-patterns"
+  },
+  {
+    "query": "What's the best approach for container orchestration?",
+    "queryType": "natural-language",
+    "expectedRelevant": ["kubernetes-pod-management", "docker-compose-basics", "container-networking"],
+    "expectedTopResult": "kubernetes-pod-management"
+  },
+  {
+    "query": "PostgreSQL Backup Strategies",
+    "queryType": "exact-title",
+    "expectedRelevant": ["postgresql-backup-strategies"],
+    "expectedTopResult": "postgresql-backup-strategies"
+  },
+  {
+    "query": "Akka.NET Actor",
+    "queryType": "exact-title",
+    "expectedRelevant": ["akka-net-actors"],
+    "expectedTopResult": "akka-net-actors"
+  },
+  {
+    "query": "Code Review Guidelines",
+    "queryType": "exact-title",
+    "expectedRelevant": ["code-review-guidelines"],
+    "expectedTopResult": "code-review-guidelines"
+  },
+  {
+    "query": "CSS Theming",
+    "queryType": "exact-title",
+    "expectedRelevant": ["css-theming-system", "blazor-component-patterns"],
+    "expectedTopResult": "css-theming-system"
+  },
+  {
+    "query": "kubernetes deployment scaling",
+    "queryType": "tag-focused",
+    "expectedRelevant": ["kubernetes-pod-management", "deployment-strategies"],
+    "expectedTopResult": "kubernetes-pod-management"
+  },
+  {
+    "query": "monitoring observability traces",
+    "queryType": "tag-focused",
+    "expectedRelevant": ["opentelemetry-setup", "metrics-collection", "structured-logging"],
+    "expectedTopResult": "opentelemetry-setup"
+  },
+  {
+    "query": "security authentication tokens",
+    "queryType": "tag-focused",
+    "expectedRelevant": ["jwt-token-management", "oauth2-implementation", "api-key-authentication"],
+    "expectedTopResult": "jwt-token-management"
+  },
+  {
+    "query": "CI CD pipeline automation",
+    "queryType": "tag-focused",
+    "expectedRelevant": ["github-actions-dotnet", "azure-devops-pipelines", "deployment-strategies"],
+    "expectedTopResult": "github-actions-dotnet"
+  },
+  {
+    "query": "database configuration setup",
+    "queryType": "cross-cluster",
+    "expectedRelevant": ["connection-pooling-config", "database-indexing-strategies", "aspnet-configuration"],
+    "expectedTopResult": "connection-pooling-config"
+  },
+  {
+    "query": "deploy application to cloud",
+    "queryType": "cross-cluster",
+    "expectedRelevant": ["azure-app-service", "aws-basics-guide", "deployment-strategies"],
+    "expectedTopResult": "azure-app-service"
+  },
+  {
+    "query": "logging and tracing in production",
+    "queryType": "cross-cluster",
+    "expectedRelevant": ["structured-logging", "opentelemetry-setup", "health-check-patterns"],
+    "expectedTopResult": "structured-logging"
+  },
+  {
+    "query": "network configuration and routing",
+    "queryType": "cross-cluster",
+    "expectedRelevant": ["container-networking", "dns-configuration", "cors-configuration"],
+    "expectedTopResult": "container-networking"
+  },
+  {
+    "query": "quantum computing algorithms",
+    "queryType": "negative",
+    "expectedRelevant": [],
+    "expectedTopResult": null
+  },
+  {
+    "query": "horse breeding techniques",
+    "queryType": "negative",
+    "expectedRelevant": [],
+    "expectedTopResult": null
+  },
+  {
+    "query": "medieval castle architecture",
+    "queryType": "negative",
+    "expectedRelevant": [],
+    "expectedTopResult": null
+  },
+  {
+    "query": "deep sea fish species",
+    "queryType": "negative",
+    "expectedRelevant": [],
+    "expectedTopResult": null
+  }
+]
