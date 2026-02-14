@@ -26,11 +26,11 @@ Eval results at threshold 0.7 (production dataset, 2335 memories):
 
 Synthetic corpus evaluation (45 entries, 30 queries, all thresholds):
 
-| Method | MRR | Recall@5 | Hit@3 | NDCG@10 |
-|--------|-----|----------|-------|---------|
-| Search (full embedding) | 0.069 | 0.206 | 0.067 | 0.061 |
-| SearchWithMetadataEmbedding | 0.481 | 0.494 | 0.533 | 0.384 |
-| **HybridSearch** | **0.534** | **0.594** | **0.600** | **0.427** |
+| Method | MRR | Recall@5 | Hit@3 | NDCG@5 |
+|--------|-----|----------|-------|--------|
+| Search (full embedding) | 0.069 | 0.206 | 0.067 | 0.047 |
+| SearchWithMetadataEmbedding | 0.481 | 0.494 | 0.533 | 0.371 |
+| **HybridSearch** | **0.557** | **0.622** | **0.600** | **0.440** |
 
 ## Decision
 
@@ -44,7 +44,7 @@ Replace `SearchWithMetadataEmbedding` as the default search method in the MCP `S
 
 **Leg 1 — Vector search**: Uses existing `embedding_metadata <=> @embedding` cosine distance, ordered by distance, no threshold filter. Retrieves `max(limit * 3, 30)` candidates.
 
-**Leg 2 — Full-text search**: Uses PostgreSQL `websearch_to_tsquery` with `ts_rank_cd` (cover density ranking). The `search_vector` tsvector column is maintained by a trigger with weighted fields:
+**Leg 2 — Full-text search**: Uses `to_tsquery` with AND-prefix matching (e.g., `postgres:* & configuration:*`) and `ts_rank_cd` (cover density ranking). AND-prefix was chosen over `websearch_to_tsquery` because PostgreSQL's English stemmer creates mismatches between common variants (e.g., "postgres" stems to `postgr` but "postgresql" stems to `postgresql`). Prefix matching with `:*` resolves this while AND semantics prevent result explosion. The `search_vector` tsvector column is maintained by a trigger with weighted fields:
 - **Weight A** (title): Strongest signal — title matches are definitive
 - **Weight B** (tags): Secondary — categorical markers (hyphens replaced with spaces for tokenization)
 - **Weight C** (text): Lowest — prevents body text from drowning out title/tag matches
@@ -67,11 +67,11 @@ The `minSimilarity` parameter is **accepted but not applied** in `HybridSearch`.
 
 This change affects:
 - **MCP `SearchMemories` tool** — switched to `HybridSearch`
+- **Project search** (`SearchProjectsAsync`) — refactored to use `HybridSearchSystemMemories` shared helper
+- **Workspace search** (`SearchWorkspacesAsync`) — refactored to use `HybridSearchSystemMemories` shared helper
 - **Search evaluation framework** — `HybridSearch` added as an eval method
 
 This change does **not** affect:
-- **Project search** (`SearchProjectsAsync`) — uses system memories with separate vector search
-- **Workspace search** (`SearchWorkspacesAsync`) — uses system memories with separate vector search
 - **Similar memory discovery** (`GetSimilarMemories`) — uses direct embedding comparison
 - **Web UI search** — unless it calls the same `SearchMemories` MCP tool
 
@@ -90,7 +90,7 @@ A generated column (`GENERATED ALWAYS AS`) was not possible because `to_tsvector
 ### Positive
 
 - Short keyword queries that previously returned zero results now return relevant content
-- MRR improved 11%, Recall@5 improved 20% over previous best method
+- MRR improved 16%, Recall@5 improved 26%, NDCG@5 improved 19% over previous best method
 - No new dependencies — uses built-in PostgreSQL FTS via existing Npgsql
 - Backward compatible — existing search methods remain available
 - Zero application code needed for tsvector maintenance (trigger handles it)
@@ -105,7 +105,6 @@ A generated column (`GENERATED ALWAYS AS`) was not possible because `to_tsvector
 ### Future Considerations
 
 - Consider removing or repurposing the `minSimilarity` parameter in the UI and MCP tool descriptions
-- Evaluate whether project/workspace search would also benefit from hybrid approach
 - Consider exposing RRF weights as configuration for tuning
 - Monitor FTS index size and query performance as the corpus grows
 - Consider adding `simple` dictionary alongside `english` for non-English content

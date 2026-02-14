@@ -1425,6 +1425,24 @@ public class Storage : IStorage
         };
     }
 
+    /// <summary>
+    /// Builds a tsquery string using AND with prefix matching for each term.
+    /// This handles stemming mismatches (e.g., "postgres" matching "postgresql")
+    /// while keeping AND semantics so all terms must be present.
+    /// </summary>
+    private static string BuildPrefixTsQuery(string query)
+    {
+        var terms = query.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => new string(t.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray()))
+            .Where(t => t.Length > 1)
+            .ToArray();
+
+        if (terms.Length == 0)
+            return query; // fallback to raw query
+
+        return string.Join(" & ", terms.Select(t => $"{t}:*"));
+    }
+
     public async Task<List<Memorizer.Models.Memory>> HybridSearch(
         string query,
         int limit = 10,
@@ -1476,14 +1494,15 @@ public class Storage : IStorage
             }
         }
 
-        // Leg 2: Full-text search
+        // Leg 2: Full-text search (AND with prefix matching for better stemming coverage)
+        string tsquery = BuildPrefixTsQuery(query);
         string ftsSql = $@"
             SELECT id, type_legacy, content, text, source, embedding, embedding_metadata,
                    tags, confidence, created_at, updated_at, title, current_version,
                    owner_type, owner_id, archetype,
-                   ts_rank_cd(search_vector, websearch_to_tsquery('english', @query)) AS fts_rank
+                   ts_rank_cd(search_vector, to_tsquery('english', @tsquery)) AS fts_rank
             FROM memories
-            WHERE search_vector @@ websearch_to_tsquery('english', @query)
+            WHERE search_vector @@ to_tsquery('english', @tsquery)
             {ownerFilter}
             {archetypeFilter}
             ORDER BY fts_rank DESC
@@ -1492,7 +1511,7 @@ public class Storage : IStorage
         var ftsResults = new List<(Memorizer.Models.Memory Memory, double FtsRank)>();
         await using (var cmd = new NpgsqlCommand(ftsSql, connection))
         {
-            cmd.Parameters.AddWithValue("query", query);
+            cmd.Parameters.AddWithValue("tsquery", tsquery);
             cmd.Parameters.AddWithValue("fetchLimit", fetchLimit);
             if (projectId.HasValue)
                 cmd.Parameters.AddWithValue("projectId", projectId.Value.Value);
@@ -3107,18 +3126,19 @@ public class Storage : IStorage
             }
         }
 
-        // Leg 2: Full-text search
+        // Leg 2: Full-text search (AND with prefix matching)
+        string tsquery = BuildPrefixTsQuery(query);
         var ftsResults = new List<(string[] Tags, double FtsRank, int Rank)>();
         await using (var cmd = new NpgsqlCommand(@"
-            SELECT tags, ts_rank_cd(search_vector, websearch_to_tsquery('english', @query)) AS fts_rank
+            SELECT tags, ts_rank_cd(search_vector, to_tsquery('english', @tsquery)) AS fts_rank
             FROM memories
             WHERE archetype = 3
             AND type_legacy = @type
-            AND search_vector @@ websearch_to_tsquery('english', @query)
+            AND search_vector @@ to_tsquery('english', @tsquery)
             ORDER BY fts_rank DESC
             LIMIT @fetchLimit", conn))
         {
-            cmd.Parameters.AddWithValue("query", query);
+            cmd.Parameters.AddWithValue("tsquery", tsquery);
             cmd.Parameters.AddWithValue("type", systemMemoryType);
             cmd.Parameters.AddWithValue("fetchLimit", fetchLimit);
 
