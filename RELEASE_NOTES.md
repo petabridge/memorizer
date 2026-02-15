@@ -1,3 +1,20 @@
+#### 2.1.0-beta1 February 15th 2026 ####
+
+**Features**
+- [Improve search quality with hybrid text + vector search](https://github.com/petabridge/memorizer/pull/157) - Combines PostgreSQL full-text search with vector similarity search using Reciprocal Rank Fusion (RRF) to dramatically improve search relevance
+  - Queries like "race condition", "phobos", and "dependency injection" that previously returned zero results now surface relevant matches
+  - AND-prefix FTS matching handles stemming mismatches (e.g., "postgres" matches "postgresql")
+  - Adaptive weighting favors text matching for short queries, both methods equally for longer queries
+  - Workspace and project search also use hybrid approach for better name matching
+  - New database migration adds `search_vector` tsvector column with GIN index
+
+**Bug Fixes**
+- [Fix inconsistent memory counts by excluding system memories from user-facing queries](https://github.com/petabridge/memorizer/pull/154) - Memory list and stats no longer inflate counts with internal system index memories
+
+**Updates**
+- [Bump Microsoft.AspNetCore.Mvc.Testing from 10.0.2 to 10.0.3](https://github.com/petabridge/memorizer/pull/156)
+- [Bump Akka.Streams from 1.5.58 to 1.5.60](https://github.com/petabridge/memorizer/pull/152)
+
 #### 2.0.1 February 12th 2026 ####
 
 **Improvements**
