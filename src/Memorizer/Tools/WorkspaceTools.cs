@@ -18,11 +18,13 @@ public class WorkspaceTools
 {
     private readonly IStorage _storage;
     private readonly ILogger<WorkspaceTools> _logger;
+    private readonly ICanonicalUrlService _canonicalUrlService;
 
-    public WorkspaceTools(IStorage storage, ILogger<WorkspaceTools> logger)
+    public WorkspaceTools(IStorage storage, ILogger<WorkspaceTools> logger, ICanonicalUrlService canonicalUrlService)
     {
         _storage = storage;
         _logger = logger;
+        _canonicalUrlService = canonicalUrlService;
     }
 
     // ===== Workspace Tools =====
@@ -160,6 +162,12 @@ public class WorkspaceTools
         if (!string.IsNullOrEmpty(workspace.Description))
             result.AppendLine($"Description: {workspace.Description}");
 
+        // Add canonical URL if configured
+        if (_canonicalUrlService.IsConfigured)
+        {
+            result.AppendLine($"URL: {_canonicalUrlService.GetWorkspaceUrl(workspace.Id)}");
+        }
+
         result.AppendLine();
         result.AppendLine($"Memories: {memoryCount}");
         result.AppendLine($"Projects: {projects.Count}");
@@ -217,7 +225,11 @@ public class WorkspaceTools
 
             _logger.LogInformation("Created workspace {WorkspaceId}: {WorkspaceName}", workspace.Id.Value, workspace.Name);
 
-            return $"Workspace created successfully.\n\nID: {workspace.Id.Value}\nName: {workspace.Name}\nSlug: {workspace.Slug}\n\nNext steps:\n- Use CreateProject to add completable work items (e.g., 'v2.0 Release', 'Fix Issue #90')\n- Use Store with workspaceId to add general reference memories directly to this workspace\n\nHint: Workspaces are persistent domains. Projects within them are completable and have a lifecycle.";
+            var urlInfo = _canonicalUrlService.IsConfigured
+                ? $"\nURL: {_canonicalUrlService.GetWorkspaceUrl(workspace.Id)}"
+                : "";
+
+            return $"Workspace created successfully.\n\nID: {workspace.Id.Value}\nName: {workspace.Name}\nSlug: {workspace.Slug}{urlInfo}\n\nNext steps:\n- Use CreateProject to add completable work items (e.g., 'v2.0 Release', 'Fix Issue #90')\n- Use Store with workspaceId to add general reference memories directly to this workspace\n\nHint: Workspaces are persistent domains. Projects within them are completable and have a lifecycle.";
         }
         catch (Exception ex) when (ex.Message.Contains("duplicate"))
         {
@@ -498,6 +510,12 @@ public class WorkspaceTools
         if (!string.IsNullOrEmpty(project.Description))
             result.AppendLine($"Description: {project.Description}");
 
+        // Add canonical URL if configured
+        if (_canonicalUrlService.IsConfigured)
+        {
+            result.AppendLine($"URL: {_canonicalUrlService.GetProjectUrl(project.Id)}");
+        }
+
         if (!string.IsNullOrEmpty(project.VictoryConditions))
         {
             result.AppendLine();
@@ -573,6 +591,13 @@ public class WorkspaceTools
                 result.AppendLine($"Description: {project.Description}");
             if (!string.IsNullOrEmpty(project.VictoryConditions))
                 result.AppendLine($"Victory Conditions: {project.VictoryConditions}");
+
+            // Add canonical URL if configured
+            if (_canonicalUrlService.IsConfigured)
+            {
+                result.AppendLine($"URL: {_canonicalUrlService.GetProjectUrl(project.Id)}");
+            }
+
             result.AppendLine();
             result.AppendLine("Next steps:");
             result.AppendLine("- Use Store with projectId to add memories specific to this work");

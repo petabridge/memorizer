@@ -23,6 +23,8 @@ public static class ServiceCollectionExtensions
         services.AddVersioningSettings();
         services.AddSimilaritySettings();
         services.AddSearchSettings();
+        services.AddWebUiSettings();
+        services.AddCanonicalUrlService();
         if(initialize)
             services.AddHostedService<InitializationService>();
         services.AutoRegisterTypesInAssemblies(typeof(Storage).Assembly);
@@ -171,6 +173,23 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IConfiguration>().GetSection("Search").Get<SearchSettings>() ??
             new SearchSettings());
 
+        return services;
+    }
+
+    public static IServiceCollection AddWebUiSettings(
+        this IServiceCollection services)
+    {
+        services.AddSingleton<WebUiSettings>(sp =>
+            sp.GetRequiredService<IConfiguration>().GetSection("WebUi").Get<WebUiSettings>() ??
+            new WebUiSettings());
+
+        return services;
+    }
+
+    public static IServiceCollection AddCanonicalUrlService(
+        this IServiceCollection services)
+    {
+        services.AddSingleton<ICanonicalUrlService, CanonicalUrlService>();
         return services;
     }
 
