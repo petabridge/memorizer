@@ -20,12 +20,14 @@ public class MemoryTools
     private readonly IStorage _storage;
     private readonly ILogger<MemoryTools> _logger;
     private readonly SearchSettings _searchSettings;
+    private readonly ICanonicalUrlService _canonicalUrlService;
 
-    public MemoryTools(IStorage storage, ILogger<MemoryTools> logger, SearchSettings searchSettings)
+    public MemoryTools(IStorage storage, ILogger<MemoryTools> logger, SearchSettings searchSettings, ICanonicalUrlService canonicalUrlService)
     {
         _storage = storage;
         _logger = logger;
         _searchSettings = searchSettings;
+        _canonicalUrlService = canonicalUrlService;
     }
 
     [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples.")]
@@ -74,7 +76,11 @@ public class MemoryTools
             ? $"Assigned to project {projectId}."
             : "Stored in Unfiled workspace.";
 
-        return $"Memory stored successfully with ID: {memory.Id}. {locationInfo} Archetype: {archetypeEnum.ToStringValue()}. Use Edit tool to make targeted updates, or CreateReference to link to other memories.";
+        var urlInfo = _canonicalUrlService.IsConfigured
+            ? $"\n\nView in web UI: {_canonicalUrlService.GetMemoryUrl(memory.Id)}"
+            : "";
+
+        return $"Memory stored successfully with ID: {memory.Id}. {locationInfo} Archetype: {archetypeEnum.ToStringValue()}. Use Edit tool to make targeted updates, or CreateReference to link to other memories.{urlInfo}";
     }
 
     [McpServerTool, Description("Edit an existing memory using find-and-replace. Ideal for checking off to-do items, updating sections, or fixing typos. IMPORTANT: The edit will FAIL if old_text is not found exactly - always use Get first to see current content and copy the exact text to replace. All changes are versioned and can be reverted.")]
@@ -430,6 +436,13 @@ public class MemoryTools
             }
 
             result.AppendLine($"Created: {memory.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+
+            // Add canonical URL if configured
+            if (_canonicalUrlService.IsConfigured)
+            {
+                result.AppendLine($"URL: {_canonicalUrlService.GetMemoryUrl(memory.Id)}");
+            }
+
             result.AppendLine();
         }
 
@@ -590,6 +603,12 @@ public class MemoryTools
         result.AppendLine($"Created: {memory.CreatedAt:yyyy-MM-dd HH:mm:ss}");
         result.AppendLine($"Updated: {memory.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
 
+        // Add canonical URL if configured
+        if (_canonicalUrlService.IsConfigured)
+        {
+            result.AppendLine($"URL: {_canonicalUrlService.GetMemoryUrl(memory.Id)}");
+        }
+
         // Include version history if requested
         if (includeVersionHistory)
         {
@@ -745,9 +764,16 @@ public class MemoryTools
             }
 
             result.AppendLine($"Created: {memory.CreatedAt:yyyy-MM-dd HH:mm:ss}");
+
+            // Add canonical URL if configured
+            if (_canonicalUrlService.IsConfigured)
+            {
+                result.AppendLine($"URL: {_canonicalUrlService.GetMemoryUrl(memory.Id)}");
+            }
+
             result.AppendLine();
         }
-        
+
         // Add suggestion to load related memories if any exist
         if (relatedMemoryIdSet.Count > 0)
         {
@@ -755,7 +781,7 @@ public class MemoryTools
             result.AppendLine($"Consider using GetMany with these additional IDs to load more related context: [{string.Join(", ", relatedMemoryIdSet)}]");
             result.AppendLine("This can provide additional relevant information and context for your task.");
         }
-        
+
         activity?.SetStatus(ActivityStatusCode.Ok, $"Retrieved {memories.Count} memories");
         return result.ToString();
     }
