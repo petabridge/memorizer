@@ -652,7 +652,7 @@ that should be replaced.",
             text: "This is an example of the concept",
             source: "test",
             title: "Concept Example",
-            relatedTo: firstMemory.Id.Value,
+            relatedTo: firstMemory.Id.Value.ToString(),
             relationshipType: "example-of");
 
         _output.WriteLine($"Store result: {result}");

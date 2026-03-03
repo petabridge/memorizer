@@ -35,7 +35,7 @@ public class WorkspaceToolsCanonicalUrlTests
         var tools = CreateTools(fakeStorage, fakeUrlService);
 
         // Act
-        var result = await tools.GetWorkspace(workspaceId.Value);
+        var result = await tools.GetWorkspace(workspaceId.Value.ToString());
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);
@@ -59,7 +59,7 @@ public class WorkspaceToolsCanonicalUrlTests
         var tools = CreateTools(fakeStorage, fakeUrlService);
 
         // Act
-        var result = await tools.GetWorkspace(workspaceId.Value);
+        var result = await tools.GetWorkspace(workspaceId.Value.ToString());
 
         // Assert
         Assert.DoesNotContain(TestCanonicalUrl, result);
@@ -132,7 +132,7 @@ public class WorkspaceToolsCanonicalUrlTests
         var tools = CreateTools(fakeStorage, fakeUrlService);
 
         // Act
-        var result = await tools.GetProjectContext(projectId.Value);
+        var result = await tools.GetProjectContext(projectId.Value.ToString());
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);
