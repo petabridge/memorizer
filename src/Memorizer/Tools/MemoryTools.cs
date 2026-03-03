@@ -38,9 +38,9 @@ public class MemoryTools
         [Description("Title for the memory. Should be descriptive and searchable.")] string title,
         [Description("Optional tags to categorize the memory. Use tags like 'coding-standard', 'unit-test', 'reference', 'how-to', 'todo', etc. to make retrieval easier.")] string[]? tags = null,
         [Description("Confidence score for the memory (0.0 to 1.0)")] double confidence = 1.0,
-        [Description("Optionally, the ID of a related memory. Use this to link related reference materials, how-tos, or examples.")] Guid? relatedTo = null,
+        [Description("Optionally, the ID of a related memory. Use this to link related reference materials, how-tos, or examples.")] string? relatedTo = null,
         [Description("Optionally, the type of relationship to create (e.g., 'example-of', 'explains', 'related-to'). Use relationships to connect related knowledge.")] string? relationshipType = null,
-        [Description("Optional project ID to assign this memory to. If not provided, memory is stored in the Unfiled workspace. Use ListProjects to find available projects.")] Guid? projectId = null,
+        [Description("Optional project ID to assign this memory to. If not provided, memory is stored in the Unfiled workspace. Use ListProjects to find available projects.")] string? projectId = null,
         [Description("Memory archetype: 'document' for living, editable content (default) or 'record' for historical, immutable records like work logs.")] string archetype = "document",
         CancellationToken cancellationToken = default
     )
@@ -48,9 +48,13 @@ public class MemoryTools
         // Parse archetype string to enum
         var archetypeEnum = ArchetypeEnumExtensions.ParseArchetype(archetype);
 
+        // Parse optional Guid parameters defensively — MCP clients may send empty strings or "null"
+        var parsedProjectId = ParseOptionalGuid(projectId);
+        var parsedRelatedTo = ParseOptionalGuid(relatedTo);
+
         // Determine owner based on projectId
-        MemoryOwner? owner = projectId.HasValue
-            ? MemoryOwner.ForProject(new ProjectId(projectId.Value))
+        MemoryOwner? owner = parsedProjectId.HasValue
+            ? MemoryOwner.ForProject(new ProjectId(parsedProjectId.Value))
             : null; // null defaults to Unfiled in storage layer
 
         // Create new memory
@@ -67,13 +71,13 @@ public class MemoryTools
         );
 
         // Handle manual relationship creation if specified
-        if (relatedTo.HasValue && !string.IsNullOrWhiteSpace(relationshipType))
+        if (parsedRelatedTo.HasValue && !string.IsNullOrWhiteSpace(relationshipType))
         {
-            await _storage.CreateRelationship(memory.Id, (MemoryId)relatedTo.Value, relationshipType, cancellationToken);
+            await _storage.CreateRelationship(memory.Id, (MemoryId)parsedRelatedTo.Value, relationshipType, cancellationToken);
         }
 
         var locationInfo = owner != null
-            ? $"Assigned to project {projectId}."
+            ? $"Assigned to project {parsedProjectId}."
             : "Stored in Unfiled workspace.";
 
         var urlInfo = _canonicalUrlService.IsConfigured
@@ -273,7 +277,7 @@ public class MemoryTools
         [Description("Maximum number of results to return")] int limit = 10,
         [Description("Minimum similarity threshold (0.0 to 1.0)")] double minSimilarity = 0.7,
         [Description("Optional tags to filter memories (e.g., 'reference', 'how-to', 'coding-standard')")] string[]? filterTags = null,
-        [Description("Optional project ID to scope search to. If provided, only searches memories assigned to this project. Use ListProjects to find available projects.")] Guid? projectId = null,
+        [Description("Optional project ID to scope search to. If provided, only searches memories assigned to this project. Use ListProjects to find available projects.")] string? projectId = null,
         [Description("When projectId is specified, also include memories in the Unfiled workspace. Useful for finding unorganized content that might be relevant.")] bool includeUnassigned = false,
         [Description("Include archived memories in search results. Default is false (archived memories are hidden).")] bool includeArchived = false,
         CancellationToken cancellationToken = default
@@ -288,13 +292,14 @@ public class MemoryTools
             {"query.limit", limit.ToString()},
             {"query.minSimilarity", minSimilarity.ToString()},
             {"query.filterTags", filterTags != null ? string.Join(", ", filterTags) : "none"},
-            {"query.projectId", projectId?.ToString() ?? "none"},
+            {"query.projectId", projectId ?? "none"},
             {"query.includeUnassigned", includeUnassigned.ToString()},
             {"query.includeArchived", includeArchived.ToString()}
         }));
 
-        // Convert projectId to typed ProjectId
-        ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
+        // Convert projectId to typed ProjectId — parse defensively since MCP clients may send empty strings
+        var parsedProjectId = ParseOptionalGuid(projectId);
+        ProjectId? typedProjectId = parsedProjectId.HasValue ? new ProjectId(parsedProjectId.Value) : null;
 
         // Use hybrid search combining vector similarity + PostgreSQL full-text search via RRF
         List<Memory> memories = await _storage.HybridSearch(
@@ -986,7 +991,7 @@ public class MemoryTools
     public async Task<string> ListArchived(
         [Description("Page number (1-based). Default is 1.")] int page = 1,
         [Description("Number of results per page. Default is 20, max is 100.")] int pageSize = 20,
-        [Description("Optional project ID to filter archived memories by project.")] Guid? projectId = null,
+        [Description("Optional project ID to filter archived memories by project.")] string? projectId = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -997,7 +1002,8 @@ public class MemoryTools
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
-        ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
+        var parsedProjectId = ParseOptionalGuid(projectId);
+        ProjectId? typedProjectId = parsedProjectId.HasValue ? new ProjectId(parsedProjectId.Value) : null;
 
         var (memories, totalCount) = await _storage.GetArchivedMemoriesAsync(page, pageSize, typedProjectId, cancellationToken);
 
@@ -1007,9 +1013,9 @@ public class MemoryTools
         if (memories.Count == 0)
         {
             activity?.SetStatus(ActivityStatusCode.Ok, "No archived memories found");
-            if (projectId.HasValue)
+            if (parsedProjectId.HasValue)
             {
-                return $"No archived memories found in project {projectId.Value}.";
+                return $"No archived memories found in project {parsedProjectId.Value}.";
             }
             return "No archived memories found.";
         }
@@ -1018,9 +1024,9 @@ public class MemoryTools
         var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
         result.AppendLine($"📦 Archived Memories (Page {page} of {totalPages}, {totalCount} total):");
-        if (projectId.HasValue)
+        if (parsedProjectId.HasValue)
         {
-            result.AppendLine($"Filtered by project: {projectId.Value}");
+            result.AppendLine($"Filtered by project: {parsedProjectId.Value}");
         }
         result.AppendLine();
 
@@ -1054,5 +1060,17 @@ public class MemoryTools
 
         activity?.SetStatus(ActivityStatusCode.Ok, $"Listed {memories.Count} archived memories");
         return result.ToString();
+    }
+
+    /// <summary>
+    /// Parses an optional Guid parameter defensively. MCP clients (e.g. Cursor, Ollama-based clients)
+    /// may send empty strings or the literal string "null" instead of a proper JSON null for optional
+    /// Guid fields. This helper treats those as null rather than throwing a deserialization exception.
+    /// </summary>
+    private static Guid? ParseOptionalGuid(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (value.Equals("null", StringComparison.OrdinalIgnoreCase)) return null;
+        return Guid.TryParse(value, out var guid) ? guid : null;
     }
 }

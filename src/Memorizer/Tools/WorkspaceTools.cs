@@ -31,7 +31,7 @@ public class WorkspaceTools
 
     [McpServerTool, Description("Get workspace information. Without an ID, lists root workspaces with hints about nested content. With an ID, shows detailed workspace info. With a query, searches all workspaces by name. Workspaces are organizational containers (e.g., 'Engineering', 'Sales') that persist indefinitely and can be nested.")]
     public async Task<string> GetWorkspace(
-        [Description("Optional workspace ID. If omitted, lists root workspaces.")] Guid? workspaceId = null,
+        [Description("Optional workspace ID. If omitted, lists root workspaces.")] string? workspaceId = null,
         [Description("Optional search query to find workspaces by name (searches all levels). Case-insensitive partial match.")] string? query = null,
         [Description("Include system workspaces (like 'Unfiled'). Only applies when listing workspaces.")] bool includeSystem = false,
         CancellationToken cancellationToken = default
@@ -43,14 +43,17 @@ public class WorkspaceTools
             return await SearchWorkspacesAsync(query, includeSystem, cancellationToken);
         }
 
+        // Parse optional Guid defensively — MCP clients may send empty strings or "null"
+        var parsedWorkspaceId = ParseOptionalGuid(workspaceId);
+
         // If no ID provided, list root workspaces with hints
-        if (!workspaceId.HasValue)
+        if (!parsedWorkspaceId.HasValue)
         {
             return await ListRootWorkspacesAsync(includeSystem, cancellationToken);
         }
 
         // Get specific workspace details
-        return await GetWorkspaceDetailsAsync(new WorkspaceId(workspaceId.Value), cancellationToken);
+        return await GetWorkspaceDetailsAsync(new WorkspaceId(parsedWorkspaceId.Value), cancellationToken);
     }
 
     private async Task<string> SearchWorkspacesAsync(string query, bool includeSystem, CancellationToken cancellationToken)
@@ -214,13 +217,14 @@ public class WorkspaceTools
     public async Task<string> CreateWorkspace(
         [Description("Name for the workspace. Should be descriptive and unique.")] string name,
         [Description("Optional description of the workspace's purpose.")] string? description = null,
-        [Description("Optional parent workspace ID to create this as a child/nested workspace. Use GetWorkspace() to find workspace IDs.")] Guid? parentWorkspaceId = null,
+        [Description("Optional parent workspace ID to create this as a child/nested workspace. Use GetWorkspace() to find workspace IDs.")] string? parentWorkspaceId = null,
         CancellationToken cancellationToken = default
     )
     {
         try
         {
-            var parentId = parentWorkspaceId.HasValue ? new WorkspaceId(parentWorkspaceId.Value) : (WorkspaceId?)null;
+            var parsedParentId = ParseOptionalGuid(parentWorkspaceId);
+            var parentId = parsedParentId.HasValue ? new WorkspaceId(parsedParentId.Value) : (WorkspaceId?)null;
             var workspace = await _storage.CreateWorkspaceAsync(name, description, parentId, cancellationToken);
 
             _logger.LogInformation("Created workspace {WorkspaceId}: {WorkspaceName}", workspace.Id.Value, workspace.Name);
@@ -349,8 +353,8 @@ public class WorkspaceTools
 
     [McpServerTool, Description("Get project information. With a project ID, shows detailed project info. With a workspace ID (no project ID), lists projects in that workspace. With a query, searches all projects by name. Projects are goal-oriented, completable work items with a lifecycle.")]
     public async Task<string> GetProjectContext(
-        [Description("Optional project ID. If provided, shows detailed project info.")] Guid? projectId = null,
-        [Description("Optional workspace ID. If provided without projectId, lists projects in that workspace.")] Guid? workspaceId = null,
+        [Description("Optional project ID. If provided, shows detailed project info.")] string? projectId = null,
+        [Description("Optional workspace ID. If provided without projectId, lists projects in that workspace.")] string? workspaceId = null,
         [Description("Optional search query to find projects by name (searches all workspaces). Case-insensitive partial match.")] string? query = null,
         [Description("Filter by status: 'active' (default), 'completed', 'archived', 'all'. Applies to listing and searching.")] string status = "active",
         [Description("Include memory list with IDs, titles, and archetypes in project details. Default: true.")] bool includeMemories = true,
@@ -376,16 +380,20 @@ public class WorkspaceTools
             return await SearchProjectsAsync(query, statusFilter, cancellationToken);
         }
 
+        // Parse optional Guid parameters defensively — MCP clients may send empty strings or "null"
+        var parsedProjectId = ParseOptionalGuid(projectId);
+        var parsedWorkspaceId = ParseOptionalGuid(workspaceId);
+
         // If project ID provided, get detailed project info
-        if (projectId.HasValue)
+        if (parsedProjectId.HasValue)
         {
-            return await GetProjectDetailsAsync(new ProjectId(projectId.Value), includeMemories, cancellationToken);
+            return await GetProjectDetailsAsync(new ProjectId(parsedProjectId.Value), includeMemories, cancellationToken);
         }
 
         // If workspace ID provided, list projects in that workspace
-        if (workspaceId.HasValue)
+        if (parsedWorkspaceId.HasValue)
         {
-            return await ListProjectsInWorkspaceAsync(new WorkspaceId(workspaceId.Value), statusFilter, cancellationToken);
+            return await ListProjectsInWorkspaceAsync(new WorkspaceId(parsedWorkspaceId.Value), statusFilter, cancellationToken);
         }
 
         return "Please provide either a projectId, workspaceId, or query parameter.\n\nExamples:\n- GetProjectContext(projectId: <id>) - Get project details\n- GetProjectContext(workspaceId: <id>) - List projects in workspace\n- GetProjectContext(query: \"billing\") - Search all projects by name";
@@ -562,14 +570,15 @@ public class WorkspaceTools
         [Description("Name for the project. Should be descriptive.")] string name,
         [Description("Optional description of the project's purpose and scope.")] string? description = null,
         [Description("Optional victory conditions - what success looks like for this project.")] string? victoryConditions = null,
-        [Description("Optional parent project ID to create this as a subproject. Use GetProjectContext() to find project IDs.")] Guid? parentProjectId = null,
+        [Description("Optional parent project ID to create this as a subproject. Use GetProjectContext() to find project IDs.")] string? parentProjectId = null,
         CancellationToken cancellationToken = default
     )
     {
         try
         {
             var typedWorkspaceId = new WorkspaceId(workspaceId);
-            var parentId = parentProjectId.HasValue ? new ProjectId(parentProjectId.Value) : (ProjectId?)null;
+            var parsedParentId = ParseOptionalGuid(parentProjectId);
+            var parentId = parsedParentId.HasValue ? new ProjectId(parsedParentId.Value) : (ProjectId?)null;
             var project = await _storage.CreateProjectAsync(typedWorkspaceId, name, description, parentId, cancellationToken);
 
             // If victory conditions provided, update the project
@@ -624,15 +633,18 @@ public class WorkspaceTools
         [Description("New description. Leave null to keep current.")] string? description = null,
         [Description("New status: 'draft', 'active', 'on_hold', 'completed', 'cancelled', or 'archived'.")] string? status = null,
         [Description("New victory conditions. Leave null to keep current.")] string? victoryConditions = null,
-        [Description("New parent project ID to move this project under. The parent must be in the same workspace. Cannot be used with makeTopLevel.")] Guid? parentProjectId = null,
+        [Description("New parent project ID to move this project under. The parent must be in the same workspace. Cannot be used with makeTopLevel.")] string? parentProjectId = null,
         [Description("Set to true to remove the project from its current parent and make it a top-level project in its workspace. Cannot be used with parentProjectId.")] bool makeTopLevel = false,
         CancellationToken cancellationToken = default
     )
     {
         var typedProjectId = new ProjectId(projectId);
 
+        // Parse optional Guid defensively — MCP clients may send empty strings or "null"
+        var parsedParentProjectId = ParseOptionalGuid(parentProjectId);
+
         // Validate move parameters
-        if (parentProjectId.HasValue && makeTopLevel)
+        if (parsedParentProjectId.HasValue && makeTopLevel)
         {
             return "Cannot specify both parentProjectId and makeTopLevel. Use one or the other to move the project.";
         }
@@ -645,7 +657,7 @@ public class WorkspaceTools
         }
 
         // Convert parent project ID to typed ID
-        ProjectId? typedNewParentId = parentProjectId.HasValue ? new ProjectId(parentProjectId.Value) : null;
+        ProjectId? typedNewParentId = parsedParentProjectId.HasValue ? new ProjectId(parsedParentProjectId.Value) : null;
 
         try
         {
@@ -665,7 +677,7 @@ public class WorkspaceTools
             if (description != null) changes.Add("description updated");
             if (statusEnum != null) changes.Add($"status='{statusEnum.Value.ToStringValue()}'");
             if (victoryConditions != null) changes.Add("victory conditions updated");
-            if (parentProjectId.HasValue) changes.Add($"moved under project {parentProjectId.Value}");
+            if (parsedParentProjectId.HasValue) changes.Add($"moved under project {parsedParentProjectId.Value}");
             if (makeTopLevel) changes.Add("moved to top-level (removed from parent)");
 
             _logger.LogInformation("Updated project {ProjectId}: {Changes}", projectId, string.Join(", ", changes));
@@ -736,8 +748,8 @@ public class WorkspaceTools
     [McpServerTool, Description("Move one or more memories to a project, workspace, or Unfiled. Consolidates all memory organization operations into a single tool.")]
     public async Task<string> MoveMemory(
         [Description("Memory ID(s) to move. Can be a single ID or array of IDs. Use Search or Get to find memory IDs.")] Guid[] memoryIds,
-        [Description("Destination project ID. Use this to move memories into a project. Use ListProjects to find project IDs.")] Guid? projectId = null,
-        [Description("Destination workspace ID. Use this to move memories directly to a workspace (not a project). Use ListWorkspaces to find workspace IDs.")] Guid? workspaceId = null,
+        [Description("Destination project ID. Use this to move memories into a project. Use ListProjects to find project IDs.")] string? projectId = null,
+        [Description("Destination workspace ID. Use this to move memories directly to a workspace (not a project). Use ListWorkspaces to find workspace IDs.")] string? workspaceId = null,
         [Description("Set to true to move memories to the Unfiled workspace (unassign from current project/workspace).")] bool toUnfiled = false,
         CancellationToken cancellationToken = default
     )
@@ -748,7 +760,11 @@ public class WorkspaceTools
             return "No memory IDs provided.";
         }
 
-        var destinationCount = (projectId.HasValue ? 1 : 0) + (workspaceId.HasValue ? 1 : 0) + (toUnfiled ? 1 : 0);
+        // Parse optional Guid parameters defensively — MCP clients may send empty strings or "null"
+        var parsedProjectId = ParseOptionalGuid(projectId);
+        var parsedWorkspaceId = ParseOptionalGuid(workspaceId);
+
+        var destinationCount = (parsedProjectId.HasValue ? 1 : 0) + (parsedWorkspaceId.HasValue ? 1 : 0) + (toUnfiled ? 1 : 0);
         if (destinationCount == 0)
         {
             return "Must specify a destination: projectId, workspaceId, or toUnfiled=true.";
@@ -762,24 +778,24 @@ public class WorkspaceTools
         MemoryOwner owner = default;
         string destinationName;
 
-        if (projectId.HasValue)
+        if (parsedProjectId.HasValue)
         {
-            var typedProjectId = new ProjectId(projectId.Value);
+            var typedProjectId = new ProjectId(parsedProjectId.Value);
             var project = await _storage.GetProjectAsync(typedProjectId, cancellationToken);
             if (project == null)
             {
-                return $"Project with ID {projectId} not found.";
+                return $"Project with ID {parsedProjectId} not found.";
             }
             owner = MemoryOwner.ForProject(typedProjectId);
             destinationName = $"project '{project.Name}'";
         }
-        else if (workspaceId.HasValue)
+        else if (parsedWorkspaceId.HasValue)
         {
-            var typedWorkspaceId = new WorkspaceId(workspaceId.Value);
+            var typedWorkspaceId = new WorkspaceId(parsedWorkspaceId.Value);
             var workspace = await _storage.GetWorkspaceAsync(typedWorkspaceId, cancellationToken);
             if (workspace == null)
             {
-                return $"Workspace with ID {workspaceId} not found.";
+                return $"Workspace with ID {parsedWorkspaceId} not found.";
             }
             owner = MemoryOwner.ForWorkspace(typedWorkspaceId);
             destinationName = $"workspace '{workspace.Name}'";
@@ -819,9 +835,9 @@ public class WorkspaceTools
         _logger.LogInformation("Moved {Count} memories to {Destination}", movedCount, destinationName);
 
         // Build result message
-        string organizationHint = projectId.HasValue
+        string organizationHint = parsedProjectId.HasValue
             ? "\n\nHint: Memories in projects are scoped to that completable work. When the project is done, memories remain accessible."
-            : workspaceId.HasValue
+            : parsedWorkspaceId.HasValue
                 ? "\n\nHint: Memories directly in a workspace are general reference for that domain. Use projects for work-specific memories."
                 : "\n\nHint: Unfiled memories can be organized later into workspaces (persistent domains) or projects (completable work).";
 
@@ -844,5 +860,17 @@ public class WorkspaceTools
         }
 
         return result.ToString();
+    }
+
+    /// <summary>
+    /// Parses an optional Guid parameter defensively. MCP clients (e.g. Cursor, Ollama-based clients)
+    /// may send empty strings or the literal string "null" instead of a proper JSON null for optional
+    /// Guid fields. This helper treats those as null rather than throwing a deserialization exception.
+    /// </summary>
+    private static Guid? ParseOptionalGuid(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (value.Equals("null", StringComparison.OrdinalIgnoreCase)) return null;
+        return Guid.TryParse(value, out var guid) ? guid : null;
     }
 }
