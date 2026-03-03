@@ -10,15 +10,17 @@ namespace Memorizer.Services;
 /// </summary>
 public class CanonicalUrlService : ICanonicalUrlService
 {
-    private readonly WebUiSettings _settings;
+    private readonly ServerSettings _settings;
 
-    public CanonicalUrlService(WebUiSettings settings)
+    public CanonicalUrlService(ServerSettings settings)
     {
         _settings = settings;
     }
 
     /// <inheritdoc />
-    public bool IsConfigured => _settings.IsConfigured;
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.CanonicalUrl);
+
+    private string BaseUrl => _settings.CanonicalUrl!;
 
     /// <inheritdoc />
     public string? GetMemoryUrl(MemoryId memoryId)
@@ -26,7 +28,7 @@ public class CanonicalUrlService : ICanonicalUrlService
         if (!IsConfigured)
             return null;
 
-        return $"{_settings.BaseUrl!.TrimEnd('/')}/view/{memoryId.Value}";
+        return $"{BaseUrl.TrimEnd('/')}/view/{memoryId.Value}";
     }
 
     /// <inheritdoc />
@@ -35,7 +37,7 @@ public class CanonicalUrlService : ICanonicalUrlService
         if (!IsConfigured)
             return null;
 
-        return $"{_settings.BaseUrl!.TrimEnd('/')}/workspace/{workspaceId.Value}";
+        return $"{BaseUrl.TrimEnd('/')}/workspace/{workspaceId.Value}";
     }
 
     /// <inheritdoc />
@@ -44,6 +46,6 @@ public class CanonicalUrlService : ICanonicalUrlService
         if (!IsConfigured)
             return null;
 
-        return $"{_settings.BaseUrl!.TrimEnd('/')}/project/{projectId.Value}";
+        return $"{BaseUrl.TrimEnd('/')}/project/{projectId.Value}";
     }
 }
