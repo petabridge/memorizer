@@ -282,9 +282,23 @@ public class ProjectController : ControllerBase
             return NotFound(new { message = $"Workspace with ID {request.WorkspaceId} not found" });
         }
 
-        // Note: This requires adding a MoveProjectAsync method to IStorage
-        // For now, we'll return an error indicating this needs implementation
-        return StatusCode(501, new { message = "Move project functionality not yet implemented in storage layer" });
+        ProjectId? newParentId = request.NewParentId.HasValue
+            ? new ProjectId(request.NewParentId.Value)
+            : null;
+
+        try
+        {
+            var moved = await _storage.MoveProjectToWorkspaceAsync(projectId, newWorkspaceId, newParentId, cancellationToken);
+            return Ok(await ToProjectDto(moved, newWorkspace.Name, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex) when (ex.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase))
+        {
+            return Conflict(new { message = "A project with this name already exists in the target workspace. Rename the project before moving." });
+        }
     }
 
     /// <summary>
@@ -394,4 +408,5 @@ public class UpdateStatusRequest
 public class MoveProjectRequest
 {
     public Guid WorkspaceId { get; set; }
+    public Guid? NewParentId { get; set; }
 }

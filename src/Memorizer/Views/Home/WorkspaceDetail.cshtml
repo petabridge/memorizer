@@ -28,7 +28,10 @@
                 <span id="workspaceMeta"></span>
             </small>
         </div>
-        <div id="editButton">
+        <div id="editButton" class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="reparentWorkspaceBtn" data-bs-toggle="modal" data-bs-target="#reparentWorkspaceModal" onclick="openReparentModal()">
+                <i class="fas fa-sitemap me-2"></i>Move/Reparent
+            </button>
             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editWorkspaceModal">
                 <i class="fas fa-edit me-2"></i>Edit
             </button>
@@ -211,6 +214,34 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="createChildWorkspaceBtn2" onclick="createChildWorkspace()">
                     <i class="fas fa-plus me-2"></i>Create Workspace
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Move/Reparent Workspace Modal -->
+<div class="modal fade" id="reparentWorkspaceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-sitemap me-2"></i>Move / Reparent Workspace</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="reparentSelect" class="form-label">New Parent Workspace</label>
+                    <select class="form-select" id="reparentSelect">
+                        <option value="">Loading workspaces...</option>
+                    </select>
+                    <div class="form-text">Select "None (top-level)" to promote this workspace to a root workspace.</div>
+                </div>
+                <div id="reparentError" class="alert alert-danger" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmReparentBtn" onclick="reparentWorkspace()">
+                    <i class="fas fa-sitemap me-2"></i>Move Workspace
                 </button>
             </div>
         </div>
@@ -576,6 +607,72 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+async function openReparentModal() {
+    const select = document.getElementById('reparentSelect');
+    const errorEl = document.getElementById('reparentError');
+    errorEl.style.display = 'none';
+    select.innerHTML = '<option value="">Loading workspaces...</option>';
+
+    try {
+        const response = await fetch('/api/workspace?includeSystem=false');
+        if (!response.ok) throw new Error('Failed to load workspaces');
+        const data = await response.json();
+
+        // Exclude current workspace and system workspaces
+        const otherWorkspaces = (data.workspaces || []).filter(w => !w.isSystem && w.id !== workspaceId);
+
+        select.innerHTML = '<option value="__toplevel__">None (top-level)</option>' +
+            otherWorkspaces.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
+    } catch (error) {
+        select.innerHTML = '<option value="">Error loading workspaces</option>';
+    }
+}
+
+async function reparentWorkspace() {
+    const selectedValue = document.getElementById('reparentSelect').value;
+    const errorEl = document.getElementById('reparentError');
+
+    if (!selectedValue) {
+        errorEl.textContent = 'Please select a target.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const btn = document.getElementById('confirmReparentBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Moving...';
+    btn.disabled = true;
+    errorEl.style.display = 'none';
+
+    const isTopLevel = selectedValue === '__toplevel__';
+    const body = isTopLevel
+        ? { makeTopLevel: true }
+        : { newParentId: selectedValue };
+
+    try {
+        const response = await fetch(`/api/workspace/${workspaceId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to move workspace');
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById('reparentWorkspaceModal')).hide();
+        loadWorkspace();
+
+    } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 }
 </script>
 }

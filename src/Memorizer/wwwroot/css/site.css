@@ -578,3 +578,18 @@ footer a:hover {
     background-color: #495057;
     color: #adb5bd;
 }
+
+/* Move info banner for project/workspace move modals */
+.move-info-banner {
+    background-color: #cce5ff;
+    color: #004085;
+    border: 1px solid #b8daff;
+    border-radius: 0.375rem;
+    padding: 0.75rem 1rem;
+}
+
+[data-theme="dark"] .move-info-banner {
+    background-color: #1a3a5c;
+    color: #93c5fd;
+    border-color: #2d5a8e;
+}

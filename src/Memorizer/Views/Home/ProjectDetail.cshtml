@@ -34,9 +34,14 @@
                 </small>
             </div>
         </div>
-        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editProjectModal">
-            <i class="fas fa-edit me-2"></i>Edit
-        </button>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary" id="moveProjectBtn" data-bs-toggle="modal" data-bs-target="#moveProjectModal" onclick="openMoveProjectModal()">
+                <i class="fas fa-exchange-alt me-2"></i>Move to Workspace
+            </button>
+            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editProjectModal">
+                <i class="fas fa-edit me-2"></i>Edit
+            </button>
+        </div>
     </div>
 
     <hr>
@@ -219,6 +224,37 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-danger" onclick="deleteProject()">
                     <i class="fas fa-trash me-2"></i>Delete Project
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Move to Workspace Modal -->
+<div class="modal fade" id="moveProjectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-exchange-alt me-2"></i>Move to Workspace</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="move-info-banner mb-3">
+                    <i class="fas fa-info-circle me-2"></i>
+                    All subprojects will be moved along with this project.
+                </div>
+                <div class="mb-3">
+                    <label for="moveWorkspaceSelect" class="form-label">Target Workspace <span class="text-danger">*</span></label>
+                    <select class="form-select" id="moveWorkspaceSelect">
+                        <option value="">Loading workspaces...</option>
+                    </select>
+                </div>
+                <div id="moveProjectError" class="alert alert-danger" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmMoveProjectBtn" onclick="moveProject()">
+                    <i class="fas fa-exchange-alt me-2"></i>Move Project
                 </button>
             </div>
         </div>
@@ -576,6 +612,71 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+async function openMoveProjectModal() {
+    const select = document.getElementById('moveWorkspaceSelect');
+    const errorEl = document.getElementById('moveProjectError');
+    errorEl.style.display = 'none';
+    select.innerHTML = '<option value="">Loading workspaces...</option>';
+
+    try {
+        const response = await fetch('/api/workspace?includeSystem=false');
+        if (!response.ok) throw new Error('Failed to load workspaces');
+        const data = await response.json();
+
+        const workspaces = (data.workspaces || []).filter(w => !w.isSystem && w.id !== project.workspaceId);
+        if (workspaces.length === 0) {
+            select.innerHTML = '<option value="">No other workspaces available</option>';
+            return;
+        }
+
+        select.innerHTML = '<option value="">Select a workspace...</option>' +
+            workspaces.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join('');
+    } catch (error) {
+        select.innerHTML = '<option value="">Error loading workspaces</option>';
+    }
+}
+
+async function moveProject() {
+    const workspaceId = document.getElementById('moveWorkspaceSelect').value;
+    const errorEl = document.getElementById('moveProjectError');
+
+    if (!workspaceId) {
+        errorEl.textContent = 'Please select a target workspace.';
+        errorEl.style.display = 'block';
+        return;
+    }
+
+    const btn = document.getElementById('confirmMoveProjectBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Moving...';
+    btn.disabled = true;
+    errorEl.style.display = 'none';
+
+    try {
+        const response = await fetch(`/api/project/${projectId}/move`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workspaceId })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to move project');
+        }
+
+        const moved = await response.json();
+        bootstrap.Modal.getInstance(document.getElementById('moveProjectModal')).hide();
+        window.location.href = `/projects/${moved.id}`;
+
+    } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 }
 </script>
 }

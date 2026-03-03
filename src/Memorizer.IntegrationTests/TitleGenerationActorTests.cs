@@ -262,7 +262,10 @@ public class TitleGenerationActorTests : TestKit
         public Task<IReadOnlyList<Workspace>> GetWorkspacesAsync(WorkspaceId? parentId = null, bool includeSystem = false, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Workspace>>(new List<Workspace>());
 
-        public Task<Workspace> UpdateWorkspaceAsync(WorkspaceId id, string? name = null, string? description = null, CancellationToken cancellationToken = default)
+        public Task<Workspace> UpdateWorkspaceAsync(WorkspaceId id, string? name = null, string? description = null, WorkspaceId? newParentId = null, bool makeTopLevel = false, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException("Test mock");
+
+        public Task<Project> MoveProjectToWorkspaceAsync(ProjectId id, WorkspaceId newWorkspaceId, ProjectId? newParentId = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
 
         public Task DeleteWorkspaceAsync(WorkspaceId id, CancellationToken cancellationToken = default)

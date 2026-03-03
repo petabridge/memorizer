@@ -241,14 +241,21 @@ public class WorkspaceTools
         }
     }
 
-    [McpServerTool, Description("Update a workspace's properties (name or description).")]
+    [McpServerTool, Description("Update a workspace's properties (name or description). Can also move a workspace under a different parent or promote it to top-level.")]
     public async Task<string> UpdateWorkspace(
         [Description("The workspace ID to update. Use GetWorkspace() to find workspace IDs.")] Guid workspaceId,
         [Description("New name for the workspace. Leave null to keep current.")] string? name = null,
         [Description("New description. Leave null to keep current.")] string? description = null,
+        [Description("New parent workspace ID to move this workspace under. Use GetWorkspace() to find IDs. Cannot be used with makeTopLevel.")] Guid? newParentWorkspaceId = null,
+        [Description("Set to true to remove the workspace from its current parent and make it a top-level workspace. Cannot be used with newParentWorkspaceId.")] bool makeTopLevel = false,
         CancellationToken cancellationToken = default
     )
     {
+        if (newParentWorkspaceId.HasValue && makeTopLevel)
+        {
+            return "Cannot specify both newParentWorkspaceId and makeTopLevel. Use one or the other.";
+        }
+
         var typedWorkspaceId = new WorkspaceId(workspaceId);
 
         // Verify workspace exists
@@ -263,26 +270,38 @@ public class WorkspaceTools
             return "Cannot modify system workspaces.";
         }
 
+        WorkspaceId? typedNewParentId = newParentWorkspaceId.HasValue
+            ? new WorkspaceId(newParentWorkspaceId.Value)
+            : null;
+
         try
         {
             var workspace = await _storage.UpdateWorkspaceAsync(
                 typedWorkspaceId,
                 name,
                 description,
+                typedNewParentId,
+                makeTopLevel,
                 cancellationToken
             );
 
             var changes = new List<string>();
             if (name != null) changes.Add($"name='{name}'");
             if (description != null) changes.Add("description updated");
+            if (newParentWorkspaceId.HasValue) changes.Add($"moved under workspace {newParentWorkspaceId.Value}");
+            if (makeTopLevel) changes.Add("promoted to top-level");
 
             _logger.LogInformation("Updated workspace {WorkspaceId}: {Changes}", workspaceId, string.Join(", ", changes));
 
             return $"Workspace updated successfully. Changes: {string.Join(", ", changes)}";
         }
+        catch (InvalidOperationException ex)
+        {
+            return $"Failed to update workspace: {ex.Message}";
+        }
         catch (Exception ex) when (ex.Message.Contains("duplicate"))
         {
-            return $"Failed to update workspace: A workspace with the name '{name}' already exists.";
+            return $"Failed to update workspace: A workspace with that name already exists at the target level. Rename before moving.";
         }
         catch (Exception ex)
         {
@@ -635,6 +654,7 @@ public class WorkspaceTools
         [Description("New victory conditions. Leave null to keep current.")] string? victoryConditions = null,
         [Description("New parent project ID to move this project under. The parent must be in the same workspace. Cannot be used with makeTopLevel.")] string? parentProjectId = null,
         [Description("Set to true to remove the project from its current parent and make it a top-level project in its workspace. Cannot be used with parentProjectId.")] bool makeTopLevel = false,
+        [Description("Move this project (and all subprojects) to a different workspace. Provide the target workspace ID. Use GetWorkspace() to find workspace IDs.")] Guid? newWorkspaceId = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -643,7 +663,45 @@ public class WorkspaceTools
         // Parse optional Guid defensively — MCP clients may send empty strings or "null"
         var parsedParentProjectId = ParseOptionalGuid(parentProjectId);
 
-        // Validate move parameters
+        // If moving to a different workspace, route to MoveProjectToWorkspaceAsync
+        if (newWorkspaceId.HasValue)
+        {
+            var existing = await _storage.GetProjectAsync(typedProjectId, cancellationToken);
+            if (existing == null)
+                return $"Project with ID {projectId} not found.";
+
+            if (existing.WorkspaceId.Value == newWorkspaceId.Value)
+                return "Project is already in the specified workspace.";
+
+            ProjectId? typedNewParentIdForMove = parsedParentProjectId.HasValue ? new ProjectId(parsedParentProjectId.Value) : null;
+
+            try
+            {
+                var moved = await _storage.MoveProjectToWorkspaceAsync(
+                    typedProjectId,
+                    new WorkspaceId(newWorkspaceId.Value),
+                    typedNewParentIdForMove,
+                    cancellationToken);
+
+                _logger.LogInformation("Moved project {ProjectId} to workspace {WorkspaceId}", projectId, newWorkspaceId.Value);
+                return $"Project moved successfully to workspace {newWorkspaceId.Value}. Project ID: {moved.Id.Value}";
+            }
+            catch (InvalidOperationException ex)
+            {
+                return $"Failed to move project: {ex.Message}";
+            }
+            catch (Exception ex) when (ex.Message.Contains("duplicate"))
+            {
+                return $"Failed to move project: A project with this name already exists in the target workspace. Rename before moving.";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to move project {ProjectId}", projectId);
+                return $"Failed to move project: {ex.Message}";
+            }
+        }
+
+        // Validate same-workspace move parameters
         if (parsedParentProjectId.HasValue && makeTopLevel)
         {
             return "Cannot specify both parentProjectId and makeTopLevel. Use one or the other to move the project.";

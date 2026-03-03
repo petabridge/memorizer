@@ -211,10 +211,16 @@ public class WorkspaceController : ControllerBase
 
         try
         {
+            WorkspaceId? newParentId = request.NewParentId.HasValue
+                ? new WorkspaceId(request.NewParentId.Value)
+                : null;
+
             var updated = await _storage.UpdateWorkspaceAsync(
                 workspaceId,
                 request.Name,
                 request.Description,
+                newParentId,
+                request.MakeTopLevel,
                 cancellationToken);
 
             var memoryCount = await _storage.GetMemoryCountByOwnerAsync(
@@ -234,9 +240,13 @@ public class WorkspaceController : ControllerBase
                 UpdatedAt = updated.UpdatedAt
             });
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (Exception ex) when (ex.Message.Contains("duplicate", StringComparison.OrdinalIgnoreCase))
         {
-            return Conflict(new { message = $"A workspace with the name '{request.Name}' already exists" });
+            return Conflict(new { message = $"A workspace with this name already exists at the target level. Rename the workspace before moving." });
         }
     }
 
@@ -376,4 +386,6 @@ public class UpdateWorkspaceRequest
 {
     public string? Name { get; set; }
     public string? Description { get; set; }
+    public Guid? NewParentId { get; set; }
+    public bool MakeTopLevel { get; set; }
 }

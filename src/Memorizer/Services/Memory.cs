@@ -199,12 +199,27 @@ public interface IStorage
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Updates workspace properties.
+    /// Updates workspace properties. Can also reparent the workspace or promote it to top-level.
     /// </summary>
     Task<Workspace> UpdateWorkspaceAsync(
         WorkspaceId id,
         string? name = null,
         string? description = null,
+        WorkspaceId? newParentId = null,
+        bool makeTopLevel = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves a project (and all its descendants) to a different workspace.
+    /// </summary>
+    /// <param name="id">The root project to move.</param>
+    /// <param name="newWorkspaceId">The target workspace.</param>
+    /// <param name="newParentId">Optional new parent project in the target workspace. Must belong to the target workspace.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<Project> MoveProjectToWorkspaceAsync(
+        ProjectId id,
+        WorkspaceId newWorkspaceId,
+        ProjectId? newParentId = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -2434,24 +2449,54 @@ public class Storage : IStorage
         WorkspaceId id,
         string? name = null,
         string? description = null,
+        WorkspaceId? newParentId = null,
+        bool makeTopLevel = false,
         CancellationToken cancellationToken = default)
     {
+        if (newParentId != null && makeTopLevel)
+            throw new InvalidOperationException("Cannot specify both newParentId and makeTopLevel. Use one or the other.");
+
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
-        await using var cmd = new NpgsqlCommand(@"
+
+        if (newParentId != null)
+        {
+            // Self-reference check
+            if (newParentId.Value == id)
+                throw new InvalidOperationException("A workspace cannot be its own parent.");
+
+            // Target must exist and not be a system workspace
+            var targetParent = await GetWorkspaceAsync(newParentId.Value, cancellationToken);
+            if (targetParent == null)
+                throw new InvalidOperationException($"Target parent workspace {newParentId.Value.Value} not found.");
+            if (targetParent.IsSystem)
+                throw new InvalidOperationException("Cannot move a workspace under a system workspace.");
+
+            // Circular reference check: newParentId must not be a descendant of id
+            if (await IsWorkspaceDescendantOfAsync(newParentId.Value, id, conn, cancellationToken))
+                throw new InvalidOperationException("Cannot move a workspace under its own descendant. This would create a circular reference.");
+        }
+
+        bool updateParent = newParentId != null || makeTopLevel;
+        var slug = name != null ? GenerateSlug(name) : null;
+
+        var sql = @"
             UPDATE workspaces SET
                 name = COALESCE(@name, name),
                 slug = CASE WHEN @name IS NOT NULL THEN @slug ELSE slug END,
-                description = COALESCE(@description, description),
+                description = COALESCE(@description, description)," +
+            (updateParent ? @"
+                parent_id = @newParentId," : "") + @"
                 updated_at = NOW()
             WHERE id = @id AND is_system = false
-            RETURNING id, parent_id, name, slug, description, is_system, settings, created_at, updated_at", conn);
+            RETURNING id, parent_id, name, slug, description, is_system, settings, created_at, updated_at";
 
-        var slug = name != null ? GenerateSlug(name) : null;
-
+        await using var cmd = new NpgsqlCommand(sql, conn);
         cmd.Parameters.AddWithValue("id", id.Value);
         cmd.Parameters.AddWithValue("name", name ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("slug", slug ?? (object)DBNull.Value);
         cmd.Parameters.AddWithValue("description", description ?? (object)DBNull.Value);
+        if (updateParent)
+            cmd.Parameters.AddWithValue("newParentId", makeTopLevel ? DBNull.Value : newParentId!.Value.Value);
 
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -2466,6 +2511,101 @@ public class Storage : IStorage
         }
 
         return workspace;
+    }
+
+    /// <summary>
+    /// Checks if workspaceId is a descendant of potentialAncestorId.
+    /// Used to prevent circular references when reparenting workspaces.
+    /// </summary>
+    private async Task<bool> IsWorkspaceDescendantOfAsync(WorkspaceId workspaceId, WorkspaceId potentialAncestorId, NpgsqlConnection conn, CancellationToken cancellationToken)
+    {
+        await using var cmd = new NpgsqlCommand(@"
+            WITH RECURSIVE descendants AS (
+                SELECT id FROM workspaces WHERE parent_id = @ancestorId
+                UNION ALL
+                SELECT w.id FROM workspaces w
+                INNER JOIN descendants d ON w.parent_id = d.id
+            )
+            SELECT EXISTS (SELECT 1 FROM descendants WHERE id = @workspaceId)", conn);
+
+        cmd.Parameters.AddWithValue("ancestorId", potentialAncestorId.Value);
+        cmd.Parameters.AddWithValue("workspaceId", workspaceId.Value);
+
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return result is true;
+    }
+
+    public async Task<Project> MoveProjectToWorkspaceAsync(
+        ProjectId id,
+        WorkspaceId newWorkspaceId,
+        ProjectId? newParentId = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Load existing project
+        var existing = await GetProjectAsync(id, cancellationToken);
+        if (existing == null)
+            throw new InvalidOperationException($"Project {id.Value} not found.");
+
+        // Target workspace must exist and not be system
+        var targetWorkspace = await GetWorkspaceAsync(newWorkspaceId, cancellationToken);
+        if (targetWorkspace == null)
+            throw new InvalidOperationException($"Target workspace {newWorkspaceId.Value} not found.");
+        if (targetWorkspace.IsSystem)
+            throw new InvalidOperationException("Cannot move a project into a system workspace.");
+
+        // Already in target workspace
+        if (existing.WorkspaceId == newWorkspaceId)
+            throw new InvalidOperationException("Project is already in the specified workspace.");
+
+        // Validate optional new parent
+        if (newParentId != null)
+        {
+            var newParent = await GetProjectAsync(newParentId.Value, cancellationToken);
+            if (newParent == null)
+                throw new InvalidOperationException($"Target parent project {newParentId.Value.Value} not found.");
+            if (newParent.WorkspaceId != newWorkspaceId)
+                throw new InvalidOperationException("The new parent project must belong to the target workspace.");
+        }
+
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        // Step 1: Recursively move all descendants (including the root) to the new workspace
+        await using (var updateCmd = new NpgsqlCommand(@"
+            WITH RECURSIVE subtree AS (
+                SELECT id FROM projects WHERE id = @rootId
+                UNION ALL
+                SELECT p.id FROM projects p
+                INNER JOIN subtree s ON p.parent_id = s.id
+            )
+            UPDATE projects SET workspace_id = @newWorkspaceId
+            WHERE id IN (SELECT id FROM subtree)", conn))
+        {
+            updateCmd.Parameters.AddWithValue("rootId", id.Value);
+            updateCmd.Parameters.AddWithValue("newWorkspaceId", newWorkspaceId.Value);
+            await updateCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Step 2: Update the root project's parent_id and return it
+        await using var returnCmd = new NpgsqlCommand(@"
+            UPDATE projects SET
+                parent_id = @newParentId,
+                updated_at = NOW()
+            WHERE id = @id
+            RETURNING id, workspace_id, parent_id, name, slug, description, status, victory_conditions, settings, created_at, updated_at, completed_at", conn);
+
+        returnCmd.Parameters.AddWithValue("id", id.Value);
+        returnCmd.Parameters.AddWithValue("newParentId", newParentId.HasValue ? newParentId.Value.Value : DBNull.Value);
+
+        await using var reader = await returnCmd.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            throw new InvalidOperationException($"Project {id} not found after move.");
+
+        var project = ReadProjectFromReader(reader);
+
+        // Update system memory to reflect new workspace
+        await CreateOrUpdateProjectSystemMemoryAsync(project, cancellationToken);
+
+        return project;
     }
 
     public async Task DeleteWorkspaceAsync(WorkspaceId id, CancellationToken cancellationToken = default)
