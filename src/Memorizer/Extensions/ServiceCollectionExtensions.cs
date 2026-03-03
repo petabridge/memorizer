@@ -23,7 +23,6 @@ public static class ServiceCollectionExtensions
         services.AddVersioningSettings();
         services.AddSimilaritySettings();
         services.AddSearchSettings();
-        services.AddWebUiSettings();
         services.AddCanonicalUrlService();
         if(initialize)
             services.AddHostedService<InitializationService>();
@@ -172,16 +171,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SearchSettings>(sp =>
             sp.GetRequiredService<IConfiguration>().GetSection("Search").Get<SearchSettings>() ??
             new SearchSettings());
-
-        return services;
-    }
-
-    public static IServiceCollection AddWebUiSettings(
-        this IServiceCollection services)
-    {
-        services.AddSingleton<WebUiSettings>(sp =>
-            sp.GetRequiredService<IConfiguration>().GetSection("WebUi").Get<WebUiSettings>() ??
-            new WebUiSettings());
 
         return services;
     }

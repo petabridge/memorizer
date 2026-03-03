@@ -11,40 +11,40 @@ public class CanonicalUrlServiceTests
 
     public CanonicalUrlServiceTests()
     {
-        var configuredSettings = new WebUiSettings
+        var configuredSettings = new ServerSettings
         {
-            BaseUrl = "https://memory.testlab.petabridge.net"
+            CanonicalUrl = "https://memory.testlab.petabridge.net"
         };
         _configuredService = new CanonicalUrlService(configuredSettings);
 
-        var unconfiguredSettings = new WebUiSettings();
+        var unconfiguredSettings = new ServerSettings();
         _unconfiguredService = new CanonicalUrlService(unconfiguredSettings);
     }
 
     [Fact]
-    public void IsConfigured_ShouldReturnTrue_WhenBaseUrlIsSet()
+    public void IsConfigured_ShouldReturnTrue_WhenCanonicalUrlIsSet()
     {
         Assert.True(_configuredService.IsConfigured);
     }
 
     [Fact]
-    public void IsConfigured_ShouldReturnFalse_WhenBaseUrlIsNull()
+    public void IsConfigured_ShouldReturnFalse_WhenCanonicalUrlIsNull()
     {
         Assert.False(_unconfiguredService.IsConfigured);
     }
 
     [Fact]
-    public void IsConfigured_ShouldReturnFalse_WhenBaseUrlIsEmpty()
+    public void IsConfigured_ShouldReturnFalse_WhenCanonicalUrlIsEmpty()
     {
-        var settings = new WebUiSettings { BaseUrl = "" };
+        var settings = new ServerSettings { CanonicalUrl = "" };
         var service = new CanonicalUrlService(settings);
         Assert.False(service.IsConfigured);
     }
 
     [Fact]
-    public void IsConfigured_ShouldReturnFalse_WhenBaseUrlIsWhitespace()
+    public void IsConfigured_ShouldReturnFalse_WhenCanonicalUrlIsWhitespace()
     {
-        var settings = new WebUiSettings { BaseUrl = "   " };
+        var settings = new ServerSettings { CanonicalUrl = "   " };
         var service = new CanonicalUrlService(settings);
         Assert.False(service.IsConfigured);
     }
@@ -101,9 +101,9 @@ public class CanonicalUrlServiceTests
     [InlineData("https://memory.testlab.petabridge.net/")]
     [InlineData("https://memory.testlab.petabridge.net")]
     [InlineData("https://memory.testlab.petabridge.net///")]
-    public void GetMemoryUrl_ShouldHandleTrailingSlashes_Correctly(string baseUrl)
+    public void GetMemoryUrl_ShouldHandleTrailingSlashes_Correctly(string canonicalUrl)
     {
-        var settings = new WebUiSettings { BaseUrl = baseUrl };
+        var settings = new ServerSettings { CanonicalUrl = canonicalUrl };
         var service = new CanonicalUrlService(settings);
         var memoryId = new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890"));
 
