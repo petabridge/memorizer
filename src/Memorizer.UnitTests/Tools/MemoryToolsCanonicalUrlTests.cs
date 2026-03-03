@@ -308,7 +308,9 @@ public class MemoryToolsCanonicalUrlTests
             => throw new NotImplementedException();
         public Task<IReadOnlyList<Workspace>> GetWorkspacesAsync(WorkspaceId? parentId = null, bool includeSystem = false, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
-        public Task<Workspace> UpdateWorkspaceAsync(WorkspaceId id, string? name = null, string? description = null, CancellationToken cancellationToken = default)
+        public Task<Workspace> UpdateWorkspaceAsync(WorkspaceId id, string? name = null, string? description = null, WorkspaceId? newParentId = null, bool makeTopLevel = false, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+        public Task<Project> MoveProjectToWorkspaceAsync(ProjectId id, WorkspaceId newWorkspaceId, ProjectId? newParentId = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
         public Task DeleteWorkspaceAsync(WorkspaceId id, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();

@@ -228,7 +228,10 @@ public class WorkspaceToolsCanonicalUrlTests
         public Task<IReadOnlyList<WorkspacePathSegment>> GetWorkspacePathAsync(WorkspaceId id, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<WorkspacePathSegment>>(new List<WorkspacePathSegment>());
 
-        public Task<Workspace> UpdateWorkspaceAsync(WorkspaceId id, string? name = null, string? description = null, CancellationToken cancellationToken = default)
+        public Task<Workspace> UpdateWorkspaceAsync(WorkspaceId id, string? name = null, string? description = null, WorkspaceId? newParentId = null, bool makeTopLevel = false, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+
+        public Task<Project> MoveProjectToWorkspaceAsync(ProjectId id, WorkspaceId newWorkspaceId, ProjectId? newParentId = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
 
         public Task DeleteWorkspaceAsync(WorkspaceId id, CancellationToken cancellationToken = default)
