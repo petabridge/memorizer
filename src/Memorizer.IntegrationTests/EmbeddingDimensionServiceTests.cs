@@ -117,7 +117,7 @@ public class EmbeddingDimensionServiceTests
     }
 
     [Fact]
-    public async Task Validate_WhenStoredConfigHasDifferentDimensions_ReturnsMismatch()
+    public async Task Validate_WhenStoredConfigHasDifferentDimensionsButSchemaMatches_SelfHeals()
     {
         // Arrange - Create a stored config with different dimensions than the model outputs
         // This simulates switching to a model with different output dimensions
@@ -143,12 +143,15 @@ public class EmbeddingDimensionServiceTests
             // Act
             var result = await dimensionService.ValidateAsync();
 
-            // Assert - Model outputs 384, but stored config says 768
-            Assert.True(result.HasMismatch, $"Expected mismatch. Result: detected={result.DetectedModelDimensions}, stored={result.StoredDimensions}");
-            Assert.True(result.RequiresMigration);
-            Assert.Contains("384", result.MismatchDescription!);
-            Assert.Contains("768", result.MismatchDescription!);
-            _output.WriteLine($"✅ Detected mismatch: {result.MismatchDescription}");
+            // Assert - Model and schema are both 384, so stale stored config should be auto-reconciled
+            Assert.False(result.HasMismatch, $"Unexpected mismatch. Result: detected={result.DetectedModelDimensions}, stored={result.StoredDimensions}, schema={result.DatabaseSchemaDimensions}");
+            Assert.False(result.RequiresMigration);
+
+            var activeConfig = await dimensionService.GetActiveConfigAsync();
+            Assert.NotNull(activeConfig);
+            Assert.Equal("all-minilm", activeConfig.ModelName);
+            Assert.Equal(384, activeConfig.Dimensions);
+            _output.WriteLine("✅ Stale stored config auto-reconciled to live model/schema");
         }
         finally
         {
@@ -160,7 +163,7 @@ public class EmbeddingDimensionServiceTests
     }
 
     [Fact]
-    public async Task Validate_WhenStoredConfigDiffersFromSchema_DetectsIncompleteMigration()
+    public async Task Validate_WhenStoredConfigDiffersFromSchemaButProbeMatches_SelfHeals()
     {
         // Arrange
         using var services = CreateServices("all-minilm");
@@ -186,11 +189,15 @@ public class EmbeddingDimensionServiceTests
             // Act
             var result = await dimensionService.ValidateAsync();
 
-            // Assert - Stored says 1024, but schema is 384
-            Assert.True(result.HasMismatch, "Should detect schema/config mismatch");
-            Assert.True(result.RequiresMigration);
-            Assert.NotNull(result.MismatchDescription);
-            _output.WriteLine($"✅ Detected incomplete migration: {result.MismatchDescription}");
+            // Assert - Probe and schema are both 384, so stale stored config should be auto-reconciled
+            Assert.False(result.HasMismatch, $"Unexpected mismatch. Description: {result.MismatchDescription}");
+            Assert.False(result.RequiresMigration);
+
+            var activeConfig = await dimensionService.GetActiveConfigAsync();
+            Assert.NotNull(activeConfig);
+            Assert.Equal("all-minilm", activeConfig.ModelName);
+            Assert.Equal(384, activeConfig.Dimensions);
+            _output.WriteLine("✅ Incomplete-metadata state auto-reconciled when schema and probe align");
         }
         finally
         {

@@ -190,24 +190,38 @@ public class EmbeddingDimensionService : IEmbeddingDimensionService
                 embeddingApiAvailable: embeddingApiAvailable);
         }
 
-        // Scenario 3: Stored config doesn't match schema (could happen after failed migration)
+        // Scenario 3: Stored config doesn't match schema.
+        // If live probe matches schema, this is stale metadata and we can self-heal.
         if (storedConfig != null && schemaDimensions.HasValue &&
             storedConfig.Dimensions != schemaDimensions.Value)
         {
-            var description = $"Stored config shows {storedConfig.Dimensions} dimensions, " +
-                              $"but database schema has VECTOR({schemaDimensions}). " +
-                              "This may indicate an incomplete migration.";
+            if (detectedDimensions.HasValue && detectedDimensions.Value == schemaDimensions.Value)
+            {
+                _logger.LogInformation(
+                    "Stored config is stale (stored={StoredDimensions}, schema={SchemaDimensions}, model={StoredModel}). " +
+                    "Live probe matches schema ({DetectedDimensions}), updating stored config.",
+                    storedConfig.Dimensions, schemaDimensions, storedConfig.ModelName, detectedDimensions);
 
-            _logger.LogWarning("Dimension mismatch: {Description}", description);
+                await UpdateActiveConfigAsync(Settings.Model, detectedDimensions.Value, ct);
+                storedConfig = await GetActiveConfigAsync(ct);
+            }
+            else
+            {
+                var description = $"Stored config shows {storedConfig.Dimensions} dimensions, " +
+                                  $"but database schema has VECTOR({schemaDimensions}). " +
+                                  "This may indicate an incomplete migration.";
 
-            return DimensionValidationResult.Mismatch(
-                configuredModel: Settings.Model,
-                detectedDimensions: detectedDimensions,
-                storedDimensions: storedConfig.Dimensions,
-                storedModel: storedConfig.ModelName,
-                schemaDimensions: schemaDimensions,
-                description: description,
-                embeddingApiAvailable: embeddingApiAvailable);
+                _logger.LogWarning("Dimension mismatch: {Description}", description);
+
+                return DimensionValidationResult.Mismatch(
+                    configuredModel: Settings.Model,
+                    detectedDimensions: detectedDimensions,
+                    storedDimensions: storedConfig.Dimensions,
+                    storedModel: storedConfig.ModelName,
+                    schemaDimensions: schemaDimensions,
+                    description: description,
+                    embeddingApiAvailable: embeddingApiAvailable);
+            }
         }
 
         // Scenario 2: Model name changed but dimensions match schema - update stored config

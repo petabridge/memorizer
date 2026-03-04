@@ -235,7 +235,8 @@
             resultsContentId: 'resultsContent',
             startButtonId: 'startButton',
             formId: 'dimensionMigrationForm',
-            jobName: 'Dimension migration'
+            jobName: 'Dimension migration',
+            onComplete: () => loadDimensionStatus()
         });
 
         document.addEventListener('DOMContentLoaded', function() {

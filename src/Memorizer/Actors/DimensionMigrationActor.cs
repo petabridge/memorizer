@@ -487,6 +487,10 @@ public sealed class DimensionMigrationActor : ReceiveActor
             {
                 var dimensionService = _currentScope.ServiceProvider.GetRequiredService<IEmbeddingDimensionService>();
                 await dimensionService.UpdateActiveConfigAsync(_newModel!, _newDimensions);
+
+                var validation = await dimensionService.ValidateAsync();
+                var mismatchState = _currentScope.ServiceProvider.GetRequiredService<IDimensionMismatchState>();
+                mismatchState.Update(validation);
             }
 
             // Complete the migration record
