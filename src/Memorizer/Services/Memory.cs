@@ -1307,6 +1307,12 @@ public class Storage : IStorage
 
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
+        // IVFFlat uses approximate nearest-neighbor search. The default probes=1 with lists=100
+        // means only 1% of the index is scanned, which causes missed results on small datasets.
+        // Setting probes to sqrt(lists)=10 gives good recall without meaningful overhead.
+        await using (var probeCmd = new NpgsqlCommand("SET LOCAL ivfflat.probes = 10", connection))
+            await probeCmd.ExecuteNonQueryAsync(cancellationToken);
+
         // Always fetch up to 2x the requested limit for post-filtering/boosting
         int fetchLimit = limit * 2;
 

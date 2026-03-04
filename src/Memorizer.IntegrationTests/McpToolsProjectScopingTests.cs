@@ -325,11 +325,13 @@ public class McpToolsProjectScopingTests : IDisposable
                 cancellationToken: default
             );
 
-            // Search without projectId (should search all)
+            // Search without projectId (should search all).
+            // Use minSimilarity=0.0 (accept any distance) so this test verifies owner-filter
+            // bypass behavior rather than embedding quality, which is nondeterministic in CI.
             var globalResults = await storage.SearchWithMetadataEmbedding(
                 query: "global search testing",
                 limit: 10,
-                minSimilarity: new SimilarityScore(0.3),
+                minSimilarity: new SimilarityScore(0.0),
                 filterTags: null,
                 projectId: null, // No project filter
                 includeUnassigned: false, // Ignored when projectId is null
@@ -338,8 +340,10 @@ public class McpToolsProjectScopingTests : IDisposable
 
             _output.WriteLine($"Global search returned {globalResults.Count} results");
 
-            // Should find memories regardless of owner
-            Assert.True(globalResults.Count >= 2, "Should find at least the 2 test memories");
+            // Both specific memories must appear regardless of embedding similarity score
+            var resultIds = globalResults.Select(m => m.Id).ToHashSet();
+            Assert.Contains(memoryInProject!.Id, resultIds);
+            Assert.Contains(memoryUnfiled!.Id, resultIds);
         }
         finally
         {
