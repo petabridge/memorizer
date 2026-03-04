@@ -166,7 +166,7 @@ public class TitleGenerationActorTests : TestKit
         public Task<List<Memory>> Search(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, bool includeArchived = false, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
 
-        public Task<(List<Memory> Memories, int TotalCount)> GetMemoriesPaginated(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+        public Task<(List<Memory> Memories, int TotalCount)> GetMemoriesPaginated(int page = 1, int pageSize = 20, string? memoryType = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException("Test mock");
 
         public Task<Memory?> UpdateMemory(MemoryId id, string type, string content, string source, string[]? tags, Confidence confidence, string? title = null, CancellationToken cancellationToken = default)
@@ -189,6 +189,11 @@ public class TitleGenerationActorTests : TestKit
 
         public Task<List<string>> GetDistinctMemoryTypes(CancellationToken cancellationToken = default)
             => Task.FromResult(new List<string> { "test", "mock" });
+        public Task<List<string>> GetDistinctTagsAsync(MemoryOwner? owner = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<string>());
+
+        public Task<List<MemoryOwner>> GetDistinctOwnersAsync(string[]? tags = null, string? memoryType = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<MemoryOwner>());
 
         public Task<int> CountMemoriesWithoutMetadataEmbeddings(CancellationToken cancellationToken = default)
             => Task.FromResult(0);
@@ -294,17 +299,20 @@ public class TitleGenerationActorTests : TestKit
         public Task MoveMemoryToUnfiledAsync(MemoryId memoryId, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
-        public Task<IReadOnlyList<Memory>> GetMemoriesByOwnerAsync(MemoryOwner owner, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Memory>> GetMemoriesByOwnerAsync(MemoryOwner owner, int page = 1, int pageSize = 50, string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Memory>>(new List<Memory>());
 
-        public Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, CancellationToken cancellationToken = default)
+        public Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult(0);
 
-        public Task<IReadOnlyList<Memory>> GetUnfiledMemoriesAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Memory>> GetUnfiledMemoriesAsync(int page = 1, int pageSize = 50, string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Memory>>(new List<Memory>());
 
-        public Task<int> GetUnfiledMemoryCountAsync(CancellationToken cancellationToken = default)
+        public Task<int> GetUnfiledMemoryCountAsync(string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult(0);
+
+        public Task<(IReadOnlyList<Memory> Memories, int TotalCount)> GetMemoriesByTagAsync(string[] tags, int page = 1, int pageSize = 20, MemoryOwner? owner = null, string? memoryType = null, CancellationToken cancellationToken = default)
+            => Task.FromResult<(IReadOnlyList<Memory>, int)>((new List<Memory>(), 0));
 
         // Archival operations
         public Task<Memory?> UpdateMemoryArchetypeAsync(MemoryId memoryId, ArchetypeEnum newArchetype, CancellationToken cancellationToken = default)

@@ -204,7 +204,7 @@ public class HomeController : Controller
         }
 
         // Get unfiled memory count
-        var unfiledCount = await _storage.GetUnfiledMemoryCountAsync(cancellationToken);
+        var unfiledCount = await _storage.GetUnfiledMemoryCountAsync(cancellationToken: cancellationToken);
 
         var result = new
         {
@@ -219,7 +219,7 @@ public class HomeController : Controller
     {
         // Get memory count directly in this workspace (not in projects)
         var directMemoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForWorkspace(workspace.Id), cancellationToken);
+            MemoryOwner.ForWorkspace(workspace.Id), cancellationToken: cancellationToken);
 
         // Get projects in this workspace and build nodes, also aggregate project memory counts
         var projects = await _storage.GetProjectsAsync(workspace.Id, parentId: null, statusFilter: null, cancellationToken);
@@ -266,7 +266,7 @@ public class HomeController : Controller
     {
         // Get memory count for this project
         var memoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForProject(project.Id), cancellationToken);
+            MemoryOwner.ForProject(project.Id), cancellationToken: cancellationToken);
 
         // Get child projects (nested)
         var childProjects = await _storage.GetProjectsAsync(project.WorkspaceId, parentId: project.Id, statusFilter: null, cancellationToken);

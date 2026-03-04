@@ -26,6 +26,38 @@
     </div>
 </div>
 
+<!-- Filter Dropdowns (always visible) -->
+<div class="card mb-4" style="overflow: visible; position: relative; z-index: 100;">
+    <div class="card-body py-2" style="overflow: visible;">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto">
+                <i class="fas fa-sliders-h text-muted me-1"></i>
+                <span class="text-muted small fw-semibold">Filter:</span>
+            </div>
+            <div class="col-md-4">
+                <select class="form-select form-select-sm" id="locationSelect" onchange="onLocationChange()">
+                    <option value="">All locations</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select class="form-select form-select-sm" id="typeSelect" onchange="onTypeChange()">
+                    <option value="">All types</option>
+                </select>
+            </div>
+            <div class="col-md-3 position-relative">
+                <input type="text" class="form-control form-control-sm" id="tagSearchInput"
+                       placeholder="Search tags..." autocomplete="off"
+                       oninput="onTagSearchInput()" onfocus="onTagSearchInput()" />
+                <div id="tagSearchDropdown" class="list-group position-absolute w-100 shadow-sm" style="display: none; z-index: 1050; max-height: 250px; overflow-y: auto;"></div>
+            </div>
+        </div>
+        <div id="selectedTagsContainer" class="mt-2" style="display: none;">
+            <span class="text-muted small me-2">Tags:</span>
+            <span id="selectedTags"></span>
+        </div>
+    </div>
+</div>
+
 <!-- Vector Search Bar - Moved to top -->
 <div class="card mb-4">
     <div class="card-body">
@@ -106,7 +138,9 @@ let showArchived = false;
 let currentFilter = {
     workspaceId: null,
     projectId: null,
-    unfiled: false
+    unfiled: false,
+    tags: [],
+    type: null
 };
 
 // Toggle archived memories display
@@ -162,6 +196,8 @@ function parseUrlParams() {
     currentFilter.workspaceId = params.get('workspaceId');
     currentFilter.projectId = params.get('projectId');
     currentFilter.unfiled = params.get('unfiled') === 'true';
+    currentFilter.tags = params.getAll('tag').filter(t => t.trim());
+    currentFilter.type = params.get('type');
 
     // Check for search query from sidebar
     const searchQuery = params.get('q');
@@ -177,12 +213,18 @@ function parseUrlParams() {
 // Build query string for API calls
 function buildFilterQueryString() {
     const parts = [`page=${currentPage}`, `pageSize=${currentPageSize}`];
+    for (const t of currentFilter.tags) {
+        parts.push(`tag=${encodeURIComponent(t)}`);
+    }
     if (currentFilter.projectId) {
         parts.push(`projectId=${currentFilter.projectId}`);
     } else if (currentFilter.workspaceId) {
         parts.push(`workspaceId=${currentFilter.workspaceId}`);
     } else if (currentFilter.unfiled) {
         parts.push(`unfiled=true`);
+    }
+    if (currentFilter.type) {
+        parts.push(`type=${encodeURIComponent(currentFilter.type)}`);
     }
     return parts.join('&');
 }
@@ -192,7 +234,14 @@ async function updateFilterContext() {
     const contextDiv = document.getElementById('filterContext');
     const contextText = document.getElementById('filterContextText');
 
-    if (currentFilter.projectId) {
+    const hasActiveFilter = currentFilter.tags.length > 0 || currentFilter.type || currentFilter.projectId || currentFilter.workspaceId || currentFilter.unfiled;
+
+    if (currentFilter.tags.length > 0 && !currentFilter.projectId && !currentFilter.workspaceId && !currentFilter.unfiled) {
+        // Tags-only filter — show in banner
+        const tagBadges = currentFilter.tags.map(t => `<span class="badge bg-secondary">${escapeHtml(t)}</span>`).join(' ');
+        contextText.innerHTML = `<strong>Tags:</strong> ${tagBadges}`;
+        contextDiv.style.display = 'block';
+    } else if (currentFilter.projectId) {
         // Fetch project name from workspace tree API
         try {
             const treeResponse = await fetch('/api/workspace-tree');
@@ -272,10 +321,362 @@ function findProjectInChildProjects(projects, id) {
     return null;
 }
 
+// Workspace tree cache for resolving owner names on cards
+let workspaceTreeCache = null;
+
+async function getWorkspaceTree() {
+    if (workspaceTreeCache) return workspaceTreeCache;
+    try {
+        const response = await fetch('/api/workspace-tree');
+        if (response.ok) {
+            workspaceTreeCache = await response.json();
+        }
+    } catch (e) {
+        console.warn('Could not load workspace tree:', e);
+    }
+    return workspaceTreeCache;
+}
+
+function resolveOwnerName(owner, tree) {
+    if (!owner || !tree) return null;
+    const emptyGuid = '00000000-0000-0000-0000-000000000000';
+    if (owner.id === emptyGuid) return 'Unfiled';
+    const ownerType = owner.type?.toLowerCase();
+    if (ownerType === 'project') {
+        const project = findProjectInTree(tree.workspaces, owner.id);
+        return project ? project.name : null;
+    } else if (ownerType === 'workspace') {
+        const workspace = findWorkspaceInTree(tree.workspaces, owner.id);
+        return workspace ? workspace.name : null;
+    }
+    return null;
+}
+
+function createOwnerBadge(owner, tree) {
+    if (!owner) return '';
+    const name = resolveOwnerName(owner, tree);
+    if (!name) return '';
+    const ownerType = owner.type?.toLowerCase();
+    const icon = ownerType === 'project' ? 'fa-project-diagram' : 'fa-folder';
+    const href = ownerType === 'project'
+        ? `/memories?projectId=${owner.id}`
+        : `/memories?workspaceId=${owner.id}`;
+    return `<a href="${href}" class="badge bg-info text-decoration-none"><i class="fas ${icon} me-1"></i>${escapeHtml(name)}</a>`;
+}
+
+// All available tags (loaded once)
+let allAvailableTags = [];
+
+async function loadTagDropdown() {
+    try {
+        let url = '/api/memory/tags';
+        const params = new URLSearchParams();
+        if (currentFilter.projectId) params.set('projectId', currentFilter.projectId);
+        else if (currentFilter.workspaceId) params.set('workspaceId', currentFilter.workspaceId);
+        const qs = params.toString();
+        if (qs) url += '?' + qs;
+
+        const response = await fetch(url);
+        if (!response.ok) return;
+        allAvailableTags = await response.json();
+    } catch (e) {
+        console.warn('Could not load tags:', e);
+    }
+}
+
+// Show filtered tag suggestions as user types
+function onTagSearchInput() {
+    const input = document.getElementById('tagSearchInput');
+    const dropdown = document.getElementById('tagSearchDropdown');
+    const query = input.value.toLowerCase().trim();
+
+    // Filter: exclude already-selected tags, match query
+    const matches = allAvailableTags
+        .filter(t => !currentFilter.tags.includes(t))
+        .filter(t => !query || t.toLowerCase().includes(query))
+        .slice(0, 20);
+
+    if (matches.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    dropdown.innerHTML = matches.map(t => {
+        // Highlight the matching portion
+        const escaped = escapeHtml(t);
+        let display = escaped;
+        if (query) {
+            const idx = t.toLowerCase().indexOf(query);
+            if (idx >= 0) {
+                display = escapeHtml(t.substring(0, idx))
+                    + '<strong>' + escapeHtml(t.substring(idx, idx + query.length)) + '</strong>'
+                    + escapeHtml(t.substring(idx + query.length));
+            }
+        }
+        return `<button type="button" class="list-group-item list-group-item-action py-1 px-2 small" onmousedown="selectTag('${t.replace(/'/g, "\\'")}')">${display}</button>`;
+    }).join('');
+    dropdown.style.display = 'block';
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    const input = document.getElementById('tagSearchInput');
+    const dropdown = document.getElementById('tagSearchDropdown');
+    if (input && dropdown && !input.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.style.display = 'none';
+    }
+});
+
+// Select a tag from suggestions
+async function selectTag(tag) {
+    if (currentFilter.tags.includes(tag)) return;
+    currentFilter.tags.push(tag);
+
+    const input = document.getElementById('tagSearchInput');
+    const dropdown = document.getElementById('tagSearchDropdown');
+    input.value = '';
+    dropdown.style.display = 'none';
+
+    renderSelectedTags();
+    updateFilterUrl();
+    currentPage = 1;
+    await loadLocationDropdown();
+    updateFilterUrl();
+    updateFilterContext();
+    loadMemories();
+}
+
+// Remove a tag from the selection
+async function removeTag(tag) {
+    currentFilter.tags = currentFilter.tags.filter(t => t !== tag);
+    renderSelectedTags();
+    updateFilterUrl();
+    currentPage = 1;
+    await loadLocationDropdown();
+    updateFilterUrl();
+    updateFilterContext();
+    loadMemories();
+}
+
+// Render selected tags as removable badges
+function renderSelectedTags() {
+    const container = document.getElementById('selectedTagsContainer');
+    const tagsSpan = document.getElementById('selectedTags');
+
+    if (currentFilter.tags.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    tagsSpan.innerHTML = currentFilter.tags.map(t =>
+        `<span class="badge bg-secondary me-1">${escapeHtml(t)} <a href="#" class="text-white text-decoration-none ms-1" onclick="removeTag('${t.replace(/'/g, "\\'")}'); return false;"><i class="fas fa-times fa-xs"></i></a></span>`
+    ).join('');
+    container.style.display = 'block';
+}
+
+// Populate the location dropdown (filtered by active tags/type)
+async function loadLocationDropdown() {
+    const select = document.getElementById('locationSelect');
+    const previousValue = select.value;
+
+    const tree = await getWorkspaceTree();
+    if (!tree || !tree.workspaces) return;
+
+    // Fetch allowed owners based on current tag/type filters
+    let allowedOwners = null;
+    if (currentFilter.tags.length > 0 || currentFilter.type) {
+        try {
+            const params = new URLSearchParams();
+            for (const t of currentFilter.tags) params.append('tag', t);
+            if (currentFilter.type) params.set('type', currentFilter.type);
+            const resp = await fetch(`/api/memory/owners?${params.toString()}`);
+            if (resp.ok) {
+                const owners = await resp.json();
+                allowedOwners = new Set(owners.map(o => `${o.type}:${o.id}`));
+            }
+        } catch (e) {
+            console.warn('Could not load owners:', e);
+        }
+    }
+
+    // Clear existing options (keep first "All locations")
+    while (select.options.length > 1) select.remove(1);
+
+    // Add "Unfiled" option
+    const unfiledOpt = document.createElement('option');
+    unfiledOpt.value = 'unfiled';
+    unfiledOpt.textContent = '\u{1F4E5} Unfiled';
+    select.appendChild(unfiledOpt);
+
+    function isOwnerAllowed(type, id) {
+        if (!allowedOwners) return true;
+        return allowedOwners.has(`${type}:${id}`);
+    }
+
+    function hasAllowedDescendants(node, type) {
+        if (type === 'workspace') {
+            if (isOwnerAllowed('Workspace', node.id)) return true;
+            if (node.projects) {
+                for (const p of node.projects) {
+                    if (hasAllowedDescendants(p, 'project')) return true;
+                }
+            }
+            if (node.children) {
+                for (const c of node.children) {
+                    if (hasAllowedDescendants(c, 'workspace')) return true;
+                }
+            }
+        } else if (type === 'project') {
+            if (isOwnerAllowed('Project', node.id)) return true;
+            if (node.children) {
+                for (const c of node.children) {
+                    if (hasAllowedDescendants(c, 'project')) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function addWorkspaceOptions(workspaces, prefix) {
+        for (const ws of workspaces) {
+            if (allowedOwners && !hasAllowedDescendants(ws, 'workspace')) continue;
+            const indent = prefix ? prefix + ' ' : '';
+            const opt = document.createElement('option');
+            opt.value = `workspace:${ws.id}`;
+            opt.textContent = indent + '\u{1F4C1} ' + ws.name;
+            if (!prefix) opt.style.fontWeight = 'bold';
+            if (allowedOwners && !isOwnerAllowed('Workspace', ws.id)) opt.disabled = true;
+            select.appendChild(opt);
+
+            if (ws.projects && ws.projects.length > 0) {
+                addProjectOptions(ws.projects, prefix + '\u2500\u2500');
+            }
+            if (ws.children && ws.children.length > 0) {
+                addWorkspaceOptions(ws.children, prefix + '\u2500\u2500');
+            }
+        }
+    }
+
+    function addProjectOptions(projects, prefix) {
+        for (const proj of projects) {
+            if (allowedOwners && !hasAllowedDescendants(proj, 'project')) continue;
+            const opt = document.createElement('option');
+            opt.value = `project:${proj.id}`;
+            opt.textContent = prefix + ' \u{1F4CB} ' + proj.name;
+            if (allowedOwners && !isOwnerAllowed('Project', proj.id)) opt.disabled = true;
+            select.appendChild(opt);
+            if (proj.children && proj.children.length > 0) {
+                addProjectOptions(proj.children, prefix + '\u2500\u2500');
+            }
+        }
+    }
+
+    addWorkspaceOptions(tree.workspaces, '');
+
+    // Restore previous selection if still available, otherwise use filter state
+    const targetValue = previousValue || (currentFilter.unfiled ? 'unfiled' : currentFilter.projectId ? `project:${currentFilter.projectId}` : currentFilter.workspaceId ? `workspace:${currentFilter.workspaceId}` : '');
+    const optionExists = Array.from(select.options).some(o => o.value === targetValue && !o.disabled);
+    if (optionExists) {
+        select.value = targetValue;
+    } else {
+        // If previously selected location is no longer available, reset to "All"
+        select.value = '';
+        if (currentFilter.projectId || currentFilter.workspaceId || currentFilter.unfiled) {
+            currentFilter.projectId = null;
+            currentFilter.workspaceId = null;
+            currentFilter.unfiled = false;
+            updateFilterUrl();
+        }
+    }
+}
+
+// Handle location change
+function onLocationChange() {
+    const select = document.getElementById('locationSelect');
+    const val = select.value;
+
+    currentFilter.projectId = null;
+    currentFilter.workspaceId = null;
+    currentFilter.unfiled = false;
+
+    if (val === 'unfiled') {
+        currentFilter.unfiled = true;
+    } else if (val) {
+        const [type, id] = val.split(':');
+        if (type === 'project') {
+            currentFilter.projectId = id;
+        } else if (type === 'workspace') {
+            currentFilter.workspaceId = id;
+        }
+    }
+
+    updateFilterUrl();
+    currentPage = 1;
+    updateFilterContext();
+    loadTagDropdown();
+    loadMemories();
+}
+
+// Populate the type dropdown
+async function loadTypeDropdown() {
+    const select = document.getElementById('typeSelect');
+
+    try {
+        const response = await fetch('/api/memory/types');
+        if (!response.ok) return;
+        const types = await response.json();
+
+        // Clear existing options (keep first "All types")
+        while (select.options.length > 1) select.remove(1);
+
+        for (const t of types) {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            select.appendChild(opt);
+        }
+
+        // Set current value from filter state
+        if (currentFilter.type) {
+            select.value = currentFilter.type;
+        }
+    } catch (e) {
+        console.warn('Could not load memory types:', e);
+    }
+}
+
+// Handle type change
+async function onTypeChange() {
+    const select = document.getElementById('typeSelect');
+    currentFilter.type = select.value || null;
+    updateFilterUrl();
+    currentPage = 1;
+    await loadLocationDropdown();
+    updateFilterUrl();
+    updateFilterContext();
+    loadMemories();
+}
+
+// Update browser URL to reflect current filter state
+function updateFilterUrl() {
+    const params = new URLSearchParams();
+    for (const t of currentFilter.tags) params.append('tag', t);
+    if (currentFilter.projectId) params.set('projectId', currentFilter.projectId);
+    else if (currentFilter.workspaceId) params.set('workspaceId', currentFilter.workspaceId);
+    else if (currentFilter.unfiled) params.set('unfiled', 'true');
+    if (currentFilter.type) params.set('type', currentFilter.type);
+    const qs = params.toString();
+    window.history.replaceState({}, '', qs ? `/memories?${qs}` : '/memories');
+}
+
 // Load memories on page load
 document.addEventListener('DOMContentLoaded', function() {
     parseUrlParams();
     updateFilterContext();
+    loadLocationDropdown();
+    loadTypeDropdown();
+    loadTagDropdown();
+    renderSelectedTags();
     loadMemories();
 });
 
@@ -312,7 +713,7 @@ async function loadMemories() {
     }
 }
 
-function displayMemories(memories, isArchivedView = false) {
+async function displayMemories(memories, isArchivedView = false) {
     const listElement = document.getElementById('memoryList');
 
     if (memories.length === 0) {
@@ -332,10 +733,17 @@ function displayMemories(memories, isArchivedView = false) {
         return;
     }
 
+    // Load workspace tree for owner badges when tag filter is active
+    let tree = null;
+    const showOwnerBadges = currentFilter.tags.length > 0 || currentFilter.type;
+    if (showOwnerBadges) {
+        tree = await getWorkspaceTree();
+    }
+
     let html = '<div class="row">';
 
     memories.forEach(memory => {
-        const tags = createTagBadges(memory.tags);
+        const tags = createClickableTagBadges(memory.tags);
         const title = memory.title || 'Untitled Memory';
         const preview = truncateText(memory.text, 100) || 'No content';
         const isArchived = memory.archetype === 'archived';
@@ -343,6 +751,7 @@ function displayMemories(memories, isArchivedView = false) {
         const archivedBadge = isArchived
             ? '<span class="badge badge-archived-indicator ms-1"><i class="fas fa-archive me-1"></i>ARCHIVED</span>'
             : '';
+        const ownerBadge = showOwnerBadges ? createOwnerBadge(memory.owner, tree) : '';
 
         html += `
             <div class="col-md-6 col-lg-4 mb-4">
@@ -355,6 +764,8 @@ function displayMemories(memories, isArchivedView = false) {
                                 ${archivedBadge}
                             </div>
                         </div>
+
+                        ${ownerBadge ? `<div class="mb-2">${ownerBadge}</div>` : ''}
 
                         <p class="card-text text-muted small mb-2">${escapeHtml(preview)}</p>
 
@@ -524,7 +935,7 @@ function displayVectorSearchResults(results) {
     }
     let html = `<div class='card mb-4'><div class='card-body'><h5 class='mb-3'><i class='fas fa-search me-2 text-success'></i>Vector Search Results</h5><div class='row'>`;
     results.forEach(memory => {
-        const tags = createTagBadges(memory.tags);
+        const tags = createClickableTagBadges(memory.tags);
         const title = memory.title || 'Untitled Memory';
         const preview = truncateText(memory.text, 100) || 'No content';
         const similarity = memory.similarity !== null && memory.similarity !== undefined ? (100 * memory.similarity).toFixed(1) : 'N/A';

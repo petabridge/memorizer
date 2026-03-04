@@ -58,6 +58,28 @@ function createTagBadges(tags, badgeClass = 'bg-secondary') {
 }
 
 /**
+ * Creates a clickable tag badge that links to the tag filter page
+ * @param {string} tag - The tag text
+ * @param {string} badgeClass - Bootstrap badge class (default: 'bg-secondary')
+ * @returns {string} HTML for the clickable tag badge
+ */
+function createClickableTagBadge(tag, badgeClass = 'bg-secondary') {
+    const href = `/memories?tag=${encodeURIComponent(tag)}`;
+    return `<a href="${href}" class="badge ${badgeClass} me-1 text-decoration-none">${escapeHtml(tag)}</a>`;
+}
+
+/**
+ * Creates multiple clickable tag badges from an array
+ * @param {string[]} tags - Array of tag strings
+ * @param {string} badgeClass - Bootstrap badge class (default: 'bg-secondary')
+ * @returns {string} HTML for all clickable tag badges
+ */
+function createClickableTagBadges(tags, badgeClass = 'bg-secondary') {
+    if (!tags || !Array.isArray(tags)) return '';
+    return tags.map(tag => createClickableTagBadge(tag, badgeClass)).join('');
+}
+
+/**
  * Truncates text to a specified length with ellipsis
  * @param {string} text - Text to truncate
  * @param {number} maxLength - Maximum length before truncation

@@ -123,7 +123,7 @@ public sealed class EmbeddingRegenerationActor : ReceiveActor
             var storage = _currentScope.ServiceProvider.GetRequiredService<IStorage>();
 
             // Get total count first to size the job
-            var (_, totalCount) = await storage.GetMemoriesPaginated(1, 1);
+            var (_, totalCount) = await storage.GetMemoriesPaginated(1, 1, cancellationToken: default);
 
             // Create job manager and start job
             _jobManager = new ProgressJobManager(_logger, _materializer);
@@ -187,7 +187,7 @@ public sealed class EmbeddingRegenerationActor : ReceiveActor
         try
         {
             var storage = _currentScope.ServiceProvider.GetRequiredService<IStorage>();
-            var (memories, _) = await storage.GetMemoriesPaginated(_currentPage, _pageSize);
+            var (memories, _) = await storage.GetMemoriesPaginated(_currentPage, _pageSize, cancellationToken: default);
 
             if (memories.Count == 0)
             {

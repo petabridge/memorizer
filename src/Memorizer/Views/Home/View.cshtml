@@ -662,10 +662,10 @@ function populateMemoryView(memory) {
         document.getElementById('memoryConfidence').innerHTML = createConfidenceBadge(memory.confidence || 1.0);
         document.getElementById('memoryCreated').textContent = formatDateTime(memory.createdAt);
 
-        // Set tags
+        // Set tags (clickable - link to tag filter)
         const tagsContainer = document.getElementById('memoryTags');
         if (memory.tags && memory.tags.length > 0) {
-            tagsContainer.innerHTML = createTagBadges(memory.tags);
+            tagsContainer.innerHTML = createClickableTagBadges(memory.tags);
         } else {
             tagsContainer.innerHTML = '<span class="text-muted">No tags</span>';
         }

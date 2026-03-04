@@ -101,7 +101,7 @@ public class WorkspaceTools
             // Get child counts for hints
             var childWorkspaces = await _storage.GetWorkspacesAsync(parentId: ws.Id, includeSystem: false, cancellationToken);
             var projects = await _storage.GetProjectsAsync(ws.Id, parentId: null, statusFilter: null, cancellationToken);
-            var memoryCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForWorkspace(ws.Id), cancellationToken);
+            var memoryCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForWorkspace(ws.Id), cancellationToken: cancellationToken);
 
             result.AppendLine($"ID: {ws.Id.Value}");
             result.AppendLine($"Name: {ws.Name}");
@@ -154,7 +154,7 @@ public class WorkspaceTools
 
         // Get memory count for this workspace
         var workspaceOwner = MemoryOwner.ForWorkspace(workspaceId);
-        var memoryCount = await _storage.GetMemoryCountByOwnerAsync(workspaceOwner, cancellationToken);
+        var memoryCount = await _storage.GetMemoryCountByOwnerAsync(workspaceOwner, cancellationToken: cancellationToken);
 
         var result = new StringBuilder();
         result.AppendLine($"Workspace: {workspace.Name}");
@@ -183,7 +183,7 @@ public class WorkspaceTools
             foreach (var proj in projects.Take(10))
             {
                 // Get project memory count for hints
-                var projMemCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForProject(proj.Id), cancellationToken);
+                var projMemCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForProject(proj.Id), cancellationToken: cancellationToken);
                 result.AppendLine($"  - {proj.Name} ({proj.Status.ToStringValue()}) [{projMemCount} memories] [ID: {proj.Id.Value}]");
             }
             if (projects.Count > 10)
@@ -199,7 +199,7 @@ public class WorkspaceTools
             foreach (var child in childWorkspaces.Take(10))
             {
                 // Get child workspace memory count for hints
-                var childMemCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForWorkspace(child.Id), cancellationToken);
+                var childMemCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForWorkspace(child.Id), cancellationToken: cancellationToken);
                 var childProjects = await _storage.GetProjectsAsync(child.Id, parentId: null, statusFilter: null, cancellationToken);
                 var projectHint = childProjects.Count > 0 ? $", {childProjects.Count} projects" : "";
                 result.AppendLine($"  - {child.Name} [{childMemCount} memories{projectHint}] [ID: {child.Id.Value}]");
@@ -346,7 +346,7 @@ public class WorkspaceTools
 
         // Get memory count for context
         var workspaceOwner = MemoryOwner.ForWorkspace(typedWorkspaceId);
-        var memoryCount = await _storage.GetMemoryCountByOwnerAsync(workspaceOwner, cancellationToken);
+        var memoryCount = await _storage.GetMemoryCountByOwnerAsync(workspaceOwner, cancellationToken: cancellationToken);
 
         try
         {
@@ -469,7 +469,7 @@ public class WorkspaceTools
         foreach (var proj in projects)
         {
             // Get memory count and subproject count for hints
-            var memCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForProject(proj.Id), cancellationToken);
+            var memCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForProject(proj.Id), cancellationToken: cancellationToken);
             var subprojects = await _storage.GetProjectsAsync(workspaceId, parentId: proj.Id, statusFilter: null, cancellationToken);
 
             result.AppendLine($"ID: {proj.Id.Value}");
@@ -520,12 +520,12 @@ public class WorkspaceTools
         if (includeMemories)
         {
             // Fetch actual memories (limit to reasonable amount for display)
-            memories = await _storage.GetMemoriesByOwnerAsync(memoryOwner, page: 1, pageSize: 100, cancellationToken);
+            memories = await _storage.GetMemoriesByOwnerAsync(memoryOwner, page: 1, pageSize: 100, cancellationToken: cancellationToken);
             memoryCount = memories.Count;
         }
         else
         {
-            memoryCount = await _storage.GetMemoryCountByOwnerAsync(memoryOwner, cancellationToken);
+            memoryCount = await _storage.GetMemoryCountByOwnerAsync(memoryOwner, cancellationToken: cancellationToken);
         }
 
         var result = new StringBuilder();
@@ -570,7 +570,7 @@ public class WorkspaceTools
             result.AppendLine($"Subprojects ({childProjects.Count}):");
             foreach (var child in childProjects)
             {
-                var childMemCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForProject(child.Id), cancellationToken);
+                var childMemCount = await _storage.GetMemoryCountByOwnerAsync(MemoryOwner.ForProject(child.Id), cancellationToken: cancellationToken);
                 result.AppendLine($"  - {child.Name} ({child.Status.ToStringValue()}) [{childMemCount} memories]");
                 result.AppendLine($"    ID: {child.Id.Value}");
             }
@@ -779,7 +779,7 @@ public class WorkspaceTools
 
         // Get memory count for context
         var projectOwner = MemoryOwner.ForProject(typedProjectId);
-        var memoryCount = await _storage.GetMemoryCountByOwnerAsync(projectOwner, cancellationToken);
+        var memoryCount = await _storage.GetMemoryCountByOwnerAsync(projectOwner, cancellationToken: cancellationToken);
 
         try
         {

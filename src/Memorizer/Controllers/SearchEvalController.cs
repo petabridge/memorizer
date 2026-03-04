@@ -467,7 +467,7 @@ public class SearchEvalController : ControllerBase
             const int pageSize = 50;
             while (true)
             {
-                var memories = await _storage.GetMemoriesByOwnerAsync(owner, page, pageSize, cancellationToken);
+                var memories = await _storage.GetMemoriesByOwnerAsync(owner, page, pageSize, cancellationToken: cancellationToken);
                 if (memories.Count == 0) break;
 
                 foreach (var memory in memories)

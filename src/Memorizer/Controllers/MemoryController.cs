@@ -33,7 +33,9 @@ public class MemoryController : ControllerBase
         int pageSize = 20,
         [FromQuery] Guid? workspaceId = null,
         [FromQuery] Guid? projectId = null,
-        [FromQuery] bool unfiled = false)
+        [FromQuery] bool unfiled = false,
+        [FromQuery] string[]? tag = null,
+        [FromQuery] string? type = null)
     {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 20;
@@ -41,27 +43,45 @@ public class MemoryController : ControllerBase
         List<Memory> memories;
         int totalCount;
 
-        // Priority: projectId > workspaceId > unfiled > all
-        if (projectId.HasValue)
+        // Filter out empty tags
+        var validTags = tag?.Where(t => !string.IsNullOrWhiteSpace(t)).ToArray() ?? [];
+
+        // Priority: tags > projectId > workspaceId > unfiled > all
+        if (validTags.Length > 0)
+        {
+            // Tag filter can be combined with project/workspace/unfiled scope
+            MemoryOwner? owner = null;
+            if (projectId.HasValue)
+                owner = MemoryOwner.ForProject(new ProjectId(projectId.Value));
+            else if (workspaceId.HasValue)
+                owner = MemoryOwner.ForWorkspace(new WorkspaceId(workspaceId.Value));
+            else if (unfiled)
+                owner = MemoryOwner.Unfiled;
+
+            var (tagMemories, tagCount) = await _storage.GetMemoriesByTagAsync(validTags, page, pageSize, owner, type);
+            memories = tagMemories.ToList();
+            totalCount = tagCount;
+        }
+        else if (projectId.HasValue)
         {
             var owner = MemoryOwner.ForProject(new ProjectId(projectId.Value));
-            memories = (await _storage.GetMemoriesByOwnerAsync(owner, page, pageSize)).ToList();
-            totalCount = await _storage.GetMemoryCountByOwnerAsync(owner);
+            memories = (await _storage.GetMemoriesByOwnerAsync(owner, page, pageSize, type)).ToList();
+            totalCount = await _storage.GetMemoryCountByOwnerAsync(owner, type);
         }
         else if (workspaceId.HasValue)
         {
             var owner = MemoryOwner.ForWorkspace(new WorkspaceId(workspaceId.Value));
-            memories = (await _storage.GetMemoriesByOwnerAsync(owner, page, pageSize)).ToList();
-            totalCount = await _storage.GetMemoryCountByOwnerAsync(owner);
+            memories = (await _storage.GetMemoriesByOwnerAsync(owner, page, pageSize, type)).ToList();
+            totalCount = await _storage.GetMemoryCountByOwnerAsync(owner, type);
         }
         else if (unfiled)
         {
-            memories = (await _storage.GetUnfiledMemoriesAsync(page, pageSize)).ToList();
-            totalCount = await _storage.GetUnfiledMemoryCountAsync();
+            memories = (await _storage.GetUnfiledMemoriesAsync(page, pageSize, type)).ToList();
+            totalCount = await _storage.GetUnfiledMemoryCountAsync(type);
         }
         else
         {
-            (memories, totalCount) = await _storage.GetMemoriesPaginated(page, pageSize);
+            (memories, totalCount) = await _storage.GetMemoriesPaginated(page, pageSize, type);
         }
 
         return Ok(new MemoryListResponse
@@ -96,6 +116,41 @@ public class MemoryController : ControllerBase
     {
         var types = await _storage.GetDistinctMemoryTypes();
         return Ok(types);
+    }
+
+    /// <summary>
+    /// Get all distinct tags across non-archived memories, optionally scoped by workspace/project
+    /// </summary>
+    [HttpGet("tags")]
+    public async Task<ActionResult<List<string>>> GetDistinctTags(
+        [FromQuery] Guid? workspaceId = null,
+        [FromQuery] Guid? projectId = null)
+    {
+        MemoryOwner? owner = null;
+        if (projectId.HasValue)
+            owner = MemoryOwner.ForProject(new ProjectId(projectId.Value));
+        else if (workspaceId.HasValue)
+            owner = MemoryOwner.ForWorkspace(new WorkspaceId(workspaceId.Value));
+
+        var tags = await _storage.GetDistinctTagsAsync(owner);
+        return Ok(tags);
+    }
+
+    /// <summary>
+    /// Get distinct owner (type, id) pairs for memories matching the given filters
+    /// </summary>
+    [HttpGet("owners")]
+    public async Task<ActionResult<List<OwnerDto>>> GetDistinctOwners(
+        [FromQuery] string[]? tag = null,
+        [FromQuery] string? type = null)
+    {
+        var validTags = tag?.Where(t => !string.IsNullOrWhiteSpace(t)).ToArray();
+        var owners = await _storage.GetDistinctOwnersAsync(validTags, type);
+        return Ok(owners.Select(o => new OwnerDto
+        {
+            Type = o.Type.ToString(),
+            Id = o.Id
+        }).ToList());
     }
 
     /// <summary>
@@ -906,4 +961,10 @@ public class ArchivedMemoryListResponse
     public int Page { get; set; }
     public int PageSize { get; set; }
     public int TotalPages { get; set; }
+}
+
+public class OwnerDto
+{
+    public string Type { get; set; } = string.Empty;
+    public Guid Id { get; set; }
 } 

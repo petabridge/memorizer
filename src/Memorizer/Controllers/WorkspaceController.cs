@@ -77,7 +77,7 @@ public class WorkspaceController : ControllerBase
         foreach (var proj in projects)
         {
             var projMemoryCount = await _storage.GetMemoryCountByOwnerAsync(
-                MemoryOwner.ForProject(proj.Id), cancellationToken);
+                MemoryOwner.ForProject(proj.Id), cancellationToken: cancellationToken);
             totalProjectMemories += projMemoryCount;
             projectDtos.Add(new ProjectSummaryDto
             {
@@ -92,14 +92,14 @@ public class WorkspaceController : ControllerBase
 
         // Get memories directly in this workspace (not in projects)
         var directMemoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForWorkspace(workspaceId), cancellationToken);
+            MemoryOwner.ForWorkspace(workspaceId), cancellationToken: cancellationToken);
 
         // Total includes workspace memories + all project memories
         var totalMemoryCount = directMemoryCount + totalProjectMemories;
 
         // Get recent memories directly in this workspace
         var recentMemories = await _storage.GetMemoriesByOwnerAsync(
-            MemoryOwner.ForWorkspace(workspaceId), 1, 5, cancellationToken);
+            MemoryOwner.ForWorkspace(workspaceId), 1, 5, cancellationToken: cancellationToken);
 
         // Get child workspaces (nested workspaces)
         var childWorkspaces = await _storage.GetWorkspacesAsync(parentId: workspaceId, includeSystem: false, cancellationToken);
@@ -224,7 +224,7 @@ public class WorkspaceController : ControllerBase
                 cancellationToken);
 
             var memoryCount = await _storage.GetMemoryCountByOwnerAsync(
-                MemoryOwner.ForWorkspace(workspaceId), cancellationToken);
+                MemoryOwner.ForWorkspace(workspaceId), cancellationToken: cancellationToken);
             var projects = await _storage.GetProjectsAsync(workspaceId, parentId: null, statusFilter: null, cancellationToken);
 
             return Ok(new WorkspaceDto
@@ -273,7 +273,7 @@ public class WorkspaceController : ControllerBase
 
         // Get counts for warning
         var memoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForWorkspace(workspaceId), cancellationToken);
+            MemoryOwner.ForWorkspace(workspaceId), cancellationToken: cancellationToken);
         var projects = await _storage.GetProjectsAsync(workspaceId, parentId: null, statusFilter: null, cancellationToken);
 
         await _storage.DeleteWorkspaceAsync(workspaceId, cancellationToken);
@@ -294,7 +294,7 @@ public class WorkspaceController : ControllerBase
     {
         // Get memories directly in the workspace
         var directMemoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForWorkspace(workspaceId), cancellationToken);
+            MemoryOwner.ForWorkspace(workspaceId), cancellationToken: cancellationToken);
 
         // Get all projects in the workspace
         var projects = await _storage.GetProjectsAsync(workspaceId, parentId: null, statusFilter: null, cancellationToken);
@@ -304,7 +304,7 @@ public class WorkspaceController : ControllerBase
         foreach (var project in projects)
         {
             var projMemCount = await _storage.GetMemoryCountByOwnerAsync(
-                MemoryOwner.ForProject(project.Id), cancellationToken);
+                MemoryOwner.ForProject(project.Id), cancellationToken: cancellationToken);
             projectMemoryCount += projMemCount;
         }
 
