@@ -3,24 +3,21 @@
     <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/petabridge/memorizer-v1</PackageProjectUrl>
-    <VersionPrefix>2.1.0-beta1</VersionPrefix>
+    <VersionPrefix>2.1.0</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
     <PackageReleaseNotes>**Features**
-- [Improve search quality with hybrid text + vector search](https://github.com/petabridge/memorizer/pull/157) - Combines PostgreSQL full-text search with vector similarity search using Reciprocal Rank Fusion (RRF) to dramatically improve search relevance
-  - Queries like "race condition", "phobos", and "dependency injection" that previously returned zero results now surface relevant matches
-  - AND-prefix FTS matching handles stemming mismatches (e.g., "postgres" matches "postgresql")
-  - Adaptive weighting favors text matching for short queries, both methods equally for longer queries
-  - Workspace and project search also use hybrid approach for better name matching
-  - New database migration adds `search_vector` tsvector column with GIN index
+- [Add move-project-to-workspace and workspace reparenting](https://github.com/petabridge/memorizer/pull/167) - Move projects between workspaces and reparent workspaces in the hierarchy
+  - `MoveProjectToWorkspaceAsync` atomically moves a project and all its descendants to a target workspace
+  - Workspace reparenting with circular-reference guard to prevent invalid hierarchies
+  - Full support across REST API, MCP tools, and Web UI with modal dialogs
+- [Add canonical URL support to MCP tool responses](https://github.com/petabridge/memorizer/pull/162) - MCP tool responses now include clickable URLs to the web UI for memories, workspaces, and projects
+  - Configure via `Server:CanonicalUrl` setting to enable links in MCP responses
+  - URLs included in `Store`, `Get`, `SearchMemories`, `GetMany`, `CreateWorkspace`, `CreateProject`, `GetWorkspace`, and `GetProjectContext` responses
 
 **Bug Fixes**
-- [Fix inconsistent memory counts by excluding system memories from user-facing queries](https://github.com/petabridge/memorizer/pull/154) - Memory list and stats no longer inflate counts with internal system index memories
-
-**Updates**
-- [Bump Microsoft.AspNetCore.Mvc.Testing from 10.0.2 to 10.0.3](https://github.com/petabridge/memorizer/pull/156)
-- [Bump Akka.Streams from 1.5.58 to 1.5.60](https://github.com/petabridge/memorizer/pull/152)</PackageReleaseNotes>
+- [Make optional Guid MCP parameters resilient to client schema variations](https://github.com/petabridge/memorizer/pull/166) - Fixes compatibility with MCP clients (notably Cursor) that send empty strings or `"null"` for optional Guid parameters instead of proper JSON null</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>

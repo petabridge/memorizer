@@ -1,3 +1,17 @@
+#### 2.1.0 March 4th 2026 ####
+
+**Features**
+- [Add move-project-to-workspace and workspace reparenting](https://github.com/petabridge/memorizer/pull/167) - Move projects between workspaces and reparent workspaces in the hierarchy
+  - `MoveProjectToWorkspaceAsync` atomically moves a project and all its descendants to a target workspace
+  - Workspace reparenting with circular-reference guard to prevent invalid hierarchies
+  - Full support across REST API, MCP tools, and Web UI with modal dialogs
+- [Add canonical URL support to MCP tool responses](https://github.com/petabridge/memorizer/pull/162) - MCP tool responses now include clickable URLs to the web UI for memories, workspaces, and projects
+  - Configure via `Server:CanonicalUrl` setting to enable links in MCP responses
+  - URLs included in `Store`, `Get`, `SearchMemories`, `GetMany`, `CreateWorkspace`, `CreateProject`, `GetWorkspace`, and `GetProjectContext` responses
+
+**Bug Fixes**
+- [Make optional Guid MCP parameters resilient to client schema variations](https://github.com/petabridge/memorizer/pull/166) - Fixes compatibility with MCP clients (notably Cursor) that send empty strings or `"null"` for optional Guid parameters instead of proper JSON null
+
 #### 2.1.0-beta1 February 15th 2026 ####
 
 **Features**
