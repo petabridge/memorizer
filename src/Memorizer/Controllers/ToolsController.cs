@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Akka.Hosting;
 using Memorizer.Actors;
+using Memorizer.Models;
 using Memorizer.Services;
 using Memorizer.Settings;
 using Microsoft.AspNetCore.Mvc;
@@ -16,9 +17,11 @@ public class ToolsController : Controller
     private readonly IActorRef _embeddingRegenerationActor;
     private readonly IActorRef _versionPurgeActor;
     private readonly IActorRef _dimensionMigrationActor;
+    private readonly IActorRef _markdownExportActor;
     private readonly IOptionsSnapshot<LlmSettings> _llmSettingsSnapshot;
     private readonly IEmbeddingDimensionService _dimensionService;
     private readonly IDimensionMismatchState _mismatchState;
+    private readonly MarkdownExportSettings _markdownExportSettings;
     private readonly ILogger<ToolsController> _logger;
 
     // Convenience property to access current settings
@@ -29,18 +32,22 @@ public class ToolsController : Controller
         IRequiredActor<EmbeddingRegenerationActorKey> embeddingRegenerationActor,
         IRequiredActor<VersionPurgeActorKey> versionPurgeActor,
         IRequiredActor<DimensionMigrationActorKey> dimensionMigrationActor,
+        IRequiredActor<MarkdownExportActorKey> markdownExportActor,
         IOptionsSnapshot<LlmSettings> llmSettingsSnapshot,
         IEmbeddingDimensionService dimensionService,
         IDimensionMismatchState mismatchState,
+        MarkdownExportSettings markdownExportSettings,
         ILogger<ToolsController> logger)
     {
         _titleGenerationActor = titleGenerationActor.ActorRef;
         _embeddingRegenerationActor = embeddingRegenerationActor.ActorRef;
         _versionPurgeActor = versionPurgeActor.ActorRef;
         _dimensionMigrationActor = dimensionMigrationActor.ActorRef;
+        _markdownExportActor = markdownExportActor.ActorRef;
         _llmSettingsSnapshot = llmSettingsSnapshot;
         _dimensionService = dimensionService;
         _mismatchState = mismatchState;
+        _markdownExportSettings = markdownExportSettings;
         _logger = logger;
     }
 
@@ -554,6 +561,90 @@ public class ToolsController : Controller
     public class ResumeMigrationRequest
     {
         public Guid MigrationId { get; set; }
+    }
+
+    #endregion
+
+    #region Markdown Export
+
+    [HttpGet]
+    [Route("markdown-export")]
+    public IActionResult MarkdownExport()
+    {
+        ViewData["IsEnabled"] = !string.IsNullOrWhiteSpace(_markdownExportSettings.RootPath);
+        ViewData["RootPath"] = _markdownExportSettings.RootPath ?? "(not configured)";
+        return View();
+    }
+
+    [HttpPost]
+    [Route("start-markdown-export")]
+    public async Task<IActionResult> StartMarkdownExport(Guid? workspaceId = null, Guid? projectId = null)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_markdownExportSettings.RootPath))
+            {
+                return Json(new { success = false, message = "Markdown export is not configured. Set MarkdownExport:RootPath in configuration." });
+            }
+
+            var status = await _markdownExportActor.Ask<MarkdownExportStatus>(new GetMarkdownExportStatus(), TimeSpan.FromSeconds(5));
+            if (status.IsRunning)
+            {
+                return Json(new {
+                    success = false,
+                    message = "A markdown export is already in progress.",
+                    isRunning = true
+                });
+            }
+
+            var startMessage = new StartMarkdownExport
+            {
+                RequestedBy = User.Identity?.Name ?? "Anonymous",
+                WorkspaceFilter = workspaceId.HasValue ? new WorkspaceId(workspaceId.Value) : null,
+                ProjectFilter = projectId.HasValue ? new ProjectId(projectId.Value) : null
+            };
+
+            var startStatus = await _markdownExportActor.Ask<MarkdownExportStatus>(
+                startMessage, TimeSpan.FromSeconds(30));
+
+            return Json(new {
+                success = true,
+                message = "Markdown export started",
+                isRunning = startStatus.IsRunning
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting markdown export: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
+    }
+
+    [HttpGet]
+    [Route("markdown-export-status")]
+    public async Task<IActionResult> GetMarkdownExportStatus()
+    {
+        try
+        {
+            var status = await _markdownExportActor.Ask<MarkdownExportStatus>(new GetMarkdownExportStatus(), TimeSpan.FromSeconds(5));
+            return Json(new {
+                success = true,
+                status = status.Status,
+                isRunning = status.IsRunning,
+                outstanding = status.Outstanding,
+                totalProcessed = status.TotalProcessed,
+                totalSuccessful = status.TotalSuccessful,
+                totalFailed = status.TotalFailed,
+                requestedBy = status.RequestedBy,
+                startTime = status.StartTime,
+                duration = status.Duration?.TotalSeconds
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting markdown export status: {Error}", ex.Message);
+            return Json(new { success = false, message = $"Error: {ex.Message}" });
+        }
     }
 
     #endregion
