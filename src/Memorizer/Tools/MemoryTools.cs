@@ -987,6 +987,138 @@ public class MemoryTools
         return result.ToString();
     }
 
+    [McpServerTool, Description("Filter memories by tags, type, project, or workspace. At least one filter (tags or type) is required. Tags use AND logic — all specified tags must be present. Results can be scoped to a specific project or workspace.")]
+    public async Task<string> GetByFilter(
+        [Description("One or more tags to filter by (case-insensitive, AND logic). Optional if type is provided.")] string[]? tags = null,
+        [Description("Memory type to filter by (e.g. 'reference', 'how-to'). Optional if tags are provided.")] string? type = null,
+        [Description("Page number (1-based). Default is 1.")] int page = 1,
+        [Description("Number of results per page. Default is 20, max is 100.")] int pageSize = 20,
+        [Description("Optional project ID to scope results to a specific project.")] string? projectId = null,
+        [Description("Optional workspace ID to scope results to a specific workspace. Ignored if projectId is set.")] string? workspaceId = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.GetByFilter");
+
+        // Filter out empty/whitespace tags
+        var validTags = tags?.Where(t => !string.IsNullOrWhiteSpace(t)).ToArray() ?? [];
+
+        if (validTags.Length == 0 && string.IsNullOrWhiteSpace(type))
+        {
+            return "At least one filter is required: provide tags and/or type.";
+        }
+
+        // Validate pagination
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 20;
+        if (pageSize > 100) pageSize = 100;
+
+        // Determine optional owner scope
+        MemoryOwner? owner = null;
+        var parsedProjectId = ParseOptionalGuid(projectId);
+        var parsedWorkspaceId = ParseOptionalGuid(workspaceId);
+
+        if (parsedProjectId.HasValue)
+        {
+            owner = MemoryOwner.ForProject(new ProjectId(parsedProjectId.Value));
+        }
+        else if (parsedWorkspaceId.HasValue)
+        {
+            owner = MemoryOwner.ForWorkspace(new WorkspaceId(parsedWorkspaceId.Value));
+        }
+
+        List<Memorizer.Models.Memory> memories;
+        int totalCount;
+
+        if (validTags.Length > 0)
+        {
+            // Tag-based filtering (supports all additional filters)
+            var result2 = await _storage.GetMemoriesByTagAsync(validTags, page, pageSize, owner, type, cancellationToken);
+            memories = result2.Memories.ToList();
+            totalCount = result2.TotalCount;
+        }
+        else if (owner.HasValue)
+        {
+            // Type + owner filtering (no tags)
+            memories = (await _storage.GetMemoriesByOwnerAsync(owner.Value, page, pageSize, type, cancellationToken)).ToList();
+            totalCount = await _storage.GetMemoryCountByOwnerAsync(owner.Value, type, cancellationToken);
+        }
+        else
+        {
+            // Type-only filtering
+            var result2 = await _storage.GetMemoriesPaginated(page, pageSize, type, cancellationToken);
+            memories = result2.Memories;
+            totalCount = result2.TotalCount;
+        }
+
+        // Build filter description
+        var filterParts = new List<string>();
+        if (validTags.Length > 0) filterParts.Add($"tags: {string.Join(", ", validTags.Select(t => $"\"{t}\""))}");
+        if (!string.IsNullOrWhiteSpace(type)) filterParts.Add($"type: \"{type}\"");
+        var filterLabel = string.Join(", ", filterParts);
+
+        _logger.LogInformation("GetByFilter completed. Filter: {Filter}, Page: {Page}, PageSize: {PageSize}, ResultCount: {ResultCount}, TotalCount: {TotalCount}",
+            filterLabel, page, pageSize, memories.Count, totalCount);
+
+        if (memories.Count == 0)
+        {
+            activity?.SetStatus(ActivityStatusCode.Ok, "No memories found for filter");
+            var scopeInfo = owner.HasValue ? $" in {FormatOwner(owner.Value)}" : "";
+            return $"No memories found with {filterLabel}{scopeInfo}.";
+        }
+
+        StringBuilder result = new();
+        var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+        result.AppendLine($"Filtered memories ({filterLabel}) — Page {page} of {totalPages}, {totalCount} total:");
+        if (owner.HasValue)
+        {
+            result.AppendLine($"Scoped to: {FormatOwner(owner.Value)}");
+        }
+        result.AppendLine();
+
+        var memoryIds = new List<Guid>();
+
+        foreach (var memory in memories)
+        {
+            memoryIds.Add(memory.Id.Value);
+
+            result.AppendLine($"ID: {memory.Id}");
+            result.AppendLine($"  Title: {memory.Title ?? "Untitled"}");
+            result.AppendLine($"  Type: {memory.Type}");
+            result.AppendLine($"  Owner: {FormatOwner(memory.Owner)}");
+            result.AppendLine($"  Tags: {(memory.Tags != null ? string.Join(", ", memory.Tags) : "none")}");
+            result.AppendLine($"  Updated: {memory.UpdatedAt:yyyy-MM-dd HH:mm:ss}");
+
+            if (_canonicalUrlService.IsConfigured)
+            {
+                result.AppendLine($"  URL: {_canonicalUrlService.GetMemoryUrl(memory.Id)}");
+            }
+
+            result.AppendLine();
+        }
+
+        if (totalPages > 1)
+        {
+            result.AppendLine("---");
+            if (page < totalPages)
+            {
+                result.AppendLine($"Use GetByFilter with page={page + 1} to see more results.");
+            }
+            if (page > 1)
+            {
+                result.AppendLine($"Use GetByFilter with page={page - 1} to see previous results.");
+            }
+        }
+
+        result.AppendLine();
+        result.AppendLine($"Use Get with a memory ID to view full content.");
+        result.AppendLine($"Use GetMany with IDs: [{string.Join(", ", memoryIds)}] to fetch all at once.");
+
+        activity?.SetStatus(ActivityStatusCode.Ok, $"Listed {memories.Count} memories for filter {filterLabel}");
+        return result.ToString();
+    }
+
     [McpServerTool, Description("List archived memories with pagination. Use this to browse obsolete content for reference, audit, or potential restoration.")]
     public async Task<string> ListArchived(
         [Description("Page number (1-based). Default is 1.")] int page = 1,

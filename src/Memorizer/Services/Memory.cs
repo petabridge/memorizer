@@ -63,6 +63,7 @@ public interface IStorage
     Task<(List<Memorizer.Models.Memory> Memories, int TotalCount)> GetMemoriesPaginated(
         int page = 1,
         int pageSize = 20,
+        string? memoryType = null,
         CancellationToken cancellationToken = default
     );
 
@@ -80,6 +81,16 @@ public interface IStorage
 
     // Get distinct memory types
     Task<List<string>> GetDistinctMemoryTypes(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all distinct tags across all non-archived memories, sorted alphabetically.
+    /// </summary>
+    Task<List<string>> GetDistinctTagsAsync(MemoryOwner? owner = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets distinct owner (type, id) pairs for memories matching the given filters.
+    /// </summary>
+    Task<List<MemoryOwner>> GetDistinctOwnersAsync(string[]? tags = null, string? memoryType = null, CancellationToken cancellationToken = default);
 
     // Title generation support
     Task<List<Memorizer.Models.Memory>> GetMemoriesWithoutTitles(
@@ -355,12 +366,13 @@ public interface IStorage
         MemoryOwner owner,
         int page = 1,
         int pageSize = 50,
+        string? memoryType = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the count of memories for an owner.
     /// </summary>
-    Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, CancellationToken cancellationToken = default);
+    Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, string? memoryType = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets unfiled memories (convenience method).
@@ -368,12 +380,25 @@ public interface IStorage
     Task<IReadOnlyList<Memorizer.Models.Memory>> GetUnfiledMemoriesAsync(
         int page = 1,
         int pageSize = 50,
+        string? memoryType = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the count of unfiled memories.
     /// </summary>
-    Task<int> GetUnfiledMemoryCountAsync(CancellationToken cancellationToken = default);
+    Task<int> GetUnfiledMemoryCountAsync(string? memoryType = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets memories matching one or more tags (case-insensitive, AND logic) with pagination.
+    /// Optionally scoped to a specific owner (workspace/project).
+    /// </summary>
+    Task<(IReadOnlyList<Memorizer.Models.Memory> Memories, int TotalCount)> GetMemoriesByTagAsync(
+        string[] tags,
+        int page = 1,
+        int pageSize = 20,
+        MemoryOwner? owner = null,
+        string? memoryType = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Seeds system memories for all projects and workspaces that don't have them.
@@ -900,27 +925,32 @@ public class Storage : IStorage
     public async Task<(List<Memorizer.Models.Memory> Memories, int TotalCount)> GetMemoriesPaginated(
         int page = 1,
         int pageSize = 20,
+        string? memoryType = null,
         CancellationToken cancellationToken = default
     )
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-        
+
+        var typeClause = !string.IsNullOrWhiteSpace(memoryType) ? " AND type_legacy = @memoryType" : "";
+
         // Get total count first
         // Exclude System (3) and Archived (2) memories from user-facing lists
-        const string countSql = "SELECT COUNT(*) FROM memories WHERE archetype IN (0, 1)";
+        var countSql = $"SELECT COUNT(*) FROM memories WHERE archetype IN (0, 1){typeClause}";
         await using NpgsqlCommand countCmd = new(countSql, connection);
+        if (!string.IsNullOrWhiteSpace(memoryType)) countCmd.Parameters.AddWithValue("memoryType", memoryType);
         var countResult = await countCmd.ExecuteScalarAsync(cancellationToken);
         var totalCount = countResult is null ? 0L : Convert.ToInt64(countResult);
-        
+
         // Get paginated results
-        const string sql = @"
+        var sql = $@"
             SELECT id, type_legacy, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, owner_type, owner_id, archetype
             FROM memories
-            WHERE archetype IN (0, 1)
+            WHERE archetype IN (0, 1){typeClause}
             ORDER BY created_at DESC
             LIMIT @limit OFFSET @offset";
 
         await using NpgsqlCommand cmd = new(sql, connection);
+        if (!string.IsNullOrWhiteSpace(memoryType)) cmd.Parameters.AddWithValue("memoryType", memoryType);
         cmd.Parameters.AddWithValue("limit", pageSize);
         cmd.Parameters.AddWithValue("offset", (page - 1) * pageSize);
 
@@ -1735,6 +1765,79 @@ public class Storage : IStorage
         while (await reader.ReadAsync(cancellationToken))
         {
             result.Add(reader.GetString(0));
+        }
+
+        return result;
+    }
+
+    public async Task<List<string>> GetDistinctTagsAsync(MemoryOwner? owner = null, CancellationToken cancellationToken = default)
+    {
+        var ownerClause = "";
+        if (owner.HasValue)
+        {
+            ownerClause = " AND owner_type = @ownerType AND owner_id = @ownerId";
+        }
+
+        var sql = $@"
+            SELECT DISTINCT tag
+            FROM memories, unnest(tags) AS tag
+            WHERE archetype IN (0, 1){ownerClause}
+            ORDER BY tag";
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+
+        if (owner.HasValue)
+        {
+            command.Parameters.AddWithValue("ownerType", (short)owner.Value.Type);
+            command.Parameters.AddWithValue("ownerId", owner.Value.Id);
+        }
+
+        var result = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(reader.GetString(0));
+        }
+
+        return result;
+    }
+
+    public async Task<List<MemoryOwner>> GetDistinctOwnersAsync(string[]? tags = null, string? memoryType = null, CancellationToken cancellationToken = default)
+    {
+        var clauses = new List<string> { "archetype IN (0, 1)" };
+
+        var validTags = tags?.Where(t => !string.IsNullOrWhiteSpace(t)).ToArray() ?? [];
+        for (var i = 0; i < validTags.Length; i++)
+        {
+            clauses.Add($"EXISTS (SELECT 1 FROM unnest(tags) t WHERE lower(t) = lower(@tag{i}))");
+        }
+
+        if (!string.IsNullOrWhiteSpace(memoryType))
+        {
+            clauses.Add("type_legacy = @memoryType");
+        }
+
+        var where = string.Join(" AND ", clauses);
+        var sql = $"SELECT DISTINCT owner_type, owner_id FROM memories WHERE {where}";
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+
+        for (var i = 0; i < validTags.Length; i++)
+            command.Parameters.AddWithValue($"tag{i}", validTags[i]);
+        if (!string.IsNullOrWhiteSpace(memoryType))
+            command.Parameters.AddWithValue("memoryType", memoryType);
+
+        var result = new List<MemoryOwner>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var ownerType = (OwnerTypeEnum)reader.GetInt16(0);
+            var ownerId = reader.GetGuid(1);
+            result.Add(new MemoryOwner { Type = ownerType, Id = ownerId });
         }
 
         return result;
@@ -3696,21 +3799,24 @@ public class Storage : IStorage
         MemoryOwner owner,
         int page = 1,
         int pageSize = 50,
+        string? memoryType = null,
         CancellationToken cancellationToken = default)
     {
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        var typeClause = !string.IsNullOrWhiteSpace(memoryType) ? " AND type_legacy = @memoryType" : "";
         // Exclude System memories (archetype = 3) and Archived memories (archetype = 2) from normal queries
-        await using var cmd = new NpgsqlCommand(@"
+        await using var cmd = new NpgsqlCommand($@"
             SELECT id, type_legacy, content, text, source, embedding, embedding_metadata, tags, confidence,
-                   created_at, updated_at, title, current_version
+                   created_at, updated_at, title, current_version, owner_type, owner_id, archetype
             FROM memories
             WHERE owner_type = @ownerType AND owner_id = @ownerId
-              AND archetype IN (0, 1)
+              AND archetype IN (0, 1){typeClause}
             ORDER BY updated_at DESC
             LIMIT @limit OFFSET @offset", conn);
 
         cmd.Parameters.AddWithValue("ownerType", (short)owner.Type);
         cmd.Parameters.AddWithValue("ownerId", owner.Id);
+        if (!string.IsNullOrWhiteSpace(memoryType)) cmd.Parameters.AddWithValue("memoryType", memoryType);
         cmd.Parameters.AddWithValue("limit", pageSize);
         cmd.Parameters.AddWithValue("offset", (page - 1) * pageSize);
 
@@ -3718,22 +3824,24 @@ public class Storage : IStorage
         await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            results.Add(ReadMemoryFromReaderLegacy(reader));
+            results.Add(ReadMemoryFromReader(reader, withSimilarity: false));
         }
         return results;
     }
 
-    public async Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, CancellationToken cancellationToken = default)
+    public async Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, string? memoryType = null, CancellationToken cancellationToken = default)
     {
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+        var typeClause = !string.IsNullOrWhiteSpace(memoryType) ? " AND type_legacy = @memoryType" : "";
         // Exclude System memories (archetype = 3) and Archived memories (archetype = 2) from normal queries
-        await using var cmd = new NpgsqlCommand(@"
+        await using var cmd = new NpgsqlCommand($@"
             SELECT COUNT(*) FROM memories
             WHERE owner_type = @ownerType AND owner_id = @ownerId
-              AND archetype IN (0, 1)", conn);
+              AND archetype IN (0, 1){typeClause}", conn);
 
         cmd.Parameters.AddWithValue("ownerType", (short)owner.Type);
         cmd.Parameters.AddWithValue("ownerId", owner.Id);
+        if (!string.IsNullOrWhiteSpace(memoryType)) cmd.Parameters.AddWithValue("memoryType", memoryType);
 
         var result = await cmd.ExecuteScalarAsync(cancellationToken);
         return Convert.ToInt32(result);
@@ -3742,14 +3850,102 @@ public class Storage : IStorage
     public Task<IReadOnlyList<Memorizer.Models.Memory>> GetUnfiledMemoriesAsync(
         int page = 1,
         int pageSize = 50,
+        string? memoryType = null,
         CancellationToken cancellationToken = default)
     {
-        return GetMemoriesByOwnerAsync(MemoryOwner.Unfiled, page, pageSize, cancellationToken);
+        return GetMemoriesByOwnerAsync(MemoryOwner.Unfiled, page, pageSize, memoryType, cancellationToken);
     }
 
-    public Task<int> GetUnfiledMemoryCountAsync(CancellationToken cancellationToken = default)
+    public Task<int> GetUnfiledMemoryCountAsync(string? memoryType = null, CancellationToken cancellationToken = default)
     {
-        return GetMemoryCountByOwnerAsync(MemoryOwner.Unfiled, cancellationToken);
+        return GetMemoryCountByOwnerAsync(MemoryOwner.Unfiled, memoryType, cancellationToken);
+    }
+
+    public async Task<(IReadOnlyList<Memorizer.Models.Memory> Memories, int TotalCount)> GetMemoriesByTagAsync(
+        string[] tags,
+        int page = 1,
+        int pageSize = 20,
+        MemoryOwner? owner = null,
+        string? memoryType = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
+
+        // Build tag filter: each tag must match at least one element (AND logic)
+        var tagClauses = new List<string>();
+        for (var i = 0; i < tags.Length; i++)
+        {
+            tagClauses.Add($"EXISTS (SELECT 1 FROM unnest(tags) t WHERE lower(t) = lower(@tag{i}))");
+        }
+        var tagFilter = string.Join(" AND ", tagClauses);
+
+        // Build optional owner filter clause
+        var ownerClause = "";
+        if (owner.HasValue)
+        {
+            ownerClause = " AND owner_type = @ownerType AND owner_id = @ownerId";
+        }
+
+        // Build optional type filter clause
+        var typeClause = "";
+        if (!string.IsNullOrWhiteSpace(memoryType))
+        {
+            typeClause = " AND type_legacy = @memoryType";
+        }
+
+        void AddTagParams(NpgsqlCommand c)
+        {
+            for (var i = 0; i < tags.Length; i++)
+                c.Parameters.AddWithValue($"tag{i}", tags[i]);
+        }
+
+        void AddOwnerParams(NpgsqlCommand c)
+        {
+            if (!owner.HasValue) return;
+            c.Parameters.AddWithValue("ownerType", (short)owner.Value.Type);
+            c.Parameters.AddWithValue("ownerId", owner.Value.Id);
+        }
+
+        void AddTypeParam(NpgsqlCommand c)
+        {
+            if (!string.IsNullOrWhiteSpace(memoryType))
+                c.Parameters.AddWithValue("memoryType", memoryType);
+        }
+
+        // Count query
+        await using var countCmd = new NpgsqlCommand($@"
+            SELECT COUNT(*) FROM memories
+            WHERE archetype IN (0, 1)
+              AND {tagFilter}{ownerClause}{typeClause}", conn);
+        AddTagParams(countCmd);
+        AddOwnerParams(countCmd);
+        AddTypeParam(countCmd);
+        var countResult = await countCmd.ExecuteScalarAsync(cancellationToken);
+        var totalCount = Convert.ToInt32(countResult);
+
+        // Paginated results
+        await using var cmd = new NpgsqlCommand($@"
+            SELECT id, type_legacy, content, text, source, embedding, embedding_metadata, tags, confidence,
+                   created_at, updated_at, title, current_version, owner_type, owner_id, archetype
+            FROM memories
+            WHERE archetype IN (0, 1)
+              AND {tagFilter}{ownerClause}{typeClause}
+            ORDER BY updated_at DESC
+            LIMIT @limit OFFSET @offset", conn);
+        AddTagParams(cmd);
+        AddOwnerParams(cmd);
+        AddTypeParam(cmd);
+        cmd.Parameters.AddWithValue("limit", pageSize);
+        cmd.Parameters.AddWithValue("offset", (page - 1) * pageSize);
+
+        var results = new List<Memorizer.Models.Memory>();
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            results.Add(ReadMemoryFromReader(reader, withSimilarity: false));
+        }
+
+        return (results, totalCount);
     }
 
     // ===== Reader Helpers for New Entities =====

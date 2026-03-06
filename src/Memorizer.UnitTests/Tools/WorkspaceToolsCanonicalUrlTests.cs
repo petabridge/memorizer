@@ -300,10 +300,14 @@ public class WorkspaceToolsCanonicalUrlTests
             => throw new NotImplementedException();
         public Task<List<Memory>> Search(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, bool includeArchived = false, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
-        public Task<(List<Memory> Memories, int TotalCount)> GetMemoriesPaginated(int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+        public Task<(List<Memory> Memories, int TotalCount)> GetMemoriesPaginated(int page = 1, int pageSize = 20, string? memoryType = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
         public Task<List<string>> GetDistinctMemoryTypes(CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
+        public Task<List<string>> GetDistinctTagsAsync(MemoryOwner? owner = null, CancellationToken cancellationToken = default)
+            => throw new NotImplementedException();
+        public Task<List<MemoryOwner>> GetDistinctOwnersAsync(string[]? tags = null, string? memoryType = null, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<MemoryOwner>());
         public Task<List<Memory>> GetMemoriesWithoutTitles(int limit = 50, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
         public Task UpdateMemoryTitle(MemoryId id, string title, CancellationToken cancellationToken = default)
@@ -334,14 +338,16 @@ public class WorkspaceToolsCanonicalUrlTests
             => throw new NotImplementedException();
         public Task<(IReadOnlyList<Memory> Memories, int TotalCount)> GetArchivedMemoriesAsync(int page = 1, int pageSize = 50, ProjectId? projectId = null, CancellationToken cancellationToken = default)
             => Task.FromResult<(IReadOnlyList<Memory> Memories, int TotalCount)>((new List<Memory>(), 0));
-        public Task<IReadOnlyList<Memory>> GetMemoriesByOwnerAsync(MemoryOwner owner, int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Memory>> GetMemoriesByOwnerAsync(MemoryOwner owner, int page = 1, int pageSize = 50, string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Memory>>(new List<Memory>());
-        public Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, CancellationToken cancellationToken = default)
+        public Task<int> GetMemoryCountByOwnerAsync(MemoryOwner owner, string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult(0);
-        public Task<IReadOnlyList<Memory>> GetUnfiledMemoriesAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<Memory>> GetUnfiledMemoriesAsync(int page = 1, int pageSize = 50, string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<Memory>>(new List<Memory>());
-        public Task<int> GetUnfiledMemoryCountAsync(CancellationToken cancellationToken = default)
+        public Task<int> GetUnfiledMemoryCountAsync(string? memoryType = null, CancellationToken cancellationToken = default)
             => Task.FromResult(0);
+        public Task<(IReadOnlyList<Memory> Memories, int TotalCount)> GetMemoriesByTagAsync(string[] tags, int page = 1, int pageSize = 20, MemoryOwner? owner = null, string? memoryType = null, CancellationToken cancellationToken = default)
+            => Task.FromResult<(IReadOnlyList<Memory>, int)>((new List<Memory>(), 0));
 
         // Provider settings
         public Task<ProviderSettings?> GetActiveProviderAsync(string providerType, CancellationToken cancellationToken = default)

@@ -124,8 +124,8 @@ public class WebUIIntegrationTests : IDisposable
             }
 
             // Act - Test pagination
-            var (page1Memories, page1Total) = await storage.GetMemoriesPaginated(1, 10, CancellationToken.None);
-            var (page2Memories, page2Total) = await storage.GetMemoriesPaginated(2, 10, CancellationToken.None);
+            var (page1Memories, page1Total) = await storage.GetMemoriesPaginated(1, 10, cancellationToken: CancellationToken.None);
+            var (page2Memories, page2Total) = await storage.GetMemoriesPaginated(2, 10, cancellationToken: CancellationToken.None);
 
             // Assert
             Assert.Equal(10, page1Memories.Count);

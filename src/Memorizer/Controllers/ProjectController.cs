@@ -88,11 +88,11 @@ public class ProjectController : ControllerBase
 
         var workspace = await _storage.GetWorkspaceAsync(project.WorkspaceId, cancellationToken);
         var memoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForProject(projectId), cancellationToken);
+            MemoryOwner.ForProject(projectId), cancellationToken: cancellationToken);
 
         // Get recent memories in this project
         var recentMemories = await _storage.GetMemoriesByOwnerAsync(
-            MemoryOwner.ForProject(projectId), 1, 10, cancellationToken);
+            MemoryOwner.ForProject(projectId), 1, 10, cancellationToken: cancellationToken);
 
         // Get child projects
         var childProjects = await _storage.GetProjectsAsync(
@@ -319,7 +319,7 @@ public class ProjectController : ControllerBase
 
         // Get memory count for info
         var memoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForProject(projectId), cancellationToken);
+            MemoryOwner.ForProject(projectId), cancellationToken: cancellationToken);
 
         await _storage.DeleteProjectAsync(projectId, cancellationToken);
 
@@ -332,7 +332,7 @@ public class ProjectController : ControllerBase
     private async Task<ProjectDto> ToProjectDto(Project project, string workspaceName, CancellationToken cancellationToken)
     {
         var memoryCount = await _storage.GetMemoryCountByOwnerAsync(
-            MemoryOwner.ForProject(project.Id), cancellationToken);
+            MemoryOwner.ForProject(project.Id), cancellationToken: cancellationToken);
 
         return new ProjectDto
         {
