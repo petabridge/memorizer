@@ -188,7 +188,7 @@ public partial class MarkdownExportService : IMarkdownExportService
 
         while (!ct.IsCancellationRequested)
         {
-            var (memories, totalCount) = await GetStorage().GetMemoriesPaginated(page, pageSize, ct);
+            var (memories, totalCount) = await GetStorage().GetMemoriesPaginated(page, pageSize, cancellationToken: ct);
             if (memories.Count == 0) break;
 
             foreach (var m in memories)
