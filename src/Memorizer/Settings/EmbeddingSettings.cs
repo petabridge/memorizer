@@ -1,3 +1,5 @@
+using Memorizer.Models;
+
 namespace Memorizer.Settings;
 
 /// <summary>
@@ -14,7 +16,20 @@ namespace Memorizer.Settings;
 /// </summary>
 public class EmbeddingSettings
 {
+    /// <summary>
+    /// Provider identifier. Supported values: <see cref="ProviderNames.Ollama"/>, <see cref="ProviderNames.OpenAI"/>.
+    /// OpenAI selects the OpenAI-compatible <c>POST /v1/embeddings</c> shape, which is also exposed by
+    /// LiteLLM, vLLM, Azure OpenAI, LocalAI, and similar gateways.
+    /// </summary>
+    public string Provider { get; set; } = ProviderNames.Ollama;
+
     public Uri ApiUrl { get; set; } = new("http://localhost:11434");
     public string Model { get; set; } = "all-minilm";
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Optional bearer token sent as <c>Authorization: Bearer &lt;ApiKey&gt;</c>.
+    /// Required for the hosted OpenAI API; usually omitted for self-hosted compatible servers.
+    /// </summary>
+    public string? ApiKey { get; set; }
 }

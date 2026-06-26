@@ -17,7 +17,7 @@ public class EmbeddingDimensionService : IEmbeddingDimensionService
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly IOptionsSnapshot<EmbeddingSettings> _settingsSnapshot;
-    private readonly HttpClient _httpClient;
+    private readonly IEmbeddingApiClient _apiClient;
     private readonly ILogger<EmbeddingDimensionService> _logger;
 
     // Convenience property to get current settings
@@ -30,20 +30,17 @@ public class EmbeddingDimensionService : IEmbeddingDimensionService
     public EmbeddingDimensionService(
         NpgsqlDataSource dataSource,
         IOptionsSnapshot<EmbeddingSettings> settingsSnapshot,
-        HttpClient httpClient,
+        IEmbeddingApiClient apiClient,
         ILogger<EmbeddingDimensionService> logger)
     {
         _dataSource = dataSource;
         _settingsSnapshot = settingsSnapshot;
-        _httpClient = httpClient;
-        _httpClient.BaseAddress = Settings.ApiUrl;
-        _httpClient.Timeout = Settings.Timeout;
+        _apiClient = apiClient;
         _logger = logger;
     }
 
     public async Task<int?> ProbeModelDimensionsAsync(CancellationToken ct = default)
     {
-        // Return cached value if we've already probed this model
         if (_cachedModelDimensions.HasValue && _cachedModelName == Settings.Model)
         {
             return _cachedModelDimensions;
@@ -53,24 +50,15 @@ public class EmbeddingDimensionService : IEmbeddingDimensionService
         {
             _logger.LogDebug("Probing embedding model {Model} for dimensions", Settings.Model);
 
-            var request = new EmbeddingRequest
-            {
-                Model = Settings.Model,
-                Prompt = "dimension probe"
-            };
+            var embedding = await _apiClient.GenerateAsync(Settings.Model, "dimension probe", ct);
 
-            var response = await _httpClient.PostAsJsonAsync("api/embeddings", request, ct);
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<EmbeddingResponse>(cancellationToken: ct);
-
-            if (result?.Embedding == null || result.Embedding.Length == 0)
+            if (embedding.Length == 0)
             {
                 _logger.LogWarning("Empty embedding response from model probe");
                 return null;
             }
 
-            _cachedModelDimensions = result.Embedding.Length;
+            _cachedModelDimensions = embedding.Length;
             _cachedModelName = Settings.Model;
 
             _logger.LogInformation("Detected {Dimensions} dimensions from model {Model}",
@@ -306,13 +294,19 @@ public class EmbeddingDimensionService : IEmbeddingDimensionService
         if (detected.HasValue)
             return detected.Value;
 
-        // Fall back to stored config
         var stored = await GetActiveConfigAsync(ct);
+        var schema = await GetDatabaseSchemaDimensionsAsync(ct);
+
+        // During dimension migration the schema changes before embedding_config is finalized.
+        // Fallback embeddings must satisfy the live VECTOR(n) columns to avoid failed writes.
+        if (schema.HasValue && stored != null && stored.Dimensions != schema.Value)
+            return schema.Value;
+
+        // Fall back to stored config
         if (stored != null)
             return stored.Dimensions;
 
         // Fall back to schema
-        var schema = await GetDatabaseSchemaDimensionsAsync(ct);
         if (schema.HasValue)
             return schema.Value;
 

@@ -43,17 +43,29 @@
                         <div class="col-md-6">
                             <table class="table table-sm">
                                 <tr>
-                                    <td><strong>API Configured:</strong></td>
-                                    <td><span id="embeddingApiConfigured" class="badge"></span></td>
+                                    <td><strong>Provider:</strong></td>
+                                    <td><code id="embeddingProvider"></code></td>
                                 </tr>
                                 <tr>
-                                    <td><strong>Model:</strong></td>
-                                    <td><code id="embeddingModel"></code></td>
+                                    <td><strong>API URL:</strong></td>
+                                    <td><code id="embeddingApiUrl"></code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>API Configured:</strong></td>
+                                    <td><span id="embeddingApiConfigured" class="badge"></span></td>
                                 </tr>
                             </table>
                         </div>
                         <div class="col-md-6">
                             <table class="table table-sm">
+                                <tr>
+                                    <td><strong>Model:</strong></td>
+                                    <td><code id="embeddingModel"></code></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>API Key:</strong></td>
+                                    <td><span id="embeddingApiKeyConfigured" class="badge"></span></td>
+                                </tr>
                                 <tr>
                                     <td><strong>Timeout:</strong></td>
                                     <td><span id="embeddingTimeout"></span></td>
@@ -210,7 +222,10 @@ function displayConfiguration(config) {
     document.getElementById('configContent').style.display = 'block';
 
     // Embedding Configuration
+    setText('embeddingProvider', config.embeddingSettings.provider);
+    setText('embeddingApiUrl', config.embeddingSettings.apiUrl);
     setBadge('embeddingApiConfigured', config.embeddingSettings.apiConfigured, 'Configured', 'Not Configured');
+    setBadge('embeddingApiKeyConfigured', config.embeddingSettings.apiKeyConfigured, 'Configured', 'Not Configured');
     setText('embeddingModel', config.embeddingSettings.model);
     setText('embeddingTimeout', config.embeddingSettings.timeout);
 
