@@ -294,13 +294,19 @@ public class EmbeddingDimensionService : IEmbeddingDimensionService
         if (detected.HasValue)
             return detected.Value;
 
-        // Fall back to stored config
         var stored = await GetActiveConfigAsync(ct);
+        var schema = await GetDatabaseSchemaDimensionsAsync(ct);
+
+        // During dimension migration the schema changes before embedding_config is finalized.
+        // Fallback embeddings must satisfy the live VECTOR(n) columns to avoid failed writes.
+        if (schema.HasValue && stored != null && stored.Dimensions != schema.Value)
+            return schema.Value;
+
+        // Fall back to stored config
         if (stored != null)
             return stored.Dimensions;
 
         // Fall back to schema
-        var schema = await GetDatabaseSchemaDimensionsAsync(ct);
         if (schema.HasValue)
             return schema.Value;
 

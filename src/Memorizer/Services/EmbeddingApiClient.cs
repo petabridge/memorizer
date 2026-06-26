@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Memorizer.Models;
 using Memorizer.Settings;
 using Microsoft.Extensions.Options;
@@ -35,12 +36,6 @@ public sealed class EmbeddingApiClient : IEmbeddingApiClient
 
         _httpClient.BaseAddress = Settings.ApiUrl;
         _httpClient.Timeout = Settings.Timeout;
-
-        if (!string.IsNullOrWhiteSpace(Settings.ApiKey))
-        {
-            _httpClient.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", Settings.ApiKey);
-        }
     }
 
     public async Task<float[]> GenerateAsync(string model, string text, CancellationToken cancellationToken = default)
@@ -75,9 +70,19 @@ public sealed class EmbeddingApiClient : IEmbeddingApiClient
     private async Task<float[]> GenerateOpenAIAsync(string model, string text, CancellationToken cancellationToken)
     {
         var request = new OpenAIEmbeddingRequest { Model = model, Input = text };
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "v1/embeddings")
+        {
+            Content = JsonContent.Create(request)
+        };
+
+        if (!string.IsNullOrWhiteSpace(Settings.ApiKey))
+        {
+            httpRequest.Headers.Authorization =
+                new AuthenticationHeaderValue("Bearer", Settings.ApiKey);
+        }
 
         _logger.LogDebug("Sending OpenAI-compatible embedding request to {ApiUrl}", Settings.ApiUrl);
-        var response = await _httpClient.PostAsJsonAsync("v1/embeddings", request, cancellationToken);
+        var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<OpenAIEmbeddingResponse>(cancellationToken: cancellationToken);

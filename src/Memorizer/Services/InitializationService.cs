@@ -148,11 +148,6 @@ public sealed class InitializationService : BackgroundService
                 {
                     config["Embeddings:Model"] = modelProp.GetString();
                 }
-                if (providerConfig.TryGetProperty("apiKey", out var apiKeyProp))
-                {
-                    config["Embeddings:ApiKey"] = apiKeyProp.GetString();
-                }
-
                 _logger.LogInformation(
                     "Loaded embedding settings from database: Provider={Provider}, ApiUrl={ApiUrl}, Model={Model}",
                     config["Embeddings:Provider"], config["Embeddings:ApiUrl"], config["Embeddings:Model"]);
@@ -198,7 +193,6 @@ public sealed class InitializationService : BackgroundService
         var configModel = settings.Model;
 
         var configProvider = string.IsNullOrWhiteSpace(settings.Provider) ? ProviderNames.Ollama : settings.Provider;
-        var configApiKey = settings.ApiKey;
         var configDisplayName = string.Equals(configProvider, ProviderNames.OpenAI, StringComparison.OrdinalIgnoreCase)
             ? "OpenAI Embeddings"
             : "Ollama Embeddings";
@@ -219,8 +213,7 @@ public sealed class InitializationService : BackgroundService
                 Config = JsonDocument.Parse(JsonSerializer.Serialize(new
                 {
                     apiUrl = configApiUrl,
-                    model = configModel,
-                    apiKey = configApiKey
+                    model = configModel
                 })),
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
@@ -249,27 +242,38 @@ public sealed class InitializationService : BackgroundService
             {
                 _logger.LogInformation(
                     "Updating embedding provider from localhost defaults to environment config: " +
-                    "ApiUrl={OldUrl}->{NewUrl}, Model={OldModel}->{NewModel}",
-                    existingApiUrl, configApiUrl, existingModel, configModel);
+                    "Provider={OldProvider}->{NewProvider}, ApiUrl={OldUrl}->{NewUrl}, Model={OldModel}->{NewModel}",
+                    activeProvider.ProviderName, configProvider, existingApiUrl, configApiUrl, existingModel, configModel);
+
+                var providerToUpdate = existingProviders.FirstOrDefault(p =>
+                    string.Equals(p.ProviderName, configProvider, StringComparison.OrdinalIgnoreCase));
+                var isSameProvider = string.Equals(
+                    activeProvider.ProviderName,
+                    configProvider,
+                    StringComparison.OrdinalIgnoreCase);
 
                 var updatedProvider = new ProviderSettings
                 {
-                    Id = activeProvider.Id,
+                    Id = providerToUpdate?.Id ?? (isSameProvider ? activeProvider.Id : ProviderSettingsId.New()),
                     ProviderType = ProviderTypes.Embedding,
                     ProviderName = configProvider,
                     DisplayName = configDisplayName,
                     Config = JsonDocument.Parse(JsonSerializer.Serialize(new
                     {
                         apiUrl = configApiUrl,
-                        model = configModel,
-                        apiKey = configApiKey
+                        model = configModel
                     })),
                     IsActive = true,
-                    CreatedAt = activeProvider.CreatedAt,
+                    CreatedAt = providerToUpdate?.CreatedAt ?? (isSameProvider ? activeProvider.CreatedAt : DateTime.UtcNow),
                     UpdatedAt = DateTime.UtcNow
                 };
 
                 await storage.SaveProviderSettingsAsync(updatedProvider, ct);
+                if (!isSameProvider)
+                {
+                    await storage.SetActiveProviderAsync(ProviderTypes.Embedding, configProvider, ct);
+                }
+
                 _logger.LogInformation("Embedding provider updated to use environment configuration");
             }
             else

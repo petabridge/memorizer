@@ -96,6 +96,27 @@ public class EmbeddingApiClientTests
     }
 
     [Fact]
+    public async Task GenerateAsync_OllamaProvider_WithApiKey_DoesNotSendAuthHeader()
+    {
+        var handler = new RecordingHandler(JsonSerializer.Serialize(new
+        {
+            embedding = new float[] { 0.1f, 0.2f, 0.3f }
+        }));
+
+        var client = CreateClient(handler, new EmbeddingSettings
+        {
+            Provider = ProviderNames.Ollama,
+            ApiUrl = new Uri("http://embed.local"),
+            Model = "all-minilm",
+            ApiKey = "sk-should-not-leak"
+        });
+
+        await client.GenerateAsync("all-minilm", "probe");
+
+        Assert.Null(handler.LastRequest!.Headers.Authorization);
+    }
+
+    [Fact]
     public async Task GenerateAsync_ProviderMatchIsCaseInsensitive()
     {
         var handler = new RecordingHandler(JsonSerializer.Serialize(new
