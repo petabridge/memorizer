@@ -1,3 +1,24 @@
+#### 2.2.0-beta1 June 26th 2026 ####
+
+**Features**
+- [Add cross-project tag filtering with multi-tag selection and dynamic filter panel](https://github.com/petabridge/memorizer/pull/168) - Filter memories across projects and workspaces by tags, type, and location from a persistent filter panel
+  - Multi-tag selection with searchable suggestions and removable filter badges
+  - Tag suggestions and location filters update dynamically based on the current filter context
+  - Memory cards show owner badges when filtering across locations, and tag badges link directly to filtered results
+  - MCP `GetByFilter` supports filtering by type, location, and tags
+- [Harden OpenAI-compatible embedding provider support](https://github.com/petabridge/memorizer/pull/194) - Improves OpenAI-compatible embedding provider configuration, migration behavior, and credential safety
+  - Embedding API keys are read from runtime configuration instead of persisted provider settings
+  - Sensitive provider configuration values are stripped before API display or database storage
+  - Adds a database migration to remove previously persisted provider API keys from `provider_settings.config`
+  - Makes fallback embedding dimensions safer during dimension migrations
+
+**Bug Fixes**
+- [Self-heal stale dimension configuration after migration](https://github.com/petabridge/memorizer/pull/177) - Automatically reconciles `embedding_config` when the live provider probe and database schema already match, avoiding unnecessary reruns of embedding dimension migration
+
+**Updates**
+- [Bump Akka.Streams from 1.5.60 to 1.5.62](https://github.com/petabridge/memorizer/pull/172)
+- [Bump Dapper from 2.1.66 to 2.1.72](https://github.com/petabridge/memorizer/pull/180)
+
 #### 2.1.0 March 4th 2026 ####
 
 **Features**
