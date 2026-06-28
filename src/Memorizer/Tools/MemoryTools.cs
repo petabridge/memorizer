@@ -277,9 +277,10 @@ public class MemoryTools
         [Description("Maximum number of results to return")] int limit = 10,
         [Description("Minimum similarity threshold (0.0 to 1.0)")] double minSimilarity = 0.7,
         [Description("Optional tags to filter memories (e.g., 'reference', 'how-to', 'coding-standard')")] string[]? filterTags = null,
-        [Description("Optional project ID to scope search to. If provided, only searches memories assigned to this project. Use ListProjects to find available projects.")] string? projectId = null,
+        [Description("Optional project ID to scope search to. If provided, only searches memories assigned to this project. Use ListProjects to find available projects. Mutually exclusive with workspaceId.")] string? projectId = null,
         [Description("When projectId is specified, also include memories in the Unfiled workspace. Useful for finding unorganized content that might be relevant.")] bool includeUnassigned = false,
         [Description("Include archived memories in search results. Default is false (archived memories are hidden).")] bool includeArchived = false,
+        [Description("Optional workspace ID to scope search to. If provided, searches memories owned directly by the workspace plus all memories owned by projects within it (direct children only, not sub-workspaces). Mutually exclusive with projectId.")] string? workspaceId = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -293,13 +294,20 @@ public class MemoryTools
             {"query.minSimilarity", minSimilarity.ToString()},
             {"query.filterTags", filterTags != null ? string.Join(", ", filterTags) : "none"},
             {"query.projectId", projectId ?? "none"},
+            {"query.workspaceId", workspaceId ?? "none"},
             {"query.includeUnassigned", includeUnassigned.ToString()},
             {"query.includeArchived", includeArchived.ToString()}
         }));
 
-        // Convert projectId to typed ProjectId — parse defensively since MCP clients may send empty strings
+        // Convert projectId / workspaceId to typed IDs — parse defensively since MCP clients may send empty strings
         var parsedProjectId = ParseOptionalGuid(projectId);
+        var parsedWorkspaceId = ParseOptionalGuid(workspaceId);
+        if (parsedProjectId.HasValue && parsedWorkspaceId.HasValue)
+        {
+            return "projectId and workspaceId are mutually exclusive search scopes. Provide only one.";
+        }
         ProjectId? typedProjectId = parsedProjectId.HasValue ? new ProjectId(parsedProjectId.Value) : null;
+        WorkspaceId? typedWorkspaceId = parsedWorkspaceId.HasValue ? new WorkspaceId(parsedWorkspaceId.Value) : null;
 
         // Use hybrid search combining vector similarity + PostgreSQL full-text search via RRF
         List<Memory> memories = await _storage.HybridSearch(
@@ -311,6 +319,7 @@ public class MemoryTools
             includeUnassigned,
             includeArchived,
             includeSystem: false,
+            typedWorkspaceId,
             cancellationToken
         );
 
@@ -342,6 +351,7 @@ public class MemoryTools
                 includeUnassigned,
                 includeArchived,
                 includeSystem: false,
+                typedWorkspaceId,
                 cancellationToken
             );
 

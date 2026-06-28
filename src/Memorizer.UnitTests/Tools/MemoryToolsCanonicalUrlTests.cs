@@ -205,7 +205,7 @@ public class MemoryToolsCanonicalUrlTests
         public Task<List<Memory>> GetMany(IEnumerable<MemoryId> ids, CancellationToken cancellationToken = default)
             => Task.FromResult(ManyResults ?? new List<Memory>());
 
-        public Task<List<Memory>> HybridSearch(string query, int limit, SimilarityScore? minSimilarity, string[]? filterTags, ProjectId? projectId, bool includeUnassigned, bool includeArchived, bool includeSystem, CancellationToken cancellationToken)
+        public Task<List<Memory>> HybridSearch(string query, int limit, SimilarityScore? minSimilarity, string[]? filterTags, ProjectId? projectId, bool includeUnassigned, bool includeArchived, bool includeSystem, WorkspaceId? workspaceId, CancellationToken cancellationToken)
             => Task.FromResult(HybridSearchResults ?? new List<Memory>());
 
         // Stub implementations for remaining interface members - grouped by category
@@ -222,7 +222,7 @@ public class MemoryToolsCanonicalUrlTests
             => throw new NotImplementedException();
         public Task<List<Memory>> SearchWithFullEmbedding(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, bool includeArchived = false, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
-        public Task<List<Memory>> SearchWithMetadataEmbedding(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, ProjectId? projectId = null, bool includeUnassigned = false, bool includeArchived = false, bool includeSystem = false, CancellationToken cancellationToken = default)
+        public Task<List<Memory>> SearchWithMetadataEmbedding(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, ProjectId? projectId = null, bool includeUnassigned = false, bool includeArchived = false, bool includeSystem = false, WorkspaceId? workspaceId = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
         public Task<(List<Memory> FullResults, List<Memory> MetadataResults)> CompareSearchMethods(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();

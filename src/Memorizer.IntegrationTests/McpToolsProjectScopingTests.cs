@@ -451,4 +451,157 @@ public class McpToolsProjectScopingTests : IDisposable
     }
 
     #endregion
+
+    #region Workspace-Scoped Search Tests
+
+    [Fact]
+    public async Task SearchWithMetadataEmbedding_WithWorkspaceId_RollsUpWorkspaceAndProjects()
+    {
+        var storage = _services.GetRequiredService<IStorage>();
+
+        var workspaceA = await storage.CreateWorkspaceAsync("Workspace A", null, cancellationToken: default);
+        var workspaceB = await storage.CreateWorkspaceAsync("Workspace B", null, cancellationToken: default);
+        var projectA1 = await storage.CreateProjectAsync(workspaceA.Id, "Project A1", null, cancellationToken: default);
+        var projectA2 = await storage.CreateProjectAsync(workspaceA.Id, "Project A2", null, cancellationToken: default);
+        var projectB1 = await storage.CreateProjectAsync(workspaceB.Id, "Project B1", null, cancellationToken: default);
+
+        Memory? memoryOnWorkspaceA = null;
+        Memory? memoryInProjectA1 = null;
+        Memory? memoryInProjectA2 = null;
+        Memory? memoryOnWorkspaceB = null;
+        Memory? memoryInProjectB1 = null;
+
+        try
+        {
+            memoryOnWorkspaceA = await storage.StoreMemory(
+                type: "reference",
+                content: "Workspace A shared note about flux capacitor configuration",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: "Workspace A Note",
+                owner: MemoryOwner.ForWorkspace(workspaceA.Id),
+                cancellationToken: default
+            );
+
+            memoryInProjectA1 = await storage.StoreMemory(
+                type: "reference",
+                content: "Project A1 details about flux capacitor configuration",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: "Project A1 Note",
+                owner: MemoryOwner.ForProject(projectA1.Id),
+                cancellationToken: default
+            );
+
+            memoryInProjectA2 = await storage.StoreMemory(
+                type: "reference",
+                content: "Project A2 details about flux capacitor configuration",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: "Project A2 Note",
+                owner: MemoryOwner.ForProject(projectA2.Id),
+                cancellationToken: default
+            );
+
+            memoryOnWorkspaceB = await storage.StoreMemory(
+                type: "reference",
+                content: "Workspace B unrelated note about flux capacitor configuration",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: "Workspace B Note",
+                owner: MemoryOwner.ForWorkspace(workspaceB.Id),
+                cancellationToken: default
+            );
+
+            memoryInProjectB1 = await storage.StoreMemory(
+                type: "reference",
+                content: "Project B1 unrelated note about flux capacitor configuration",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: "Project B1 Note",
+                owner: MemoryOwner.ForProject(projectB1.Id),
+                cancellationToken: default
+            );
+
+            var results = await storage.SearchWithMetadataEmbedding(
+                query: "flux capacitor configuration",
+                limit: 20,
+                minSimilarity: new SimilarityScore(0.0),
+                filterTags: null,
+                projectId: null,
+                includeUnassigned: false,
+                includeArchived: false,
+                includeSystem: false,
+                workspaceId: workspaceA.Id,
+                cancellationToken: default
+            );
+
+            var resultIds = results.Select(m => m.Id).ToHashSet();
+
+            Assert.Contains(memoryOnWorkspaceA.Id, resultIds);
+            Assert.Contains(memoryInProjectA1.Id, resultIds);
+            Assert.Contains(memoryInProjectA2.Id, resultIds);
+            Assert.DoesNotContain(memoryOnWorkspaceB.Id, resultIds);
+            Assert.DoesNotContain(memoryInProjectB1.Id, resultIds);
+        }
+        finally
+        {
+            if (memoryOnWorkspaceA != null) await storage.Delete(memoryOnWorkspaceA.Id, default);
+            if (memoryInProjectA1 != null) await storage.Delete(memoryInProjectA1.Id, default);
+            if (memoryInProjectA2 != null) await storage.Delete(memoryInProjectA2.Id, default);
+            if (memoryOnWorkspaceB != null) await storage.Delete(memoryOnWorkspaceB.Id, default);
+            if (memoryInProjectB1 != null) await storage.Delete(memoryInProjectB1.Id, default);
+
+            await storage.DeleteProjectAsync(projectA1.Id, default);
+            await storage.DeleteProjectAsync(projectA2.Id, default);
+            await storage.DeleteProjectAsync(projectB1.Id, default);
+            await storage.DeleteWorkspaceAsync(workspaceA.Id, default);
+            await storage.DeleteWorkspaceAsync(workspaceB.Id, default);
+        }
+    }
+
+    [Fact]
+    public async Task SearchWithMetadataEmbedding_WithBothProjectIdAndWorkspaceId_Throws()
+    {
+        var storage = _services.GetRequiredService<IStorage>();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => storage.SearchWithMetadataEmbedding(
+            query: "anything",
+            limit: 5,
+            minSimilarity: new SimilarityScore(0.5),
+            filterTags: null,
+            projectId: ProjectId.New(),
+            includeUnassigned: false,
+            includeArchived: false,
+            includeSystem: false,
+            workspaceId: WorkspaceId.New(),
+            cancellationToken: default
+        ));
+    }
+
+    [Fact]
+    public async Task HybridSearch_WithBothProjectIdAndWorkspaceId_Throws()
+    {
+        var storage = _services.GetRequiredService<IStorage>();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => storage.HybridSearch(
+            query: "anything",
+            limit: 5,
+            minSimilarity: new SimilarityScore(0.5),
+            filterTags: null,
+            projectId: ProjectId.New(),
+            includeUnassigned: false,
+            includeArchived: false,
+            includeSystem: false,
+            workspaceId: WorkspaceId.New(),
+            cancellationToken: default
+        ));
+    }
+
+    #endregion
 }
