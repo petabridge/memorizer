@@ -77,6 +77,79 @@ public class MemoryToolsCanonicalUrlTests
     }
 
     [Fact]
+    public async Task Store_WithWorkspaceId_ShouldAssignMemoryToWorkspace()
+    {
+        // Arrange
+        var workspaceId = Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa");
+        var fakeStorage = new FakeStorage
+        {
+            StoredMemory = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Test Memory")
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        var result = await tools.Store(
+            type: "reference",
+            text: "Test content",
+            source: "LLM",
+            title: "Test Memory",
+            workspaceId: workspaceId.ToString());
+
+        // Assert
+        Assert.Contains($"Assigned to workspace {workspaceId}", result);
+        Assert.True(fakeStorage.StoreMemoryCalled);
+        Assert.Equal(OwnerTypeEnum.Workspace, fakeStorage.LastStoredOwner?.Type);
+        Assert.Equal(workspaceId, fakeStorage.LastStoredOwner?.WorkspaceId?.Value);
+    }
+
+    [Fact]
+    public async Task Store_WithProjectIdAndWorkspaceId_ReturnsValidationErrorAndDoesNotStore()
+    {
+        // Arrange
+        var fakeStorage = new FakeStorage
+        {
+            StoredMemory = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Test Memory")
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        var result = await tools.Store(
+            type: "reference",
+            text: "Test content",
+            source: "LLM",
+            title: "Test Memory",
+            projectId: "11111111-1111-1111-1111-111111111111",
+            workspaceId: "22222222-2222-2222-2222-222222222222");
+
+        // Assert
+        Assert.Contains("projectId and workspaceId are mutually exclusive", result);
+        Assert.False(fakeStorage.StoreMemoryCalled);
+    }
+
+    [Fact]
+    public async Task Store_WithInvalidWorkspaceId_ReturnsValidationErrorAndDoesNotStore()
+    {
+        // Arrange
+        var fakeStorage = new FakeStorage
+        {
+            StoredMemory = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Test Memory")
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        var result = await tools.Store(
+            type: "reference",
+            text: "Test content",
+            source: "LLM",
+            title: "Test Memory",
+            workspaceId: "not-a-guid");
+
+        // Assert
+        Assert.Contains("workspaceId must be a valid GUID", result);
+        Assert.False(fakeStorage.StoreMemoryCalled);
+    }
+
+    [Fact]
     public async Task SearchMemories_ShouldIncludeCanonicalUrl_ForEachResult_WhenConfigured()
     {
         // Arrange
@@ -312,6 +385,8 @@ public class MemoryToolsCanonicalUrlTests
         public List<Memory>? HybridSearchResults { get; set; }
         public List<Memory>? SearchWithMetadataEmbeddingResults { get; set; }
         public List<Memory>? ManyResults { get; set; }
+        public bool StoreMemoryCalled { get; private set; }
+        public MemoryOwner? LastStoredOwner { get; private set; }
         public bool HybridSearchCalled { get; private set; }
         public ProjectId? LastHybridSearchProjectId { get; private set; }
         public WorkspaceId? LastHybridSearchWorkspaceId { get; private set; }
@@ -321,7 +396,11 @@ public class MemoryToolsCanonicalUrlTests
 
         // Core memory operations used by tests
         public Task<Memory> StoreMemory(string type, string content, string source, string[]? tags, Confidence confidence, string title, MemoryId? relatedTo = null, string? relationshipType = null, MemoryOwner? owner = null, ArchetypeEnum archetype = ArchetypeEnum.Document, CancellationToken cancellationToken = default)
-            => Task.FromResult(StoredMemory ?? throw new InvalidOperationException("StoredMemory not set"));
+        {
+            StoreMemoryCalled = true;
+            LastStoredOwner = owner;
+            return Task.FromResult(StoredMemory ?? throw new InvalidOperationException("StoredMemory not set"));
+        }
 
         public Task<Memory?> Get(MemoryId id, CancellationToken cancellationToken = default)
             => Task.FromResult(RetrievedMemory);

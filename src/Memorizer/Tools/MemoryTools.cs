@@ -40,7 +40,8 @@ public class MemoryTools
         [Description("Confidence score for the memory (0.0 to 1.0)")] double confidence = 1.0,
         [Description("Optionally, the ID of a related memory. Use this to link related reference materials, how-tos, or examples.")] string? relatedTo = null,
         [Description("Optionally, the type of relationship to create (e.g., 'example-of', 'explains', 'related-to'). Use relationships to connect related knowledge.")] string? relationshipType = null,
-        [Description("Optional project ID to assign this memory to. If not provided, memory is stored in the Unfiled workspace. Use ListProjects to find available projects.")] string? projectId = null,
+        [Description("Optional project ID to assign this memory to. If not provided, memory is stored in the Unfiled workspace. Use ListProjects to find available projects. Mutually exclusive with workspaceId.")] string? projectId = null,
+        [Description("Optional workspace ID to assign this memory directly to a workspace. Mutually exclusive with projectId.")] string? workspaceId = null,
         [Description("Memory archetype: 'document' for living, editable content (default) or 'record' for historical, immutable records like work logs.")] string archetype = "document",
         CancellationToken cancellationToken = default
     )
@@ -49,13 +50,29 @@ public class MemoryTools
         var archetypeEnum = ArchetypeEnumExtensions.ParseArchetype(archetype);
 
         // Parse optional Guid parameters defensively — MCP clients may send empty strings or "null"
-        var parsedProjectId = ParseOptionalGuid(projectId);
+        if (!TryParseOptionalGuid(projectId, out var parsedProjectId))
+        {
+            return "projectId must be a valid GUID, empty, or null.";
+        }
+
+        if (!TryParseOptionalGuid(workspaceId, out var parsedWorkspaceId))
+        {
+            return "workspaceId must be a valid GUID, empty, or null.";
+        }
+
+        if (parsedProjectId.HasValue && parsedWorkspaceId.HasValue)
+        {
+            return "projectId and workspaceId are mutually exclusive memory owners. Provide only one.";
+        }
+
         var parsedRelatedTo = ParseOptionalGuid(relatedTo);
 
-        // Determine owner based on projectId
+        // Determine owner based on projectId / workspaceId
         MemoryOwner? owner = parsedProjectId.HasValue
             ? MemoryOwner.ForProject(new ProjectId(parsedProjectId.Value))
-            : null; // null defaults to Unfiled in storage layer
+            : parsedWorkspaceId.HasValue
+                ? MemoryOwner.ForWorkspace(new WorkspaceId(parsedWorkspaceId.Value))
+                : null; // null defaults to Unfiled in storage layer
 
         // Create new memory
         var memory = await _storage.StoreMemory(
@@ -76,9 +93,12 @@ public class MemoryTools
             await _storage.CreateRelationship(memory.Id, (MemoryId)parsedRelatedTo.Value, relationshipType, cancellationToken);
         }
 
-        var locationInfo = owner != null
-            ? $"Assigned to project {parsedProjectId}."
-            : "Stored in Unfiled workspace.";
+        var locationInfo = owner?.Type switch
+        {
+            OwnerTypeEnum.Project => $"Assigned to project {parsedProjectId}.",
+            OwnerTypeEnum.Workspace => $"Assigned to workspace {parsedWorkspaceId}.",
+            _ => "Stored in Unfiled workspace."
+        };
 
         var urlInfo = _canonicalUrlService.IsConfigured
             ? $"\n\nView in web UI: {_canonicalUrlService.GetMemoryUrl(memory.Id)}"
