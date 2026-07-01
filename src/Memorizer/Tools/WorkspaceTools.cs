@@ -803,19 +803,35 @@ public class WorkspaceTools
 
     // ===== Memory Organization Tools =====
 
-    [McpServerTool, Description("Move one or more memories to a project, workspace, or Unfiled. Consolidates all memory organization operations into a single tool.")]
+    [McpServerTool, Description("Move one or more memories to a project, workspace, or Unfiled. Consolidates all memory organization operations into a single tool. REQUIRED: memoryIds (array of GUID strings) and exactly one destination (projectId, workspaceId, or toUnfiled=true).")]
     public async Task<string> MoveMemory(
-        [Description("Memory ID(s) to move. Can be a single ID or array of IDs. Use Search or Get to find memory IDs.")] Guid[] memoryIds,
+        [Description("REQUIRED. Memory ID(s) to move as GUID strings. Can be a single ID or array of IDs. Use Search or Get to find memory IDs.")] string[]? memoryIds = null,
         [Description("Destination project ID. Use this to move memories into a project. Use ListProjects to find project IDs.")] string? projectId = null,
         [Description("Destination workspace ID. Use this to move memories directly to a workspace (not a project). Use ListWorkspaces to find workspace IDs.")] string? workspaceId = null,
         [Description("Set to true to move memories to the Unfiled workspace (unassign from current project/workspace).")] bool toUnfiled = false,
         CancellationToken cancellationToken = default
     )
     {
-        // Validate inputs
+        // Validate required parameter — MCP clients sometimes omit this entirely
         if (memoryIds == null || memoryIds.Length == 0)
         {
-            return "No memory IDs provided.";
+            return "Error: 'memoryIds' is required. Provide one or more memory GUIDs to move. Use Search or Get to find memory IDs.";
+        }
+
+        // Parse memory IDs defensively — MCP clients may send malformed values
+        var parsedIds = new List<Guid>();
+        var invalidIds = new List<string>();
+        foreach (var idStr in memoryIds)
+        {
+            if (Guid.TryParse(idStr, out var parsed))
+                parsedIds.Add(parsed);
+            else if (!string.IsNullOrWhiteSpace(idStr))
+                invalidIds.Add(idStr);
+        }
+
+        if (parsedIds.Count == 0)
+        {
+            return $"Error: No valid memory GUIDs found in memoryIds. Invalid values: [{string.Join(", ", invalidIds)}]. Provide valid GUID strings.";
         }
 
         // Parse optional Guid parameters defensively — MCP clients may send empty strings or "null"
@@ -867,7 +883,7 @@ public class WorkspaceTools
         var movedCount = 0;
         var notFoundIds = new List<Guid>();
 
-        foreach (var memoryId in memoryIds)
+        foreach (var memoryId in parsedIds)
         {
             var typedMemoryId = new MemoryId(memoryId);
 
@@ -899,17 +915,17 @@ public class WorkspaceTools
                 ? "\n\nHint: Memories directly in a workspace are general reference for that domain. Use projects for work-specific memories."
                 : "\n\nHint: Unfiled memories can be organized later into workspaces (persistent domains) or projects (completable work).";
 
-        if (memoryIds.Length == 1)
+        if (parsedIds.Count == 1)
         {
             if (notFoundIds.Count > 0)
             {
-                return $"Memory with ID {memoryIds[0]} not found.";
+                return $"Memory with ID {parsedIds[0]} not found.";
             }
             return $"Memory successfully moved to {destinationName}.{organizationHint}";
         }
 
         var result = new StringBuilder();
-        result.AppendLine($"Moved {movedCount} of {memoryIds.Length} memories to {destinationName}.");
+        result.AppendLine($"Moved {movedCount} of {parsedIds.Count} memories to {destinationName}.");
 
         if (notFoundIds.Count > 0)
         {

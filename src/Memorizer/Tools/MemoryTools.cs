@@ -30,12 +30,12 @@ public class MemoryTools
         _canonicalUrlService = canonicalUrlService;
     }
 
-    [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples.")]
+    [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples. REQUIRED parameters: type, text, source, title - all four MUST be provided.")]
     public async Task<string> Store(
-        [Description("The type of memory (e.g., 'conversation', 'document', 'reference', 'how-to', 'todo-list', etc.). Use 'reference' or 'how-to' for reusable knowledge.")] string type,
-        [Description("Plain text (markdown, code, prose, etc.) to store. Include as much context as possible.")] string text,
-        [Description("The source of the memory (e.g., 'user', 'system', 'LLM', etc.). Use 'LLM' if you are storing knowledge for your own future use.")] string source,
-        [Description("Title for the memory. Should be descriptive and searchable.")] string title,
+        [Description("REQUIRED. The type of memory (e.g., 'conversation', 'document', 'reference', 'how-to', 'todo-list', etc.). Use 'reference' or 'how-to' for reusable knowledge.")] string type,
+        [Description("REQUIRED. Plain text (markdown, code, prose, etc.) to store. Include as much context as possible.")] string text,
+        [Description("REQUIRED. The source of the memory (e.g., 'user', 'system', 'LLM', etc.). Use 'LLM' if you are storing knowledge for your own future use.")] string source,
+        [Description("REQUIRED. Title for the memory. Should be descriptive and searchable.")] string title,
         [Description("Optional tags to categorize the memory. Use tags like 'coding-standard', 'unit-test', 'reference', 'how-to', 'todo', etc. to make retrieval easier.")] string[]? tags = null,
         [Description("Confidence score for the memory (0.0 to 1.0)")] double confidence = 1.0,
         [Description("Optionally, the ID of a related memory. Use this to link related reference materials, how-tos, or examples.")] string? relatedTo = null,
@@ -46,6 +46,16 @@ public class MemoryTools
         CancellationToken cancellationToken = default
     )
     {
+        // Validate required parameters — MCP clients sometimes omit these entirely
+        if (string.IsNullOrWhiteSpace(type))
+            return "Error: 'type' is required. Provide a memory type such as 'document', 'reference', 'how-to', 'todo-list', or 'conversation'.";
+        if (string.IsNullOrWhiteSpace(text))
+            return "Error: 'text' is required. Provide the content to store as plain text (markdown, code, prose, etc.).";
+        if (string.IsNullOrWhiteSpace(source))
+            return "Error: 'source' is required. Provide the source of the memory (e.g., 'user', 'system', or 'LLM').";
+        if (string.IsNullOrWhiteSpace(title))
+            return "Error: 'title' is required. Provide a descriptive, searchable title for the memory.";
+
         // Parse archetype string to enum
         var archetypeEnum = ArchetypeEnumExtensions.ParseArchetype(archetype);
 
@@ -107,15 +117,21 @@ public class MemoryTools
         return $"Memory stored successfully with ID: {memory.Id}. {locationInfo} Archetype: {archetypeEnum.ToStringValue()}. Use Edit tool to make targeted updates, or CreateReference to link to other memories.{urlInfo}";
     }
 
-    [McpServerTool, Description("Edit an existing memory using find-and-replace. Ideal for checking off to-do items, updating sections, or fixing typos. IMPORTANT: The edit will FAIL if old_text is not found exactly - always use Get first to see current content and copy the exact text to replace. All changes are versioned and can be reverted.")]
+    [McpServerTool, Description("Edit an existing memory using find-and-replace. Ideal for checking off to-do items, updating sections, or fixing typos. IMPORTANT: The edit will FAIL if old_text is not found exactly - always use Get first to see current content and copy the exact text to replace. All changes are versioned and can be reverted. REQUIRED parameters: id, old_text, new_text - all three MUST be provided.")]
     public async Task<string> Edit(
-        [Description("The ID of the memory to edit.")] Guid id,
-        [Description("The exact text to find and replace. Must match exactly (case-sensitive). For multi-line replacements, include the full text including newlines.")] string old_text,
-        [Description("The text to replace it with. Can be different length than old_text.")] string new_text,
+        [Description("REQUIRED. The ID of the memory to edit.")] Guid id,
+        [Description("REQUIRED. The exact text to find and replace. Must match exactly (case-sensitive). For multi-line replacements, include the full text including newlines.")] string old_text,
+        [Description("REQUIRED. The text to replace it with. Can be different length than old_text.")] string new_text,
         [Description("If true, replaces ALL occurrences of old_text. If false (default), only replaces the first occurrence. Use false for safety when editing unique content.")] bool replace_all = false,
         CancellationToken cancellationToken = default
     )
     {
+        // Validate required parameters — MCP clients sometimes omit these entirely
+        if (string.IsNullOrWhiteSpace(old_text))
+            return "Error: 'old_text' is required. Provide the exact text to find and replace. Use the Get tool first to see current content and copy the exact text.";
+        if (new_text == null)
+            return "Error: 'new_text' is required. Provide the replacement text (can be empty string to delete text).";
+
         using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.Edit");
 
         activity?.AddEvent(new ActivityEvent("edit.details", DateTimeOffset.UtcNow, new ActivityTagsCollection
@@ -829,15 +845,28 @@ public class MemoryTools
         return result.ToString();
     }
 
-    [McpServerTool, Description("Create a reference (relationship) between two memories. Use this to link related reference materials, how-tos, or examples (e.g., 'example-of', 'explains', 'related-to'). References help organize knowledge for easier retrieval and understanding.")]
+    [McpServerTool, Description("Create a reference (relationship) between two memories. Use this to link related reference materials, how-tos, or examples (e.g., 'example-of', 'explains', 'related-to'). References help organize knowledge for easier retrieval and understanding. REQUIRED parameters: fromId, toId, type - all three MUST be provided as valid memory GUIDs and a relationship type string.")]
     public async Task<string> CreateReference(
-        [Description("The ID of the source memory (e.g., the reference or how-to that is providing context)")] Guid fromId,
-        [Description("The ID of the target memory (e.g., the example or related reference)")] Guid toId,
-        [Description("The type of reference (e.g., 'example-of', 'explains', 'related-to'). Use references to connect and organize knowledge.")] string type,
+        [Description("REQUIRED. The ID (GUID) of the source memory (e.g., the reference or how-to that is providing context). Must be a valid GUID.")] string? fromId = null,
+        [Description("REQUIRED. The ID (GUID) of the target memory (e.g., the example or related reference). Must be a valid GUID.")] string? toId = null,
+        [Description("REQUIRED. The type of reference (e.g., 'example-of', 'explains', 'related-to'). Use references to connect and organize knowledge.")] string? type = null,
         CancellationToken cancellationToken = default
     )
     {
-        var rel = await _storage.CreateRelationship((MemoryId)fromId, (MemoryId)toId, type, cancellationToken);
+        // Validate required parameters — MCP clients sometimes omit these or send malformed values
+        if (string.IsNullOrWhiteSpace(fromId))
+            return "Error: 'fromId' is required. Provide the GUID of the source memory. Use Search or Get to find memory IDs.";
+        if (string.IsNullOrWhiteSpace(toId))
+            return "Error: 'toId' is required. Provide the GUID of the target memory. Use Search or Get to find memory IDs.";
+        if (string.IsNullOrWhiteSpace(type))
+            return "Error: 'type' is required. Provide the relationship type (e.g., 'example-of', 'explains', 'related-to').";
+
+        if (!Guid.TryParse(fromId, out var parsedFromId))
+            return $"Error: 'fromId' must be a valid GUID. Received: '{fromId}'.";
+        if (!Guid.TryParse(toId, out var parsedToId))
+            return $"Error: 'toId' must be a valid GUID. Received: '{toId}'.";
+
+        var rel = await _storage.CreateRelationship((MemoryId)parsedFromId, (MemoryId)parsedToId, type, cancellationToken);
         return $"Reference created: {rel.Id} from {rel.FromMemoryId} to {rel.ToMemoryId} (type: {rel.Type})";
     }
 
