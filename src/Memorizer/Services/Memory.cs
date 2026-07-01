@@ -449,13 +449,15 @@ public class Storage : IStorage
     private readonly IEmbeddingService _embeddingService;
     private readonly IDiffService _diffService;
     private readonly VersioningSettings _versioningSettings;
+    private readonly IMarkdownExportService? _markdownExportService;
 
-    public Storage(NpgsqlDataSource dataSource, IEmbeddingService embeddingService, IDiffService diffService, VersioningSettings versioningSettings)
+    public Storage(NpgsqlDataSource dataSource, IEmbeddingService embeddingService, IDiffService diffService, VersioningSettings versioningSettings, IMarkdownExportService? markdownExportService = null)
     {
         _dataSource = dataSource;
         _embeddingService = embeddingService;
         _diffService = diffService;
         _versioningSettings = versioningSettings;
+        _markdownExportService = markdownExportService;
     }
 
     /// <summary>
@@ -608,6 +610,13 @@ public class Storage : IStorage
             await CreateRelationship(memory.Id, relatedTo.Value, relationshipType, cancellationToken);
         }
 
+        // Export to markdown file if enabled
+        if (_markdownExportService is { IsEnabled: true })
+        {
+            try { await _markdownExportService.ExportMemoryAsync(memory, cancellationToken); }
+            catch { /* Don't fail the store operation */ }
+        }
+
         return memory;
     }
 
@@ -742,6 +751,13 @@ public class Storage : IStorage
         cmd.Parameters.AddWithValue("id", id.Value);
 
         int rowsAffected = await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+        if (rowsAffected > 0 && _markdownExportService is { IsEnabled: true })
+        {
+            try { await _markdownExportService.DeleteMemoryFileAsync(id, cancellationToken); }
+            catch { /* Don't fail the delete operation */ }
+        }
+
         return rowsAffected > 0;
     }
 
@@ -1101,7 +1117,13 @@ public class Storage : IStorage
             // Return the updated memory if successful
             if (rowsAffected > 0)
             {
-                return await Get(id, cancellationToken);
+                var updatedMemory = await Get(id, cancellationToken);
+                if (updatedMemory != null && _markdownExportService is { IsEnabled: true })
+                {
+                    try { await _markdownExportService.ExportMemoryAsync(updatedMemory, cancellationToken); }
+                    catch { /* Don't fail the update operation */ }
+                }
+                return updatedMemory;
             }
 
             return null;
@@ -2608,6 +2630,14 @@ public class Storage : IStorage
         bool updateParent = newParentId != null || makeTopLevel;
         var slug = name != null ? GenerateSlug(name) : null;
 
+        // Capture old slug before updating (needed for markdown export folder rename)
+        string? oldSlug = null;
+        if (name != null && _markdownExportService is { IsEnabled: true })
+        {
+            var existingWorkspace = await GetWorkspaceAsync(id, cancellationToken);
+            oldSlug = existingWorkspace?.Slug;
+        }
+
         var sql = @"
             UPDATE workspaces SET
                 name = COALESCE(@name, name),
@@ -2637,6 +2667,13 @@ public class Storage : IStorage
         if (name != null || description != null)
         {
             await CreateOrUpdateWorkspaceSystemMemoryAsync(workspace, cancellationToken);
+        }
+
+        // Rename markdown export folder if name changed
+        if (name != null && oldSlug != null && oldSlug != workspace.Slug && _markdownExportService is { IsEnabled: true })
+        {
+            try { await _markdownExportService.RenameWorkspaceFolderAsync(id, oldSlug, workspace.Slug, cancellationToken); }
+            catch { /* Don't fail the update operation */ }
         }
 
         return workspace;
@@ -3031,6 +3068,14 @@ public class Storage : IStorage
 
         var slug = name != null ? GenerateSlug(name) : null;
 
+        // Capture old slug before updating (needed for markdown export folder rename)
+        string? oldProjectSlug = null;
+        if (name != null && _markdownExportService is { IsEnabled: true })
+        {
+            var existingProject = await GetProjectAsync(id, cancellationToken);
+            oldProjectSlug = existingProject?.Slug;
+        }
+
         // Determine how to handle parent_id in the UPDATE
         // If newParentId is specified, set parent_id to that value
         // If makeTopLevel is true, set parent_id to NULL
@@ -3080,6 +3125,13 @@ public class Storage : IStorage
         if (name != null || description != null || victoryConditions != null || status != null)
         {
             await CreateOrUpdateProjectSystemMemoryAsync(project, cancellationToken);
+        }
+
+        // Rename markdown export folder if name changed
+        if (name != null && oldProjectSlug != null && oldProjectSlug != project.Slug && _markdownExportService is { IsEnabled: true })
+        {
+            try { await _markdownExportService.RenameProjectFolderAsync(id, oldProjectSlug, project.Slug, cancellationToken); }
+            catch { /* Don't fail the update operation */ }
         }
 
         return project;
@@ -3793,6 +3845,14 @@ public class Storage : IStorage
 
     public async Task SetMemoryOwnerAsync(MemoryId memoryId, MemoryOwner owner, CancellationToken cancellationToken = default)
     {
+        // Capture old owner before updating (needed for markdown export file move)
+        MemoryOwner? oldOwner = null;
+        if (_markdownExportService is { IsEnabled: true })
+        {
+            var existing = await Get(memoryId, cancellationToken);
+            oldOwner = existing?.Owner;
+        }
+
         await using var conn = await _dataSource.OpenConnectionAsync(cancellationToken);
         await using var cmd = new NpgsqlCommand(@"
             UPDATE memories SET
@@ -3808,6 +3868,12 @@ public class Storage : IStorage
         var affected = await cmd.ExecuteNonQueryAsync(cancellationToken);
         if (affected == 0)
             throw new InvalidOperationException($"Memory {memoryId} not found");
+
+        if (oldOwner.HasValue && _markdownExportService is { IsEnabled: true })
+        {
+            try { await _markdownExportService.MoveMemoryFileAsync(memoryId, oldOwner.Value, owner, cancellationToken); }
+            catch { /* Don't fail the owner change operation */ }
+        }
     }
 
     public Task MoveMemoryToUnfiledAsync(MemoryId memoryId, CancellationToken cancellationToken = default)
@@ -4073,7 +4139,21 @@ public class Storage : IStorage
             return null;
 
         // Return the updated memory
-        return await Get(memoryId, cancellationToken);
+        var updatedMemory = await Get(memoryId, cancellationToken);
+
+        if (_markdownExportService is { IsEnabled: true } && updatedMemory != null)
+        {
+            try
+            {
+                if (newArchetype == ArchetypeEnum.Archived)
+                    await _markdownExportService.DeleteMemoryFileAsync(memoryId, cancellationToken);
+                else
+                    await _markdownExportService.ExportMemoryAsync(updatedMemory, cancellationToken);
+            }
+            catch { /* Don't fail the archetype update */ }
+        }
+
+        return updatedMemory;
     }
 
     public async Task<(IReadOnlyList<Memorizer.Models.Memory> Memories, int TotalCount)> GetArchivedMemoriesAsync(
