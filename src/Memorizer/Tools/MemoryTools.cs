@@ -300,8 +300,16 @@ public class MemoryTools
         }));
 
         // Convert projectId / workspaceId to typed IDs — parse defensively since MCP clients may send empty strings
-        var parsedProjectId = ParseOptionalGuid(projectId);
-        var parsedWorkspaceId = ParseOptionalGuid(workspaceId);
+        if (!TryParseOptionalGuid(projectId, out var parsedProjectId))
+        {
+            return "projectId must be a valid GUID, empty, or null.";
+        }
+
+        if (!TryParseOptionalGuid(workspaceId, out var parsedWorkspaceId))
+        {
+            return "workspaceId must be a valid GUID, empty, or null.";
+        }
+
         if (parsedProjectId.HasValue && parsedWorkspaceId.HasValue)
         {
             return "projectId and workspaceId are mutually exclusive search scopes. Provide only one.";
@@ -1214,5 +1222,16 @@ public class MemoryTools
         if (string.IsNullOrWhiteSpace(value)) return null;
         if (value.Equals("null", StringComparison.OrdinalIgnoreCase)) return null;
         return Guid.TryParse(value, out var guid) ? guid : null;
+    }
+
+    private static bool TryParseOptionalGuid(string? value, out Guid? guid)
+    {
+        guid = null;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        if (value.Equals("null", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!Guid.TryParse(value, out var parsed)) return false;
+
+        guid = parsed;
+        return true;
     }
 }
