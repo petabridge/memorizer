@@ -1,3 +1,11 @@
+#### 2.2.0-beta2 July 1st 2026 ####
+
+**Features**
+- [Add workspace scope to memory tools](https://github.com/petabridge/memorizer/pull/197) - Memory search and storage now support workspace-level scoping
+  - `SearchMemories` can filter by workspace ID to query all memories in a workspace in a single call
+  - `Store` supports assigning memories directly to workspaces (not just projects)
+  - Closes scoping gaps for agents operating at the workspace level
+
 #### 2.2.0-beta1 June 26th 2026 ####
 
 **Features**
