@@ -1,7 +1,9 @@
-using System.Text.Json;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Memorizer.Models;
 using Memorizer.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using OllamaSharp;
 
 namespace Memorizer.Controllers;
@@ -14,21 +16,15 @@ public class SettingsController : Controller
 {
     private readonly IStorage _storage;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IEmbeddingDimensionService _dimensionService;
-    private readonly IDimensionMismatchState _mismatchState;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
         IStorage storage,
         IHttpClientFactory httpClientFactory,
-        IEmbeddingDimensionService dimensionService,
-        IDimensionMismatchState mismatchState,
         ILogger<SettingsController> logger)
     {
         _storage = storage;
         _httpClientFactory = httpClientFactory;
-        _dimensionService = dimensionService;
-        _mismatchState = mismatchState;
         _logger = logger;
     }
 
@@ -59,7 +55,7 @@ public class SettingsController : Controller
                 p.ProviderName,
                 p.DisplayName,
                 p.IsActive,
-                config = JsonSerializer.Deserialize<object>(p.Config.RootElement.GetRawText()),
+                config = ProviderConfigSanitizer.RedactForDisplay(p.Config),
                 p.CreatedAt,
                 p.UpdatedAt
             }),
@@ -70,7 +66,7 @@ public class SettingsController : Controller
                 p.ProviderName,
                 p.DisplayName,
                 p.IsActive,
-                config = JsonSerializer.Deserialize<object>(p.Config.RootElement.GetRawText()),
+                config = ProviderConfigSanitizer.RedactForDisplay(p.Config),
                 p.CreatedAt,
                 p.UpdatedAt
             })
@@ -92,13 +88,13 @@ public class SettingsController : Controller
             {
                 embeddingProvider.ProviderName,
                 embeddingProvider.DisplayName,
-                config = JsonSerializer.Deserialize<object>(embeddingProvider.Config.RootElement.GetRawText())
+                config = ProviderConfigSanitizer.RedactForDisplay(embeddingProvider.Config)
             } : null,
             memorizerAgent = agentProvider != null ? new
             {
                 agentProvider.ProviderName,
                 agentProvider.DisplayName,
-                config = JsonSerializer.Deserialize<object>(agentProvider.Config.RootElement.GetRawText())
+                config = ProviderConfigSanitizer.RedactForDisplay(agentProvider.Config)
             } : null
         });
     }
@@ -111,13 +107,15 @@ public class SettingsController : Controller
     {
         try
         {
+            var existingProviders = await _storage.GetAllProvidersAsync(request.ProviderType, cancellationToken);
+
             // Check if embedding model is changing (to detect re-embedding need)
             string? previousModel = null;
             bool modelChanged = false;
 
             if (request.ProviderType == ProviderTypes.Embedding && request.IsActive)
             {
-                var previousProvider = await _storage.GetActiveProviderAsync(ProviderTypes.Embedding, cancellationToken);
+                var previousProvider = existingProviders.FirstOrDefault(p => p.IsActive);
                 if (previousProvider != null)
                 {
                     var prevConfig = previousProvider.Config.RootElement;
@@ -140,7 +138,7 @@ public class SettingsController : Controller
                 ProviderType = request.ProviderType,
                 ProviderName = request.ProviderName,
                 DisplayName = request.DisplayName,
-                Config = JsonDocument.Parse(JsonSerializer.Serialize(request.Config)),
+                Config = ProviderConfigSanitizer.CleanForStorage(request.Config),
                 IsActive = request.IsActive
             };
 
@@ -153,35 +151,27 @@ public class SettingsController : Controller
             DimensionValidationResult? dimensionValidation = null;
             if (request.ProviderType == ProviderTypes.Embedding && saved.IsActive)
             {
-                dimensionValidation = await ValidateEmbeddingDimensionsAsync(cancellationToken);
-
-                // Update the configuration with new values so IOptionsSnapshot picks them up
                 var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-                if (request.Config.TryGetValue("apiUrl", out var apiUrlObj))
-                {
-                    config["Embeddings:ApiUrl"] = apiUrlObj?.ToString();
-                }
-                if (request.Config.TryGetValue("model", out var modelObj))
-                {
-                    config["Embeddings:Model"] = modelObj?.ToString();
-                }
+                ApplyEmbeddingProviderConfiguration(config, saved);
+                dimensionValidation = await ValidateEmbeddingDimensionsAsync(cancellationToken);
             }
 
             // If this is an active Memorizer Agent provider, update configuration
             if (request.ProviderType == ProviderTypes.MemorizerAgent && saved.IsActive)
             {
                 var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
-                if (request.Config.TryGetValue("apiUrl", out var apiUrlObj))
+                var savedConfig = saved.Config.RootElement;
+                if (savedConfig.TryGetProperty("apiUrl", out var apiUrlObj))
                 {
-                    config["LLM:ApiUrl"] = apiUrlObj?.ToString();
+                    config["LLM:ApiUrl"] = apiUrlObj.GetString();
                 }
-                if (request.Config.TryGetValue("model", out var modelObj))
+                if (savedConfig.TryGetProperty("model", out var modelObj))
                 {
-                    config["LLM:Model"] = modelObj?.ToString();
+                    config["LLM:Model"] = modelObj.GetString();
                 }
-                if (request.Config.TryGetValue("timeout", out var timeoutObj))
+                if (savedConfig.TryGetProperty("timeout", out var timeoutObj))
                 {
-                    config["LLM:Timeout"] = timeoutObj?.ToString();
+                    config["LLM:Timeout"] = timeoutObj.GetString();
                 }
             }
 
@@ -243,6 +233,13 @@ public class SettingsController : Controller
             DimensionValidationResult? dimensionValidation = null;
             if (request.ProviderType == ProviderTypes.Embedding)
             {
+                var activeProvider = await _storage.GetActiveProviderAsync(ProviderTypes.Embedding, cancellationToken);
+                if (activeProvider != null)
+                {
+                    var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+                    ApplyEmbeddingProviderConfiguration(config, activeProvider);
+                }
+
                 dimensionValidation = await ValidateEmbeddingDimensionsAsync(cancellationToken);
             }
 
@@ -349,6 +346,59 @@ public class SettingsController : Controller
                 }
             }
 
+            if (request.ProviderName == ProviderNames.OpenAI && request.ProviderType == ProviderTypes.Embedding)
+            {
+                if (string.IsNullOrWhiteSpace(request.Model))
+                {
+                    return Json(new
+                    {
+                        success = false,
+                        error = "Model is required to test OpenAI-compatible embeddings",
+                        responseTimeMs = stopwatch.ElapsedMilliseconds
+                    });
+                }
+
+                var httpClient = _httpClientFactory.CreateClient();
+                httpClient.BaseAddress = new Uri(request.ApiUrl);
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+                var config = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+                var apiKey = config["Embeddings:ApiKey"];
+
+                var testRequest = new OpenAIEmbeddingRequest
+                {
+                    Model = request.Model,
+                    Input = "test"
+                };
+                var httpRequest = new HttpRequestMessage(HttpMethod.Post, "v1/embeddings")
+                {
+                    Content = JsonContent.Create(testRequest)
+                };
+
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                }
+
+                var response = await httpClient.SendAsync(httpRequest, cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                var embeddings = await response.Content.ReadFromJsonAsync<OpenAIEmbeddingResponse>(cancellationToken: cancellationToken);
+                var dimensions = embeddings?.Data.FirstOrDefault()?.Embedding.Length ?? 0;
+                if (dimensions == 0)
+                {
+                    throw new InvalidOperationException("Empty embedding response from OpenAI-compatible API");
+                }
+
+                stopwatch.Stop();
+                return Json(new
+                {
+                    success = true,
+                    message = $"Successfully connected to OpenAI-compatible embeddings API and verified model '{request.Model}' ({dimensions} dimensions)",
+                    responseTimeMs = stopwatch.ElapsedMilliseconds
+                });
+            }
+
             return BadRequest(new { success = false, error = $"Unknown provider: {request.ProviderName}" });
         }
         catch (HttpRequestException ex)
@@ -440,6 +490,20 @@ public class SettingsController : Controller
                 });
             }
 
+            if (request.ProviderName == ProviderNames.OpenAI)
+            {
+                return Json(new
+                {
+                    success = true,
+                    models = new[]
+                    {
+                        new { name = "text-embedding-3-small", size = 0L, modifiedAt = (DateTimeOffset?)null, sizeFormatted = "", isLikelyEmbedding = true },
+                        new { name = "text-embedding-3-large", size = 0L, modifiedAt = (DateTimeOffset?)null, sizeFormatted = "", isLikelyEmbedding = true },
+                        new { name = "text-embedding-ada-002", size = 0L, modifiedAt = (DateTimeOffset?)null, sizeFormatted = "", isLikelyEmbedding = true }
+                    }
+                });
+            }
+
             return BadRequest(new { success = false, error = $"Unknown provider: {request.ProviderName}" });
         }
         catch (HttpRequestException ex)
@@ -514,8 +578,12 @@ public class SettingsController : Controller
     {
         _logger.LogInformation("Validating embedding dimensions after provider change...");
 
-        var validation = await _dimensionService.ValidateAsync(cancellationToken);
-        _mismatchState.Update(validation);
+        using var scope = HttpContext.RequestServices.CreateScope();
+        var dimensionService = scope.ServiceProvider.GetRequiredService<IEmbeddingDimensionService>();
+        var mismatchState = scope.ServiceProvider.GetRequiredService<IDimensionMismatchState>();
+
+        var validation = await dimensionService.ValidateAsync(cancellationToken);
+        mismatchState.Update(validation);
 
         if (validation.HasMismatch)
         {
@@ -535,6 +603,19 @@ public class SettingsController : Controller
         }
 
         return validation;
+    }
+
+    private static void ApplyEmbeddingProviderConfiguration(IConfiguration config, ProviderSettings provider)
+    {
+        config["Embeddings:Provider"] = provider.ProviderName;
+
+        var providerConfig = provider.Config.RootElement;
+        config["Embeddings:ApiUrl"] = providerConfig.TryGetProperty("apiUrl", out var apiUrlProp)
+            ? apiUrlProp.GetString()
+            : null;
+        config["Embeddings:Model"] = providerConfig.TryGetProperty("model", out var modelProp)
+            ? modelProp.GetString()
+            : null;
     }
 }
 

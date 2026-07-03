@@ -29,10 +29,12 @@ public class WorkspaceTools
 
     // ===== Workspace Tools =====
 
-    [McpServerTool, Description("Get workspace information. Without an ID, lists root workspaces with hints about nested content. With an ID, shows detailed workspace info. With a query, searches all workspaces by name. Workspaces are organizational containers (e.g., 'Engineering', 'Sales') that persist indefinitely and can be nested.")]
+    [McpServerTool, Description("Get workspace information. Without an ID, lists root workspaces with hints about nested content. With an ID, shows detailed workspace info. With a slug, looks up a workspace by its URL-safe identifier (optionally scoped to a parent). With a query, searches all workspaces by name. Workspaces are organizational containers (e.g., 'Engineering', 'Sales') that persist indefinitely and can be nested.")]
     public async Task<string> GetWorkspace(
         [Description("Optional workspace ID. If omitted, lists root workspaces.")] string? workspaceId = null,
+        [Description("Optional workspace slug (URL-safe identifier). Unique within its parent scope; use parentWorkspaceId to disambiguate nested workspaces.")] string? slug = null,
         [Description("Optional search query to find workspaces by name (searches all levels). Case-insensitive partial match.")] string? query = null,
+        [Description("Optional parent workspace ID to scope a slug lookup. Omit to look up a slug among root workspaces.")] string? parentWorkspaceId = null,
         [Description("Include system workspaces (like 'Unfiled'). Only applies when listing workspaces.")] bool includeSystem = false,
         CancellationToken cancellationToken = default
     )
@@ -41,6 +43,22 @@ public class WorkspaceTools
         if (!string.IsNullOrWhiteSpace(query))
         {
             return await SearchWorkspacesAsync(query, includeSystem, cancellationToken);
+        }
+
+        // If slug is provided, look it up (optionally scoped to a parent workspace)
+        if (!string.IsNullOrWhiteSpace(slug))
+        {
+            // Slugs are stored lowercase (see GenerateSlug); normalize so lookups are case-insensitive.
+            var normalizedSlug = slug.Trim().ToLowerInvariant();
+            var parsedParentId = ParseOptionalGuid(parentWorkspaceId);
+            var parentId = parsedParentId.HasValue ? new WorkspaceId(parsedParentId.Value) : (WorkspaceId?)null;
+            var bySlug = await _storage.GetWorkspaceBySlugAsync(normalizedSlug, parentId, cancellationToken);
+            if (bySlug == null)
+            {
+                var scope = parentId.HasValue ? $" under parent {parentId.Value.Value}" : " among root workspaces";
+                return $"Workspace with slug '{normalizedSlug}' not found{scope}.";
+            }
+            return await GetWorkspaceDetailsAsync(bySlug, cancellationToken);
         }
 
         // Parse optional Guid defensively — MCP clients may send empty strings or "null"
@@ -53,7 +71,12 @@ public class WorkspaceTools
         }
 
         // Get specific workspace details
-        return await GetWorkspaceDetailsAsync(new WorkspaceId(parsedWorkspaceId.Value), cancellationToken);
+        var workspace = await _storage.GetWorkspaceAsync(new WorkspaceId(parsedWorkspaceId.Value), cancellationToken);
+        if (workspace == null)
+        {
+            return $"Workspace with ID {parsedWorkspaceId.Value} not found.";
+        }
+        return await GetWorkspaceDetailsAsync(workspace, cancellationToken);
     }
 
     private async Task<string> SearchWorkspacesAsync(string query, bool includeSystem, CancellationToken cancellationToken)
@@ -131,14 +154,9 @@ public class WorkspaceTools
         return result.ToString();
     }
 
-    private async Task<string> GetWorkspaceDetailsAsync(WorkspaceId workspaceId, CancellationToken cancellationToken)
+    private async Task<string> GetWorkspaceDetailsAsync(Workspace workspace, CancellationToken cancellationToken)
     {
-        var workspace = await _storage.GetWorkspaceAsync(workspaceId, cancellationToken);
-
-        if (workspace == null)
-        {
-            return $"Workspace with ID {workspaceId.Value} not found.";
-        }
+        var workspaceId = workspace.Id;
 
         // Get path for breadcrumb
         var path = await _storage.GetWorkspacePathAsync(workspaceId, cancellationToken);

@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Memorizer.Models;
 using Memorizer.Settings;
 using Microsoft.Extensions.Options;
 
@@ -24,28 +23,23 @@ public interface IEmbeddingService
 /// </summary>
 public class EmbeddingService : IEmbeddingService
 {
-    private readonly HttpClient _httpClient;
+    private readonly IEmbeddingApiClient _apiClient;
     private readonly IOptionsSnapshot<EmbeddingSettings> _settingsSnapshot;
     private readonly IEmbeddingDimensionService _dimensionService;
     private readonly ILogger<EmbeddingService> _logger;
 
-    // Convenience property to get current settings value
     private EmbeddingSettings Settings => _settingsSnapshot.Value;
 
     public EmbeddingService(
-        HttpClient httpClient,
+        IEmbeddingApiClient apiClient,
         IOptionsSnapshot<EmbeddingSettings> settingsSnapshot,
         IEmbeddingDimensionService dimensionService,
         ILogger<EmbeddingService> logger)
     {
-        _httpClient = httpClient;
+        _apiClient = apiClient;
         _settingsSnapshot = settingsSnapshot;
         _dimensionService = dimensionService;
         _logger = logger;
-
-        // Configure HttpClient with current settings
-        _httpClient.BaseAddress = Settings.ApiUrl;
-        _httpClient.Timeout = Settings.Timeout;
     }
 
     public async Task<float[]> Generate(
@@ -57,35 +51,16 @@ public class EmbeddingService : IEmbeddingService
         {
             _logger.LogDebug("Generating embedding for text of length {TextLength}", text.Length);
 
-            EmbeddingRequest request = new() { Model = Settings.Model, Prompt = text };
+            var embedding = await _apiClient.GenerateAsync(Settings.Model, text, cancellationToken);
 
-            _logger.LogDebug("Sending request to embedding API at {ApiUrl}", Settings.ApiUrl);
-            HttpResponseMessage response = await _httpClient.PostAsJsonAsync(
-                "api/embeddings",
-                request,
-                cancellationToken
-            );
-            response.EnsureSuccessStatusCode();
+            _logger.LogDebug("Successfully generated embedding with {Dimensions} dimensions", embedding.Length);
 
-            EmbeddingResponse? result =
-                await response.Content.ReadFromJsonAsync<EmbeddingResponse>(
-                    cancellationToken: cancellationToken
-                );
-            if (result?.Embedding == null || result.Embedding.Length == 0)
-            {
-                throw new Exception("Failed to generate embedding: Empty response from API");
-            }
-
-            _logger.LogDebug("Successfully generated embedding with {Dimensions} dimensions", result.Embedding.Length);
-
-            return result.Embedding;
+            return embedding;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating embedding: {ErrorMessage}", ex.Message);
 
-            // Fallback to a random embedding in case of error
-            // Use effective dimensions from the dimension service (detected > stored > schema > 384)
             _logger.LogWarning("Falling back to random embedding generation");
             var dimensions = await _dimensionService.GetEffectiveDimensionsAsync(cancellationToken);
 
@@ -96,7 +71,6 @@ public class EmbeddingService : IEmbeddingService
                 embedding[i] = (float)random.NextDouble();
             }
 
-            // Normalize the embedding
             float sum = 0;
             for (int i = 0; i < embedding.Length; i++)
             {

@@ -140,6 +140,7 @@ public interface IStorage
         bool includeUnassigned = false,
         bool includeArchived = false,
         bool includeSystem = false,
+        WorkspaceId? workspaceId = null,
         CancellationToken cancellationToken = default
     );
 
@@ -160,6 +161,7 @@ public interface IStorage
         bool includeUnassigned = false,
         bool includeArchived = false,
         bool includeSystem = false,
+        WorkspaceId? workspaceId = null,
         CancellationToken cancellationToken = default
     );
 
@@ -1324,9 +1326,11 @@ public class Storage : IStorage
         bool includeUnassigned = false,
         bool includeArchived = false,
         bool includeSystem = false,
+        WorkspaceId? workspaceId = null,
         CancellationToken cancellationToken = default
     )
     {
+        EnsureOwnerScopeExclusive(projectId, workspaceId);
         var effectiveMinSimilarity = minSimilarity ?? SimilarityScore.DefaultThreshold;
 
         // Generate embedding for the query
@@ -1347,22 +1351,9 @@ public class Storage : IStorage
         int fetchLimit = limit * 2;
 
         // Build owner filter clause
-        string ownerFilter = "";
-        if (projectId.HasValue)
-        {
-            if (includeUnassigned)
-            {
-                // Include both project-owned and unfiled memories
-                ownerFilter = @"AND ((owner_type = 1 AND owner_id = @projectId)
-                               OR (owner_type = 0 AND owner_id = '00000000-0000-0000-0000-000000000000'))";
-            }
-            else
-            {
-                // Only project-owned memories
-                ownerFilter = "AND owner_type = 1 AND owner_id = @projectId";
-            }
-        }
-        // If no projectId specified, search across all memories (original behavior)
+        string ownerFilter = projectId.HasValue
+            ? BuildOwnerFilter(projectId, includeUnassigned)
+            : BuildWorkspaceOwnerFilter(workspaceId);
 
         // Build archetype filter
         // ArchetypeEnum values: Document=0, Record=1, Archived=2, System=3
@@ -1392,6 +1383,10 @@ public class Storage : IStorage
         if (projectId.HasValue)
         {
             cmd.Parameters.AddWithValue("projectId", projectId.Value.Value);
+        }
+        if (workspaceId.HasValue)
+        {
+            cmd.Parameters.AddWithValue("workspaceId", workspaceId.Value.Value);
         }
 
         List<Memorizer.Models.Memory> memories = [];
@@ -1450,7 +1445,7 @@ public class Storage : IStorage
     )
     {
         var fullEmbeddingResults = await SearchWithFullEmbedding(query, limit, minSimilarity, filterTags, includeArchived: false, cancellationToken);
-        var metadataEmbeddingResults = await SearchWithMetadataEmbedding(query, limit, minSimilarity, filterTags, projectId: null, includeUnassigned: false, includeArchived: false, includeSystem: false, cancellationToken);
+        var metadataEmbeddingResults = await SearchWithMetadataEmbedding(query, limit, minSimilarity, filterTags, projectId: null, includeUnassigned: false, includeArchived: false, includeSystem: false, workspaceId: null, cancellationToken: cancellationToken);
         return (fullEmbeddingResults, metadataEmbeddingResults);
     }
 
@@ -1465,6 +1460,22 @@ public class Storage : IStorage
         }
 
         return "AND owner_type = 1 AND owner_id = @projectId";
+    }
+
+    private static string BuildWorkspaceOwnerFilter(WorkspaceId? workspaceId)
+    {
+        if (!workspaceId.HasValue) return "";
+
+        return @"AND ((owner_type = 0 AND owner_id = @workspaceId)
+               OR (owner_type = 1 AND owner_id IN (SELECT id FROM projects WHERE workspace_id = @workspaceId)))";
+    }
+
+    private static void EnsureOwnerScopeExclusive(ProjectId? projectId, WorkspaceId? workspaceId)
+    {
+        if (projectId.HasValue && workspaceId.HasValue)
+        {
+            throw new ArgumentException("projectId and workspaceId are mutually exclusive search scopes.", nameof(workspaceId));
+        }
     }
 
     private static string BuildArchetypeFilter(bool includeArchived, bool includeSystem)
@@ -1505,16 +1516,21 @@ public class Storage : IStorage
         bool includeUnassigned = false,
         bool includeArchived = false,
         bool includeSystem = false,
+        WorkspaceId? workspaceId = null,
         CancellationToken cancellationToken = default
     )
     {
+        EnsureOwnerScopeExclusive(projectId, workspaceId);
+
         // Generate embedding for the query
         float[] queryEmbedding = await _embeddingService.Generate(query, cancellationToken);
 
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
         int fetchLimit = Math.Max(limit * 3, 30);
-        string ownerFilter = BuildOwnerFilter(projectId, includeUnassigned);
+        string ownerFilter = projectId.HasValue
+            ? BuildOwnerFilter(projectId, includeUnassigned)
+            : BuildWorkspaceOwnerFilter(workspaceId);
         string archetypeFilter = BuildArchetypeFilter(includeArchived, includeSystem);
 
         // Leg 1: Vector search (metadata embedding, no hard distance threshold)
@@ -1537,6 +1553,8 @@ public class Storage : IStorage
             cmd.Parameters.AddWithValue("fetchLimit", fetchLimit);
             if (projectId.HasValue)
                 cmd.Parameters.AddWithValue("projectId", projectId.Value.Value);
+            if (workspaceId.HasValue)
+                cmd.Parameters.AddWithValue("workspaceId", workspaceId.Value.Value);
 
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -1566,6 +1584,8 @@ public class Storage : IStorage
         {
             cmd.Parameters.AddWithValue("tsquery", tsquery);
             cmd.Parameters.AddWithValue("fetchLimit", fetchLimit);
+            if (workspaceId.HasValue)
+                cmd.Parameters.AddWithValue("workspaceId", workspaceId.Value.Value);
             if (projectId.HasValue)
                 cmd.Parameters.AddWithValue("projectId", projectId.Value.Value);
 

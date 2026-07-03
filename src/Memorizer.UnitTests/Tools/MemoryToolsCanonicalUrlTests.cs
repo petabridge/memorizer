@@ -1,8 +1,10 @@
+using Memorizer.Controllers;
 using Memorizer.Models;
 using Memorizer.Models.Enums;
 using Memorizer.Models.ValueTypes;
 using Memorizer.Services;
 using Memorizer.Settings;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using PostgMem.Tools;
 using Pgvector;
@@ -75,6 +77,79 @@ public class MemoryToolsCanonicalUrlTests
     }
 
     [Fact]
+    public async Task Store_WithWorkspaceId_ShouldAssignMemoryToWorkspace()
+    {
+        // Arrange
+        var workspaceId = Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa");
+        var fakeStorage = new FakeStorage
+        {
+            StoredMemory = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Test Memory")
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        var result = await tools.Store(
+            type: "reference",
+            text: "Test content",
+            source: "LLM",
+            title: "Test Memory",
+            workspaceId: workspaceId.ToString());
+
+        // Assert
+        Assert.Contains($"Assigned to workspace {workspaceId}", result);
+        Assert.True(fakeStorage.StoreMemoryCalled);
+        Assert.Equal(OwnerTypeEnum.Workspace, fakeStorage.LastStoredOwner?.Type);
+        Assert.Equal(workspaceId, fakeStorage.LastStoredOwner?.WorkspaceId?.Value);
+    }
+
+    [Fact]
+    public async Task Store_WithProjectIdAndWorkspaceId_ReturnsValidationErrorAndDoesNotStore()
+    {
+        // Arrange
+        var fakeStorage = new FakeStorage
+        {
+            StoredMemory = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Test Memory")
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        var result = await tools.Store(
+            type: "reference",
+            text: "Test content",
+            source: "LLM",
+            title: "Test Memory",
+            projectId: "11111111-1111-1111-1111-111111111111",
+            workspaceId: "22222222-2222-2222-2222-222222222222");
+
+        // Assert
+        Assert.Contains("projectId and workspaceId are mutually exclusive", result);
+        Assert.False(fakeStorage.StoreMemoryCalled);
+    }
+
+    [Fact]
+    public async Task Store_WithInvalidWorkspaceId_ReturnsValidationErrorAndDoesNotStore()
+    {
+        // Arrange
+        var fakeStorage = new FakeStorage
+        {
+            StoredMemory = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Test Memory")
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        var result = await tools.Store(
+            type: "reference",
+            text: "Test content",
+            source: "LLM",
+            title: "Test Memory",
+            workspaceId: "not-a-guid");
+
+        // Assert
+        Assert.Contains("workspaceId must be a valid GUID", result);
+        Assert.False(fakeStorage.StoreMemoryCalled);
+    }
+
+    [Fact]
     public async Task SearchMemories_ShouldIncludeCanonicalUrl_ForEachResult_WhenConfigured()
     {
         // Arrange
@@ -101,6 +176,121 @@ public class MemoryToolsCanonicalUrlTests
         Assert.Contains("/view/a1b2c3d4-e5f6-7890-abcd-ef1234567890", result);
         Assert.Contains("/view/b2c3d4e5-f6a7-8901-bcde-f23456789012", result);
         Assert.Equal(2, fakeUrlService.GetMemoryUrlCallCount);
+    }
+
+    [Fact]
+    public async Task SearchMemories_ShouldPassWorkspaceId_ToHybridSearch()
+    {
+        // Arrange
+        var workspaceId = Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa");
+        var fakeStorage = new FakeStorage
+        {
+            HybridSearchResults = new List<Memory>
+            {
+                CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
+            }
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        await tools.SearchMemories("test query", workspaceId: workspaceId.ToString());
+
+        // Assert
+        Assert.True(fakeStorage.HybridSearchCalled);
+        Assert.Null(fakeStorage.LastHybridSearchProjectId);
+        Assert.Equal(workspaceId, fakeStorage.LastHybridSearchWorkspaceId?.Value);
+    }
+
+    [Fact]
+    public async Task SearchMemories_WithInvalidWorkspaceId_ReturnsValidationErrorAndDoesNotSearch()
+    {
+        // Arrange
+        var fakeStorage = new FakeStorage
+        {
+            HybridSearchResults = new List<Memory>
+            {
+                CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
+            }
+        };
+        var tools = CreateTools(fakeStorage, new FakeCanonicalUrlService());
+
+        // Act
+        var result = await tools.SearchMemories("test query", workspaceId: "not-a-guid");
+
+        // Assert
+        Assert.Contains("workspaceId must be a valid GUID", result);
+        Assert.False(fakeStorage.HybridSearchCalled);
+    }
+
+    [Fact]
+    public async Task RestSearchMemories_WithWorkspaceId_PassesWorkspaceScopeToStorage()
+    {
+        // Arrange
+        var workspaceId = Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa");
+        var fakeStorage = new FakeStorage
+        {
+            SearchWithMetadataEmbeddingResults = new List<Memory>
+            {
+                CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
+            }
+        };
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings());
+
+        // Act
+        var result = await controller.SearchMemories("test query", workspaceId: workspaceId);
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsType<List<MemoryListItem>>(ok.Value);
+        Assert.Single(items);
+        Assert.True(fakeStorage.SearchWithMetadataEmbeddingCalled);
+        Assert.Null(fakeStorage.LastMetadataSearchProjectId);
+        Assert.Equal(workspaceId, fakeStorage.LastMetadataSearchWorkspaceId?.Value);
+    }
+
+    [Fact]
+    public async Task RestSearchWithMetadataEmbedding_WithWorkspaceId_PassesWorkspaceScopeToStorage()
+    {
+        // Arrange
+        var workspaceId = Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa");
+        var fakeStorage = new FakeStorage
+        {
+            SearchWithMetadataEmbeddingResults = new List<Memory>
+            {
+                CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
+            }
+        };
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings());
+
+        // Act
+        var result = await controller.SearchWithMetadataEmbedding("test query", workspaceId: workspaceId);
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsType<List<MemoryListItem>>(ok.Value);
+        Assert.Single(items);
+        Assert.True(fakeStorage.SearchWithMetadataEmbeddingCalled);
+        Assert.Null(fakeStorage.LastMetadataSearchProjectId);
+        Assert.Equal(workspaceId, fakeStorage.LastMetadataSearchWorkspaceId?.Value);
+    }
+
+    [Fact]
+    public async Task RestSearchMemories_WithProjectIdAndWorkspaceId_ReturnsBadRequest()
+    {
+        // Arrange
+        var fakeStorage = new FakeStorage();
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings());
+
+        // Act
+        var result = await controller.SearchMemories(
+            "test query",
+            projectId: Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            workspaceId: Guid.Parse("22222222-2222-2222-2222-222222222222"));
+
+        // Assert
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
+        Assert.Contains("mutually exclusive", Assert.IsType<string>(badRequest.Value));
+        Assert.False(fakeStorage.SearchWithMetadataEmbeddingCalled);
     }
 
     [Fact]
@@ -193,11 +383,24 @@ public class MemoryToolsCanonicalUrlTests
         public Memory? StoredMemory { get; set; }
         public Memory? RetrievedMemory { get; set; }
         public List<Memory>? HybridSearchResults { get; set; }
+        public List<Memory>? SearchWithMetadataEmbeddingResults { get; set; }
         public List<Memory>? ManyResults { get; set; }
+        public bool StoreMemoryCalled { get; private set; }
+        public MemoryOwner? LastStoredOwner { get; private set; }
+        public bool HybridSearchCalled { get; private set; }
+        public ProjectId? LastHybridSearchProjectId { get; private set; }
+        public WorkspaceId? LastHybridSearchWorkspaceId { get; private set; }
+        public bool SearchWithMetadataEmbeddingCalled { get; private set; }
+        public ProjectId? LastMetadataSearchProjectId { get; private set; }
+        public WorkspaceId? LastMetadataSearchWorkspaceId { get; private set; }
 
         // Core memory operations used by tests
         public Task<Memory> StoreMemory(string type, string content, string source, string[]? tags, Confidence confidence, string title, MemoryId? relatedTo = null, string? relationshipType = null, MemoryOwner? owner = null, ArchetypeEnum archetype = ArchetypeEnum.Document, CancellationToken cancellationToken = default)
-            => Task.FromResult(StoredMemory ?? throw new InvalidOperationException("StoredMemory not set"));
+        {
+            StoreMemoryCalled = true;
+            LastStoredOwner = owner;
+            return Task.FromResult(StoredMemory ?? throw new InvalidOperationException("StoredMemory not set"));
+        }
 
         public Task<Memory?> Get(MemoryId id, CancellationToken cancellationToken = default)
             => Task.FromResult(RetrievedMemory);
@@ -205,8 +408,13 @@ public class MemoryToolsCanonicalUrlTests
         public Task<List<Memory>> GetMany(IEnumerable<MemoryId> ids, CancellationToken cancellationToken = default)
             => Task.FromResult(ManyResults ?? new List<Memory>());
 
-        public Task<List<Memory>> HybridSearch(string query, int limit, SimilarityScore? minSimilarity, string[]? filterTags, ProjectId? projectId, bool includeUnassigned, bool includeArchived, bool includeSystem, CancellationToken cancellationToken)
-            => Task.FromResult(HybridSearchResults ?? new List<Memory>());
+        public Task<List<Memory>> HybridSearch(string query, int limit, SimilarityScore? minSimilarity, string[]? filterTags, ProjectId? projectId, bool includeUnassigned, bool includeArchived, bool includeSystem, WorkspaceId? workspaceId, CancellationToken cancellationToken)
+        {
+            HybridSearchCalled = true;
+            LastHybridSearchProjectId = projectId;
+            LastHybridSearchWorkspaceId = workspaceId;
+            return Task.FromResult(HybridSearchResults ?? new List<Memory>());
+        }
 
         // Stub implementations for remaining interface members - grouped by category
         
@@ -222,8 +430,13 @@ public class MemoryToolsCanonicalUrlTests
             => throw new NotImplementedException();
         public Task<List<Memory>> SearchWithFullEmbedding(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, bool includeArchived = false, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
-        public Task<List<Memory>> SearchWithMetadataEmbedding(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, ProjectId? projectId = null, bool includeUnassigned = false, bool includeArchived = false, bool includeSystem = false, CancellationToken cancellationToken = default)
-            => throw new NotImplementedException();
+        public Task<List<Memory>> SearchWithMetadataEmbedding(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, ProjectId? projectId = null, bool includeUnassigned = false, bool includeArchived = false, bool includeSystem = false, WorkspaceId? workspaceId = null, CancellationToken cancellationToken = default)
+        {
+            SearchWithMetadataEmbeddingCalled = true;
+            LastMetadataSearchProjectId = projectId;
+            LastMetadataSearchWorkspaceId = workspaceId;
+            return Task.FromResult(SearchWithMetadataEmbeddingResults ?? new List<Memory>());
+        }
         public Task<(List<Memory> FullResults, List<Memory> MetadataResults)> CompareSearchMethods(string query, int limit = 10, SimilarityScore? minSimilarity = null, string[]? filterTags = null, CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
 

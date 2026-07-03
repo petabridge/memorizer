@@ -38,12 +38,13 @@ public static class ServiceCollectionExtensions
             .BindConfiguration("Embeddings")
             .ValidateOnStart();
 
-        // Register EmbeddingService as Scoped so it gets fresh settings on each request
-        // Note: HttpClient is configured with base address in the service constructor
-        services.AddHttpClient<IEmbeddingService, EmbeddingService>();
+        // Single typed HttpClient that handles provider-specific request/response shapes
+        // (Ollama and OpenAI-compatible). EmbeddingService and EmbeddingDimensionService
+        // consume it instead of holding their own HttpClient.
+        services.AddHttpClient<IEmbeddingApiClient, EmbeddingApiClient>();
 
-        // Register EmbeddingDimensionService with its own HttpClient (singleton is fine here)
-        services.AddHttpClient<IEmbeddingDimensionService, EmbeddingDimensionService>();
+        services.AddScoped<IEmbeddingService, EmbeddingService>();
+        services.AddScoped<IEmbeddingDimensionService, EmbeddingDimensionService>();
 
         // Register dimension mismatch state holder for UI warnings
         services.AddSingleton<IDimensionMismatchState, DimensionMismatchState>();

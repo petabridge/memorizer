@@ -42,7 +42,10 @@ public class ConfigurationController : ControllerBase
         {
             EmbeddingSettings = new EmbeddingConfigDto
             {
+                Provider = EmbeddingSettingsValue.Provider,
+                ApiUrl = EmbeddingSettingsValue.ApiUrl?.ToString(),
                 ApiConfigured = EmbeddingSettingsValue.ApiUrl != null,
+                ApiKeyConfigured = !string.IsNullOrWhiteSpace(EmbeddingSettingsValue.ApiKey),
                 Model = EmbeddingSettingsValue.Model,
                 Timeout = EmbeddingSettingsValue.Timeout.ToString()
             },
@@ -80,7 +83,10 @@ public class SystemConfiguration
 
 public class EmbeddingConfigDto
 {
+    public string Provider { get; set; } = string.Empty;
+    public string? ApiUrl { get; set; }
     public bool ApiConfigured { get; set; }
+    public bool ApiKeyConfigured { get; set; }
     public string Model { get; set; } = string.Empty;
     public string Timeout { get; set; } = string.Empty;
 }

@@ -43,7 +43,8 @@ public interface IEmbeddingDimensionService
 
     /// <summary>
     /// Get the effective dimensions to use for fallback/default scenarios.
-    /// Uses: detected > stored > schema > 384
+    /// Uses detected dimensions first. If stored config and schema disagree,
+    /// schema wins so fallback embeddings can still be written to VECTOR(n) columns.
     /// </summary>
     Task<int> GetEffectiveDimensionsAsync(CancellationToken ct = default);
 }

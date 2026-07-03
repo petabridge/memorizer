@@ -3,21 +3,15 @@
     <Copyright>© $([System.DateTime]::Now.Year)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/petabridge/memorizer-v1</PackageProjectUrl>
-    <VersionPrefix>2.1.0</VersionPrefix>
+    <VersionPrefix>2.2.0-beta2</VersionPrefix>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsNotAsErrors>CS1591</WarningsNotAsErrors>
     <Deterministic>true</Deterministic>
     <PackageReleaseNotes>**Features**
-- [Add move-project-to-workspace and workspace reparenting](https://github.com/petabridge/memorizer/pull/167) - Move projects between workspaces and reparent workspaces in the hierarchy
-  - `MoveProjectToWorkspaceAsync` atomically moves a project and all its descendants to a target workspace
-  - Workspace reparenting with circular-reference guard to prevent invalid hierarchies
-  - Full support across REST API, MCP tools, and Web UI with modal dialogs
-- [Add canonical URL support to MCP tool responses](https://github.com/petabridge/memorizer/pull/162) - MCP tool responses now include clickable URLs to the web UI for memories, workspaces, and projects
-  - Configure via `Server:CanonicalUrl` setting to enable links in MCP responses
-  - URLs included in `Store`, `Get`, `SearchMemories`, `GetMany`, `CreateWorkspace`, `CreateProject`, `GetWorkspace`, and `GetProjectContext` responses
-
-**Bug Fixes**
-- [Make optional Guid MCP parameters resilient to client schema variations](https://github.com/petabridge/memorizer/pull/166) - Fixes compatibility with MCP clients (notably Cursor) that send empty strings or `"null"` for optional Guid parameters instead of proper JSON null</PackageReleaseNotes>
+- [Add workspace scope to memory tools](https://github.com/petabridge/memorizer/pull/197) - Memory search and storage now support workspace-level scoping
+  - `SearchMemories` can filter by workspace ID to query all memories in a workspace in a single call
+  - `Store` supports assigning memories directly to workspaces (not just projects)
+  - Closes scoping gaps for agents operating at the workspace level</PackageReleaseNotes>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 </Project>

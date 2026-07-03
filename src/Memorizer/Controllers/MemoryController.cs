@@ -537,12 +537,32 @@ public class MemoryController : ControllerBase
         [FromQuery] string query,
         [FromQuery] double minSimilarity = 0.7,
         [FromQuery] int limit = 10,
-        [FromQuery] string[]? filterTags = null)
+        [FromQuery] string[]? filterTags = null,
+        [FromQuery] Guid? projectId = null,
+        [FromQuery] bool includeUnassigned = false,
+        [FromQuery] bool includeArchived = false,
+        [FromQuery] Guid? workspaceId = null)
     {
         if (string.IsNullOrWhiteSpace(query))
             return BadRequest("Query is required.");
+
+        if (projectId.HasValue && workspaceId.HasValue)
+            return BadRequest("projectId and workspaceId are mutually exclusive search scopes.");
+
+        ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
+        WorkspaceId? typedWorkspaceId = workspaceId.HasValue ? new WorkspaceId(workspaceId.Value) : null;
+
         // Use metadata embeddings by default for better keyword query performance
-        var results = await _storage.SearchWithMetadataEmbedding(query, limit, new SimilarityScore(minSimilarity), filterTags);
+        var results = await _storage.SearchWithMetadataEmbedding(
+            query,
+            limit,
+            new SimilarityScore(minSimilarity),
+            filterTags,
+            typedProjectId,
+            includeUnassigned,
+            includeArchived,
+            includeSystem: false,
+            workspaceId: typedWorkspaceId);
         return Ok(results.Select(MemoryListItem.FromMemory).ToList());
     }
 
@@ -570,11 +590,31 @@ public class MemoryController : ControllerBase
         [FromQuery] string query,
         [FromQuery] double minSimilarity = 0.7,
         [FromQuery] int limit = 10,
-        [FromQuery] string[]? filterTags = null)
+        [FromQuery] string[]? filterTags = null,
+        [FromQuery] Guid? projectId = null,
+        [FromQuery] bool includeUnassigned = false,
+        [FromQuery] bool includeArchived = false,
+        [FromQuery] Guid? workspaceId = null)
     {
         if (string.IsNullOrWhiteSpace(query))
             return BadRequest("Query is required.");
-        var results = await _storage.SearchWithMetadataEmbedding(query, limit, new SimilarityScore(minSimilarity), filterTags);
+
+        if (projectId.HasValue && workspaceId.HasValue)
+            return BadRequest("projectId and workspaceId are mutually exclusive search scopes.");
+
+        ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
+        WorkspaceId? typedWorkspaceId = workspaceId.HasValue ? new WorkspaceId(workspaceId.Value) : null;
+
+        var results = await _storage.SearchWithMetadataEmbedding(
+            query,
+            limit,
+            new SimilarityScore(minSimilarity),
+            filterTags,
+            typedProjectId,
+            includeUnassigned,
+            includeArchived,
+            includeSystem: false,
+            workspaceId: typedWorkspaceId);
         return Ok(results.Select(MemoryListItem.FromMemory).ToList());
     }
 
@@ -967,4 +1007,4 @@ public class OwnerDto
 {
     public string Type { get; set; } = string.Empty;
     public Guid Id { get; set; }
-} 
+}
