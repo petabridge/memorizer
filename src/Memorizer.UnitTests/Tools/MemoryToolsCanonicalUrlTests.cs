@@ -229,7 +229,7 @@ public class MemoryToolsCanonicalUrlTests
         var workspaceId = Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa");
         var fakeStorage = new FakeStorage
         {
-            SearchWithMetadataEmbeddingResults = new List<Memory>
+            HybridSearchResults = new List<Memory>
             {
                 CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
             }
@@ -243,9 +243,9 @@ public class MemoryToolsCanonicalUrlTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var items = Assert.IsType<List<MemoryListItem>>(ok.Value);
         Assert.Single(items);
-        Assert.True(fakeStorage.SearchWithMetadataEmbeddingCalled);
-        Assert.Null(fakeStorage.LastMetadataSearchProjectId);
-        Assert.Equal(workspaceId, fakeStorage.LastMetadataSearchWorkspaceId?.Value);
+        Assert.True(fakeStorage.HybridSearchCalled);
+        Assert.Null(fakeStorage.LastHybridSearchProjectId);
+        Assert.Equal(workspaceId, fakeStorage.LastHybridSearchWorkspaceId?.Value);
     }
 
     [Fact]
@@ -290,7 +290,7 @@ public class MemoryToolsCanonicalUrlTests
         // Assert
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Contains("mutually exclusive", Assert.IsType<string>(badRequest.Value));
-        Assert.False(fakeStorage.SearchWithMetadataEmbeddingCalled);
+        Assert.False(fakeStorage.HybridSearchCalled);
     }
 
     [Fact]
