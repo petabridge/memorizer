@@ -926,14 +926,18 @@ function onSearchModeChange() {
     const mode = document.getElementById('searchMode').value;
     const buttonLabel = document.getElementById('searchButtonLabel');
     const input = document.getElementById('vectorSearchQuery');
+    const minSimInput = document.getElementById('vectorSearchMinSim');
 
     if (mode === 'vector') {
         buttonLabel.textContent = 'Vector Search';
         input.placeholder = 'Vector search memories...';
+        minSimInput.value = '70';
     } else {
         buttonLabel.textContent = 'Search';
         input.placeholder = 'Search memories...';
+        minSimInput.value = '25';
     }
+    onMinSimChange();
 }
 
 async function runSearch(event) {
