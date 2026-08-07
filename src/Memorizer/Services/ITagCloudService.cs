@@ -22,4 +22,9 @@ public interface ITagCloudService
     Task<List<TagCount>> GetProjectTagCountsAsync(
         ProjectId projectId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets tag counts across all non-archived memories (no owner scope).
+    /// </summary>
+    Task<List<TagCount>> GetGlobalTagCountsAsync(CancellationToken cancellationToken = default);
 }

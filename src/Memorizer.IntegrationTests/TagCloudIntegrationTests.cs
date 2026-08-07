@@ -141,4 +141,35 @@ public class TagCloudIntegrationTests : IDisposable
             await storage.DeleteWorkspaceAsync(workspace.Id);
         }
     }
+
+    [Fact]
+    public async Task GlobalTagCounts_IncludeAllNonArchivedMemories()
+    {
+        // Arrange
+        var storage = _services.GetRequiredService<IStorage>();
+        var tagCloud = _services.GetRequiredService<ITagCloudService>();
+
+        var created = new List<MemoryId>();
+        try
+        {
+            created.Add((await storage.StoreMemory(
+                "reference", "global memory one", "test", new[] { "global-tag" },
+                new Confidence(1.0), "Global One")).Id);
+            created.Add((await storage.StoreMemory(
+                "reference", "global memory two", "test", new[] { "global-tag", "other-tag" },
+                new Confidence(1.0), "Global Two")).Id);
+
+            // Act
+            var globalCounts = await tagCloud.GetGlobalTagCountsAsync();
+
+            // Assert - counts aggregate across all memories
+            Assert.Contains(globalCounts, x => x.Tag == "global-tag" && x.Count == 2);
+            Assert.Contains(globalCounts, x => x.Tag == "other-tag" && x.Count == 1);
+        }
+        finally
+        {
+            foreach (var id in created)
+                await storage.Delete(id);
+        }
+    }
 }

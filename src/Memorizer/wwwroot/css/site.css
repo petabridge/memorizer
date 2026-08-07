@@ -92,8 +92,8 @@
 }
 
 .card-header {
-    background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%);
-    color: var(--text-on-brand);
+    background-color: var(--surface-card-alt);
+    color: var(--text-primary);
     border-radius: 0.75rem 0.75rem 0 0 !important;
 }
 
