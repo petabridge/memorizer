@@ -28,57 +28,53 @@
                 <span id="workspaceMeta"></span>
             </small>
         </div>
-        <div id="editButton" class="d-flex gap-2">
-            <button type="button" class="btn btn-outline-secondary" id="reparentWorkspaceBtn" data-bs-toggle="modal" data-bs-target="#reparentWorkspaceModal" onclick="openReparentModal()">
-                <i class="fas fa-sitemap me-2"></i>Move/Reparent
-            </button>
-            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editWorkspaceModal">
-                <i class="fas fa-edit me-2"></i>Edit
-            </button>
+        <div class="d-flex gap-2">
+            <div id="createButtons" class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-primary" id="createChildWorkspaceBtn" data-bs-toggle="modal" data-bs-target="#createChildWorkspaceModal">
+                    <i class="fas fa-folder-plus me-2"></i>New Nested Workspace
+                </button>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createProjectModal">
+                    <i class="fas fa-plus me-2"></i>New Project
+                </button>
+            </div>
+            <div id="editButton" class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary" id="reparentWorkspaceBtn" data-bs-toggle="modal" data-bs-target="#reparentWorkspaceModal" onclick="openReparentModal()">
+                    <i class="fas fa-sitemap me-2"></i>Move/Reparent
+                </button>
+                <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editWorkspaceModal">
+                    <i class="fas fa-edit me-2"></i>Edit
+                </button>
+            </div>
         </div>
     </div>
 
     <hr>
 
     <!-- Child Workspaces Section -->
-    <div class="mb-4">
+    <div class="mb-4" id="childWorkspacesSection">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4>
                 <i class="fas fa-folder-tree me-2"></i>
                 Nested Workspaces <span class="badge bg-secondary" id="childWorkspaceCount">0</span>
             </h4>
-            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createChildWorkspaceModal" id="createChildWorkspaceBtn">
-                <i class="fas fa-plus me-2"></i>New Nested Workspace
-            </button>
         </div>
         <div id="childWorkspacesList"></div>
-        <div id="noChildWorkspaces" class="text-center py-4 text-muted" style="display: none;">
-            <i class="fas fa-folder-open fa-2x mb-2"></i>
-            <p>No nested workspaces. Create one to organize related areas of work.</p>
-        </div>
     </div>
 
-    <hr>
+    <hr id="childWorkspacesDivider" style="display: none;">
 
     <!-- Projects Section -->
-    <div class="mb-4">
+    <div class="mb-4" id="projectsSection">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4>
                 <i class="fas fa-tasks me-2"></i>
                 Projects <span class="badge bg-secondary" id="projectCount">0</span>
             </h4>
-            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createProjectModal">
-                <i class="fas fa-plus me-2"></i>New Project
-            </button>
         </div>
         <div id="projectsList"></div>
-        <div id="noProjects" class="text-center py-4 text-muted" style="display: none;">
-            <i class="fas fa-inbox fa-2x mb-2"></i>
-            <p>No projects yet. Create one to start organizing memories.</p>
-        </div>
     </div>
 
-    <hr>
+    <hr id="projectsDivider" style="display: none;">
 
     <!-- Memories Section -->
     <div class="mb-4">
@@ -318,19 +314,27 @@ function renderWorkspace() {
 
     // Child Workspaces
     const childWorkspaces = workspace.childWorkspaces || [];
-    document.getElementById('childWorkspaceCount').textContent = childWorkspaces.length;
+    const childWorkspacesSection = document.getElementById('childWorkspacesSection');
     if (childWorkspaces.length > 0) {
+        document.getElementById('childWorkspaceCount').textContent = childWorkspaces.length;
         document.getElementById('childWorkspacesList').innerHTML = childWorkspaces.map(renderChildWorkspaceCard).join('');
+        childWorkspacesSection.style.display = 'block';
+        document.getElementById('childWorkspacesDivider').style.display = 'block';
     } else {
-        document.getElementById('noChildWorkspaces').style.display = 'block';
+        childWorkspacesSection.style.display = 'none';
+        document.getElementById('childWorkspacesDivider').style.display = 'none';
     }
 
     // Projects
-    document.getElementById('projectCount').textContent = workspace.projects.length;
+    const projectsSection = document.getElementById('projectsSection');
     if (workspace.projects.length > 0) {
+        document.getElementById('projectCount').textContent = workspace.projects.length;
         document.getElementById('projectsList').innerHTML = workspace.projects.map(renderProjectCard).join('');
+        projectsSection.style.display = 'block';
+        document.getElementById('projectsDivider').style.display = 'block';
     } else {
-        document.getElementById('noProjects').style.display = 'block';
+        projectsSection.style.display = 'none';
+        document.getElementById('projectsDivider').style.display = 'none';
     }
 
     // Memories
