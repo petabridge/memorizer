@@ -46,12 +46,12 @@
 
     <hr>
 
-    <!-- Tag Cloud Section -->
+    <!-- Tags Section -->
     <div class="card mb-4" id="tagCloudSection" style="display: none;">
         <div class="card-header">
             <h5 class="mb-0">
                 <i class="fas fa-tags me-2"></i>
-                Tag Cloud
+                Tags
             </h5>
         </div>
         <div class="card-body">
@@ -459,7 +459,7 @@ async function loadTagCloud() {
 
 function renderTagCloudItem(tagCount) {
     const fontSize = 0.8 + Math.min(0.8, (tagCount.count - 1) * 0.15);
-    const href = `/memories?projectId=${projectId}&tag=${encodeURIComponent(tagCount.tag)}`;
+    const href = `/memories?tag=${encodeURIComponent(tagCount.tag)}`;
     return `<a href="${href}" class="tag-cloud-item" style="font-size: ${fontSize.toFixed(2)}rem;" title="${escapeHtml(tagCount.tag)} (${tagCount.count})">${escapeHtml(tagCount.tag)}</a>`;
 }
 

@@ -70,6 +70,21 @@ public class TagCloudService : ITagCloudService
         return await ReadTagCountsAsync(command, cancellationToken);
     }
 
+    public async Task<List<TagCount>> GetGlobalTagCountsAsync(CancellationToken cancellationToken = default)
+    {
+        const string sql = @"
+            SELECT tag, COUNT(*) AS cnt
+            FROM memories, unnest(tags) AS tag
+            WHERE archetype IN (0, 1)
+            GROUP BY tag
+            ORDER BY cnt DESC, tag";
+
+        await using var connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(sql, connection);
+
+        return await ReadTagCountsAsync(command, cancellationToken);
+    }
+
     private static async Task<List<TagCount>> ReadTagCountsAsync(
         NpgsqlCommand command,
         CancellationToken cancellationToken)

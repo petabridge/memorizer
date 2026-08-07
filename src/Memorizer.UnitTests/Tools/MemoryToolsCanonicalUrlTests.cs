@@ -387,6 +387,9 @@ public class MemoryToolsCanonicalUrlTests
         public Task<List<TagCount>> GetProjectTagCountsAsync(
             ProjectId projectId, CancellationToken cancellationToken = default)
             => Task.FromResult(new List<TagCount>());
+
+        public Task<List<TagCount>> GetGlobalTagCountsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<TagCount>());
     }
 
     /// <summary>

@@ -139,8 +139,9 @@ public class MemoryController : ControllerBase
     }
 
     /// <summary>
-    /// Get tag counts for a tag cloud, scoped to a workspace subtree or a single project.
-    /// Workspace scope aggregates across the entire subtree (nested workspaces + projects).
+    /// Get tag counts for a tag cloud. Scope to a workspace subtree or a single project
+    /// with the optional query parameters, or omit both for global counts across all
+    /// non-archived memories. Workspace scope aggregates across the entire subtree.
     /// </summary>
     [HttpGet("tags/cloud")]
     public async Task<ActionResult<List<TagCount>>> GetTagCloud(
@@ -163,7 +164,8 @@ public class MemoryController : ControllerBase
             return Ok(counts);
         }
 
-        return BadRequest("Either workspaceId or projectId is required.");
+        var globalCounts = await _tagCloudService.GetGlobalTagCountsAsync(cancellationToken);
+        return Ok(globalCounts);
     }
 
     /// <summary>
