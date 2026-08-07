@@ -8,7 +8,7 @@
             <i class="fas fa-brain me-2 text-primary"></i>
             Memory Manager
         </h1>
-        <p class="text-muted mb-0">Manage your AI agent memories with vector search capabilities</p>
+        <p class="text-muted mb-0">Manage your AI agent memories with semantic and hybrid search</p>
     </div>
     <div>        <a asp-controller="Home" asp-action="Create" class="btn btn-primary">            <i class="fas fa-plus me-2"></i>            Add Memory        </a>    </div>
 </div>
@@ -58,19 +58,25 @@
     </div>
 </div>
 
-<!-- Vector Search Bar - Moved to top -->
+<!-- Search Bar - hybrid by default, vector available via toggle -->
 <div class="card mb-4">
     <div class="card-body">
-        <form id="vectorSearchForm" class="row g-2 align-items-center" onsubmit="return runVectorSearch(event)">
-            <div class="col-md-8">
-                <input type="text" id="vectorSearchQuery" class="form-control" placeholder="Vector search memories..." autocomplete="off">
+        <form id="vectorSearchForm" class="row g-2 align-items-center" onsubmit="return runSearch(event)">
+            <div class="col-auto">
+                <select id="searchMode" class="form-select" title="Search mode" onchange="onSearchModeChange()">
+                    <option value="hybrid" selected>Hybrid</option>
+                    <option value="vector">Vector</option>
+                </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-7">
+                <input type="text" id="vectorSearchQuery" class="form-control" placeholder="Search memories..." autocomplete="off">
+            </div>
+            <div class="col-md-2" id="minSimContainer" style="display: none;">
                 <input type="number" id="vectorSearchMinSim" class="form-control" placeholder="Min similarity (0-1)" min="0" max="1" step="0.01" value="0.7">
             </div>
             <div class="col-md-2">
                 <button type="submit" class="btn btn-success w-100">
-                    <i class="fas fa-search me-1"></i> Vector Search
+                    <i class="fas fa-search me-1"></i> <span id="searchButtonLabel">Search</span>
                 </button>
             </div>
         </form>
@@ -203,9 +209,9 @@ function parseUrlParams() {
     const searchQuery = params.get('q');
     if (searchQuery) {
         document.getElementById('vectorSearchQuery').value = searchQuery;
-        // Auto-trigger vector search
+        // Auto-trigger search
         setTimeout(() => {
-            runVectorSearch(new Event('submit'));
+            runSearch(new Event('submit'));
         }, 100);
     }
 }
@@ -905,10 +911,27 @@ async function deleteMemory(id) {
     }
 }
 
-async function runVectorSearch(event) {
+function onSearchModeChange() {
+    const mode = document.getElementById('searchMode').value;
+    const minSimContainer = document.getElementById('minSimContainer');
+    const buttonLabel = document.getElementById('searchButtonLabel');
+    const input = document.getElementById('vectorSearchQuery');
+
+    if (mode === 'vector') {
+        minSimContainer.style.display = 'block';
+        buttonLabel.textContent = 'Vector Search';
+        input.placeholder = 'Vector search memories...';
+    } else {
+        minSimContainer.style.display = 'none';
+        buttonLabel.textContent = 'Search';
+        input.placeholder = 'Search memories...';
+    }
+}
+
+async function runSearch(event) {
     event.preventDefault();
     const query = document.getElementById('vectorSearchQuery').value.trim();
-    const minSim = parseFloat(document.getElementById('vectorSearchMinSim').value) || 0.7;
+    const method = document.getElementById('searchMode').value;
     if (!query) {
         // If search bar is cleared, revert to default list
         isVectorSearch = false;
@@ -919,21 +942,27 @@ async function runVectorSearch(event) {
     isVectorSearch = true;
     document.getElementById('vectorSearchResults').innerHTML = `<div class='d-flex justify-content-center py-5'><div class='spinner-border text-success' role='status'><span class='visually-hidden'>Searching...</span></div></div>`;
     try {
-        const response = await fetch(`/api/memory/search?query=${encodeURIComponent(query)}&minSimilarity=${minSim}&limit=20`);
+        let url = `/api/memory/search?query=${encodeURIComponent(query)}&method=${method}&limit=20`;
+        if (method === 'vector') {
+            const minSim = parseFloat(document.getElementById('vectorSearchMinSim').value) || 0.7;
+            url += `&minSimilarity=${minSim}`;
+        }
+        const response = await fetch(url);
         const results = await response.json();
-        displayVectorSearchResults(results);
+        displayVectorSearchResults(results, method);
     } catch (error) {
-        document.getElementById('vectorSearchResults').innerHTML = `<div class='alert alert-danger'><i class='fas fa-exclamation-triangle me-2'></i>Error running vector search. Please try again.</div>`;
+        document.getElementById('vectorSearchResults').innerHTML = `<div class='alert alert-danger'><i class='fas fa-exclamation-triangle me-2'></i>Error running search. Please try again.</div>`;
     }
     return false;
 }
 
-function displayVectorSearchResults(results) {
+function displayVectorSearchResults(results, method) {
+    const resultsTitle = method === 'vector' ? 'Vector Search Results' : 'Search Results';
     if (!results || results.length === 0) {
-        document.getElementById('vectorSearchResults').innerHTML = `<div class='alert alert-info'><i class='fas fa-info-circle me-2'></i>No vector search results found.</div>`;
+        document.getElementById('vectorSearchResults').innerHTML = `<div class='alert alert-info'><i class='fas fa-info-circle me-2'></i>No search results found.</div>`;
         return;
     }
-    let html = `<div class='card mb-4'><div class='card-body'><h5 class='mb-3'><i class='fas fa-search me-2 text-success'></i>Vector Search Results</h5><div class='row'>`;
+    let html = `<div class='card mb-4'><div class='card-body'><h5 class='mb-3'><i class='fas fa-search me-2 text-success'></i>${resultsTitle}</h5><div class='row'>`;
     results.forEach(memory => {
         const tags = createClickableTagBadges(memory.tags);
         const title = memory.title || 'Untitled Memory';

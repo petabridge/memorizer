@@ -530,7 +530,10 @@ public class MemoryController : ControllerBase
     }
 
     /// <summary>
-    /// Vector search for memories using metadata embeddings (optimized for keyword queries)
+    /// Search for memories. Defaults to hybrid search (vector + full-text search via RRF),
+    /// which performs significantly better for short keyword queries (see ADR
+    /// 2026-02-14-hybrid-search-rrf.md). Pass method=vector to use metadata-embedding
+    /// vector search only.
     /// </summary>
     [HttpGet("search")]
     public async Task<ActionResult<List<MemoryListItem>>> SearchMemories(
@@ -541,7 +544,8 @@ public class MemoryController : ControllerBase
         [FromQuery] Guid? projectId = null,
         [FromQuery] bool includeUnassigned = false,
         [FromQuery] bool includeArchived = false,
-        [FromQuery] Guid? workspaceId = null)
+        [FromQuery] Guid? workspaceId = null,
+        [FromQuery] string? method = "hybrid")
     {
         if (string.IsNullOrWhiteSpace(query))
             return BadRequest("Query is required.");
@@ -552,17 +556,32 @@ public class MemoryController : ControllerBase
         ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
         WorkspaceId? typedWorkspaceId = workspaceId.HasValue ? new WorkspaceId(workspaceId.Value) : null;
 
-        // Use metadata embeddings by default for better keyword query performance
-        var results = await _storage.SearchWithMetadataEmbedding(
-            query,
-            limit,
-            new SimilarityScore(minSimilarity),
-            filterTags,
-            typedProjectId,
-            includeUnassigned,
-            includeArchived,
-            includeSystem: false,
-            workspaceId: typedWorkspaceId);
+        // Hybrid search is the default: vector + full-text via RRF.
+        // Note: minSimilarity is intentionally not applied by HybridSearch (see ADR).
+        bool useHybrid = string.IsNullOrWhiteSpace(method) || method.Equals("hybrid", StringComparison.OrdinalIgnoreCase);
+
+        var results = useHybrid
+            ? await _storage.HybridSearch(
+                query,
+                limit,
+                new SimilarityScore(minSimilarity),
+                filterTags,
+                typedProjectId,
+                includeUnassigned,
+                includeArchived,
+                includeSystem: false,
+                workspaceId: typedWorkspaceId)
+            : await _storage.SearchWithMetadataEmbedding(
+                query,
+                limit,
+                new SimilarityScore(minSimilarity),
+                filterTags,
+                typedProjectId,
+                includeUnassigned,
+                includeArchived,
+                includeSystem: false,
+                workspaceId: typedWorkspaceId);
+
         return Ok(results.Select(MemoryListItem.FromMemory).ToList());
     }
 
