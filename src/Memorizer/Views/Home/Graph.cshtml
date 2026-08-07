@@ -49,7 +49,7 @@
 @section Scripts {
 <script>
     // Safety net: never leave the loading spinner visible forever, even if the
-    // graph library fails to load or the API request hangs.
+    // graph API request hangs or the library fails to load.
     window.setTimeout(function() {
         const loading = document.getElementById('graphLoading');
         if (loading && loading.style.display !== 'none') {
@@ -59,8 +59,7 @@
         }
     }, 20000);
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"
-        onerror="var l = document.getElementById('graphLoading'); if (l) l.style.display = 'none'; var e = document.getElementById('graphError'); if (e) e.style.display = 'block';"></script>
+<script src="~/js/vis-network.min.js"></script>
 <script>
 let network = null;
 
@@ -107,7 +106,10 @@ function buildOptions() {
     const dark = currentTheme() === 'dark';
     return {
         autoResize: true,
-        backgroundColor: dark ? '#121212' : '#f8f9fa',
+        // improvedLayout can fail to position the graph; disable it to fall back to
+        // the classic (reliable) layout. The canvas background is the theme-aware
+        // .graph-container CSS background, not a vis option.
+        layout: { improvedLayout: false },
         nodes: {
             shape: 'dot',
             borderWidth: 2,
