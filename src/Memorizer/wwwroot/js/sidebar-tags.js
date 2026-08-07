@@ -54,10 +54,9 @@ const SidebarTags = (function() {
             total.style.display = 'inline-block';
         }
 
-        const items = tagCounts.slice(0, MAX_TAGS).map(t =>
-            `<a href="/memories?tag=${encodeURIComponent(t.tag)}" class="sidebar-tags-item" title="${escapeHtml(t.tag)} (${t.count})">
-                <span class="sidebar-tags-name">${escapeHtml(t.tag)}</span>
-                <span class="sidebar-tags-count">${t.count}</span>
+        const pills = tagCounts.slice(0, MAX_TAGS).map(t =>
+            `<a href="/memories?tag=${encodeURIComponent(t.tag)}" class="sidebar-tags-pill" title="${escapeHtml(t.tag)} (${t.count})">
+                ${escapeHtml(t.tag)} <span class="sidebar-tags-pill-count">${t.count}</span>
             </a>`
         ).join('');
 
@@ -65,7 +64,7 @@ const SidebarTags = (function() {
             ? `<a href="/memories" class="sidebar-tags-more">View all ${tagCounts.length} tags</a>`
             : '';
 
-        body.innerHTML = items + more;
+        body.innerHTML = `<div class="sidebar-tags-pills">${pills}</div>${more}`;
     }
 
     async function load() {
