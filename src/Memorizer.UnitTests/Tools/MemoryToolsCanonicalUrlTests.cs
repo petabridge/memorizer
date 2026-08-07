@@ -249,6 +249,55 @@ public class MemoryToolsCanonicalUrlTests
     }
 
     [Fact]
+    public async Task RestSearchMemories_HybridWithMinSimilarity_FiltersLowSimilarityResults()
+    {
+        // Arrange
+        var highSim = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "High");
+        highSim.Similarity = new SimilarityScore(0.9);
+        var lowSim = CreateTestMemory(new MemoryId(Guid.Parse("b2c3d4e5-f6a7-8901-bcde-f12345678901")), "Low");
+        lowSim.Similarity = new SimilarityScore(0.5);
+        var noSim = CreateTestMemory(new MemoryId(Guid.Parse("c3d4e5f6-a7b8-901c-def1-23456789012a")), "No Score");
+
+        var fakeStorage = new FakeStorage
+        {
+            HybridSearchResults = new List<Memory> { highSim, lowSim, noSim }
+        };
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings(), new FakeTagCloudService());
+
+        // Act - with a threshold, only results at/above it survive; no-score results are excluded
+        var result = await controller.SearchMemories("test query", minSimilarity: 0.7);
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsType<List<MemoryListItem>>(ok.Value);
+        var returned = Assert.Single(items);
+        Assert.Equal(highSim.Id.Value, returned.Id);
+    }
+
+    [Fact]
+    public async Task RestSearchMemories_HybridWithoutMinSimilarity_ReturnsAllResults()
+    {
+        // Arrange
+        var scored = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Scored");
+        scored.Similarity = new SimilarityScore(0.4);
+        var noSim = CreateTestMemory(new MemoryId(Guid.Parse("b2c3d4e5-f6a7-8901-bcde-f12345678901")), "No Score");
+
+        var fakeStorage = new FakeStorage
+        {
+            HybridSearchResults = new List<Memory> { scored, noSim }
+        };
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings(), new FakeTagCloudService());
+
+        // Act - no threshold means all hybrid results are returned (default ADR behavior)
+        var result = await controller.SearchMemories("test query");
+
+        // Assert
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsType<List<MemoryListItem>>(ok.Value);
+        Assert.Equal(2, items.Count);
+    }
+
+    [Fact]
     public async Task RestSearchWithMetadataEmbedding_WithWorkspaceId_PassesWorkspaceScopeToStorage()
     {
         // Arrange

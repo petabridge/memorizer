@@ -566,11 +566,17 @@ public class MemoryController : ControllerBase
     /// which performs significantly better for short keyword queries (see ADR
     /// 2026-02-14-hybrid-search-rrf.md). Pass method=vector to use metadata-embedding
     /// vector search only.
+    ///
+    /// For hybrid search, minSimilarity is an optional post-filter on vector similarity:
+    /// when set (&gt; 0), only results with a vector similarity at or above the threshold are
+    /// returned (full-text-only matches, which have no similarity score, are excluded).
+    /// When omitted, all hybrid results are returned (the default per the ADR).
+    /// For vector search, minSimilarity is the similarity threshold (default 0.7).
     /// </summary>
     [HttpGet("search")]
     public async Task<ActionResult<List<MemoryListItem>>> SearchMemories(
         [FromQuery] string query,
-        [FromQuery] double minSimilarity = 0.7,
+        [FromQuery] double? minSimilarity = null,
         [FromQuery] int limit = 10,
         [FromQuery] string[]? filterTags = null,
         [FromQuery] Guid? projectId = null,
@@ -588,25 +594,17 @@ public class MemoryController : ControllerBase
         ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
         WorkspaceId? typedWorkspaceId = workspaceId.HasValue ? new WorkspaceId(workspaceId.Value) : null;
 
-        // Hybrid search is the default: vector + full-text via RRF.
-        // Note: minSimilarity is intentionally not applied by HybridSearch (see ADR).
         bool useHybrid = string.IsNullOrWhiteSpace(method) || method.Equals("hybrid", StringComparison.OrdinalIgnoreCase);
 
-        var results = useHybrid
-            ? await _storage.HybridSearch(
+        if (useHybrid)
+        {
+            // HybridSearch intentionally does not apply a similarity threshold internally
+            // (see ADR 2026-02-14) so short keyword queries still surface full-text matches.
+            // Apply the optional threshold here as a post-filter on vector similarity.
+            var results = await _storage.HybridSearch(
                 query,
                 limit,
-                new SimilarityScore(minSimilarity),
-                filterTags,
-                typedProjectId,
-                includeUnassigned,
-                includeArchived,
-                includeSystem: false,
-                workspaceId: typedWorkspaceId)
-            : await _storage.SearchWithMetadataEmbedding(
-                query,
-                limit,
-                new SimilarityScore(minSimilarity),
+                minSimilarity: null,
                 filterTags,
                 typedProjectId,
                 includeUnassigned,
@@ -614,7 +612,29 @@ public class MemoryController : ControllerBase
                 includeSystem: false,
                 workspaceId: typedWorkspaceId);
 
-        return Ok(results.Select(MemoryListItem.FromMemory).ToList());
+            double threshold = minSimilarity.GetValueOrDefault();
+            if (threshold > 0)
+            {
+                results = results
+                    .Where(m => m.Similarity.HasValue && m.Similarity.Value >= threshold)
+                    .ToList();
+            }
+
+            return Ok(results.Select(MemoryListItem.FromMemory).ToList());
+        }
+
+        var vectorResults = await _storage.SearchWithMetadataEmbedding(
+            query,
+            limit,
+            new SimilarityScore(minSimilarity ?? 0.7),
+            filterTags,
+            typedProjectId,
+            includeUnassigned,
+            includeArchived,
+            includeSystem: false,
+            workspaceId: typedWorkspaceId);
+
+        return Ok(vectorResults.Select(MemoryListItem.FromMemory).ToList());
     }
 
     /// <summary>
