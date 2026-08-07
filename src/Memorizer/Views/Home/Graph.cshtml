@@ -17,10 +17,11 @@
 
 <div class="card">
     <div class="card-body">
-        <div id="graphLoading" class="d-flex justify-content-center py-5">
-            <div class="spinner-border text-primary" role="status">
+        <div id="graphLoading" class="d-flex justify-content-center align-items-center py-5">
+            <div class="spinner-border text-primary me-2" role="status">
                 <span class="visually-hidden">Loading graph...</span>
             </div>
+            <span class="text-muted" id="graphLoadingMessage">Loading graph...</span>
         </div>
         <div id="graphContainer" class="graph-container" style="display: none;"></div>
         <div id="graphEmpty" class="text-center py-5" style="display: none;">
@@ -48,8 +49,7 @@
 
 @section Scripts {
 <script>
-    // Safety net: never leave the loading spinner visible forever, even if the
-    // graph API request hangs or the library fails to load.
+    // Hard fail-safe: never let the loading spinner spin indefinitely.
     window.setTimeout(function() {
         const loading = document.getElementById('graphLoading');
         if (loading && loading.style.display !== 'none') {
@@ -57,7 +57,7 @@
             const error = document.getElementById('graphError');
             if (error) error.style.display = 'block';
         }
-    }, 20000);
+    }, 60000);
 </script>
 <script src="~/js/vis-network.min.js"></script>
 <script>
@@ -199,15 +199,32 @@ async function loadGraph() {
     if (scopeProjectId) params.set('projectId', scopeProjectId);
     const qs = params.toString();
 
+    // After a few seconds, let the user know the graph is still loading so the
+    // spinner doesn't look stuck on large libraries or a slow server.
+    const noteTimer = setTimeout(function() {
+        const msg = document.getElementById('graphLoadingMessage');
+        if (msg) msg.textContent = 'Still loading graph... this can take a moment on large libraries.';
+    }, 10000);
+
+    // Hard timeout on the request so the spinner can never spin forever.
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(function() { controller.abort(); }, 60000);
+
     try {
-        const response = await fetch(`/api/graph${qs ? '?' + qs : ''}`);
+        const response = await fetch(`/api/graph${qs ? '?' + qs : ''}`, { signal: controller.signal });
         if (!response.ok) throw new Error('Failed to load graph');
         const data = await response.json();
+        clearTimeout(noteTimer);
+        clearTimeout(fetchTimeout);
         renderGraph(data);
     } catch (error) {
+        clearTimeout(noteTimer);
+        clearTimeout(fetchTimeout);
         console.error('Error loading graph:', error);
-        document.getElementById('graphLoading').style.display = 'none';
-        document.getElementById('graphError').style.display = 'block';
+        const loading = document.getElementById('graphLoading');
+        if (loading) loading.style.display = 'none';
+        const errorEl = document.getElementById('graphError');
+        if (errorEl) errorEl.style.display = 'block';
     }
 }
 
