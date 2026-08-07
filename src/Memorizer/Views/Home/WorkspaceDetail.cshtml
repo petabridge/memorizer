@@ -50,6 +50,23 @@
 
     <hr>
 
+    <!-- Tag Cloud Section -->
+    <div class="card mb-4" id="tagCloudSection" style="display: none;">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-tags me-2"></i>
+                Tag Cloud
+            </h5>
+        </div>
+        <div class="card-body">
+            <div id="tagCloud" class="tag-cloud"></div>
+            <div id="noTagCloud" class="text-muted" style="display: none;">
+                <i class="fas fa-info-circle me-2"></i>
+                No tags yet.
+            </div>
+        </div>
+    </div>
+
     <!-- Child Workspaces Section -->
     <div class="mb-4" id="childWorkspacesSection">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -340,6 +357,39 @@ function renderWorkspace() {
     // Memories
     document.getElementById('viewAllMemoriesLink').href = `/memories?workspaceId=${workspaceId}`;
     renderMemoriesList();
+
+    // Tag cloud
+    loadTagCloud();
+}
+
+async function loadTagCloud() {
+    const section = document.getElementById('tagCloudSection');
+    const container = document.getElementById('tagCloud');
+    const empty = document.getElementById('noTagCloud');
+
+    try {
+        const response = await fetch(`/api/memory/tags/cloud?workspaceId=${workspaceId}`);
+        if (!response.ok) throw new Error('Failed to load tag cloud');
+
+        const tags = await response.json();
+        if (!tags || tags.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        container.innerHTML = tags.map(renderTagCloudItem).join('');
+        empty.style.display = 'none';
+        section.style.display = 'block';
+    } catch (error) {
+        console.warn('Could not load tag cloud:', error);
+        section.style.display = 'none';
+    }
+}
+
+function renderTagCloudItem(tagCount) {
+    const fontSize = 0.8 + Math.min(0.8, (tagCount.count - 1) * 0.15);
+    const href = `/memories?workspaceId=${workspaceId}&tag=${encodeURIComponent(tagCount.tag)}`;
+    return `<a href="${href}" class="tag-cloud-item" style="font-size: ${fontSize.toFixed(2)}rem;" title="${escapeHtml(tagCount.tag)} (${tagCount.count})">${escapeHtml(tagCount.tag)}</a>`;
 }
 
 function renderProjectCard(project) {
