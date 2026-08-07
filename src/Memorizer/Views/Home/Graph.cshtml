@@ -47,7 +47,20 @@
 </div>
 
 @section Scripts {
-<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script>
+    // Safety net: never leave the loading spinner visible forever, even if the
+    // graph library fails to load or the API request hangs.
+    window.setTimeout(function() {
+        const loading = document.getElementById('graphLoading');
+        if (loading && loading.style.display !== 'none') {
+            loading.style.display = 'none';
+            const error = document.getElementById('graphError');
+            if (error) error.style.display = 'block';
+        }
+    }, 20000);
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js"
+        onerror="var l = document.getElementById('graphLoading'); if (l) l.style.display = 'none'; var e = document.getElementById('graphError'); if (e) e.style.display = 'block';"></script>
 <script>
 let network = null;
 
@@ -124,14 +137,19 @@ function computeIndegrees(edges) {
 }
 
 function renderGraph(data) {
+    // Reset all state surfaces before rendering.
+    const error = document.getElementById('graphError');
+    const empty = document.getElementById('graphEmpty');
+    if (error) error.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    document.getElementById('graphLoading').style.display = 'none';
+
     if (!data.nodes || data.nodes.length === 0 || !data.edges || data.edges.length === 0) {
-        document.getElementById('graphLoading').style.display = 'none';
         document.getElementById('graphContainer').style.display = 'none';
-        document.getElementById('graphEmpty').style.display = 'block';
+        if (empty) empty.style.display = 'block';
         return;
     }
 
-    document.getElementById('graphLoading').style.display = 'none';
     document.getElementById('graphContainer').style.display = 'block';
 
     const indegrees = computeIndegrees(data.edges);
@@ -139,7 +157,7 @@ function renderGraph(data) {
         const color = typeColor(n.type);
         return {
             id: n.id,
-            label: n.title || 'Untitled',
+            // No visible label - titles only show on hover to keep the graph uncluttered.
             title: `${n.title || 'Untitled'} (${n.type || 'unknown'})`,
             value: (indegrees[n.id] || 0) + 3,
             color: {
@@ -214,9 +232,16 @@ const themeObserver = new MutationObserver(function() {
 });
 themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-document.addEventListener('DOMContentLoaded', function() {
+// Initialize the graph once the library is available. If the CDN failed to load,
+// the onerror handler already surfaced the error, so bail out here.
+function initGraph() {
+    if (typeof vis === 'undefined') {
+        return;
+    }
     renderLegend();
     loadGraph();
-});
+}
+
+document.addEventListener('DOMContentLoaded', initGraph);
 </script>
 }
