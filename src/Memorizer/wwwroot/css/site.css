@@ -618,3 +618,17 @@ footer a:hover {
     color: var(--brand-primary-hover);
     text-decoration: underline;
 }
+
+.tag-cloud-toggle {
+    display: inline-block;
+    margin-left: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.tag-cloud-toggle:hover,
+.tag-cloud-toggle:focus {
+    color: var(--md-link);
+    text-decoration: underline;
+}

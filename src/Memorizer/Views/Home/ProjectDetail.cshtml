@@ -433,9 +433,12 @@ function renderProject() {
     loadTagCloud();
 }
 
+const tagCloudMaxTags = 30;
+let allTagCounts = [];
+let tagCloudShowAll = false;
+
 async function loadTagCloud() {
     const section = document.getElementById('tagCloudSection');
-    const container = document.getElementById('tagCloud');
     const empty = document.getElementById('noTagCloud');
 
     try {
@@ -448,13 +451,30 @@ async function loadTagCloud() {
             return;
         }
 
-        container.innerHTML = tags.map(renderTagCloudItem).join('');
+        allTagCounts = tags;
+        tagCloudShowAll = false;
+        renderTagCloud();
         empty.style.display = 'none';
         section.style.display = 'block';
     } catch (error) {
         console.warn('Could not load tag cloud:', error);
         section.style.display = 'none';
     }
+}
+
+function renderTagCloud() {
+    const container = document.getElementById('tagCloud');
+    const visible = tagCloudShowAll ? allTagCounts : allTagCounts.slice(0, tagCloudMaxTags);
+    let html = visible.map(renderTagCloudItem).join('');
+    if (allTagCounts.length > tagCloudMaxTags) {
+        html += `<a href="#" class="tag-cloud-toggle" onclick="toggleTagCloud(); return false;">${tagCloudShowAll ? 'Show fewer' : `Show all ${allTagCounts.length} tags`}</a>`;
+    }
+    container.innerHTML = html;
+}
+
+function toggleTagCloud() {
+    tagCloudShowAll = !tagCloudShowAll;
+    renderTagCloud();
 }
 
 function renderTagCloudItem(tagCount) {
