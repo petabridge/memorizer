@@ -52,7 +52,10 @@
     // Hard fail-safe: never let the loading spinner spin indefinitely.
     window.setTimeout(function() {
         const loading = document.getElementById('graphLoading');
-        if (loading && loading.style.display !== 'none') {
+        // The spinner stays visible while the d-flex class is present (it sets
+        // display:flex !important), so hide it by removing that class.
+        if (loading && loading.classList.contains('d-flex')) {
+            loading.classList.remove('d-flex');
             loading.style.display = 'none';
             const error = document.getElementById('graphError');
             if (error) error.style.display = 'block';
@@ -138,13 +141,22 @@ function computeIndegrees(edges) {
     return indegree;
 }
 
+// Hide the loading spinner. The d-flex class sets display:flex !important, which
+// overrides inline styles, so the class must be removed for display:none to work.
+function hideSpinner() {
+    const el = document.getElementById('graphLoading');
+    if (!el) return;
+    el.classList.remove('d-flex');
+    el.style.display = 'none';
+}
+
 function renderGraph(data) {
     // Reset all state surfaces before rendering.
     const error = document.getElementById('graphError');
     const empty = document.getElementById('graphEmpty');
     if (error) error.style.display = 'none';
     if (empty) empty.style.display = 'none';
-    document.getElementById('graphLoading').style.display = 'none';
+    hideSpinner();
 
     if (!data.nodes || data.nodes.length === 0 || !data.edges || data.edges.length === 0) {
         document.getElementById('graphContainer').style.display = 'none';
@@ -221,8 +233,7 @@ async function loadGraph() {
         clearTimeout(noteTimer);
         clearTimeout(fetchTimeout);
         console.error('Error loading graph:', error);
-        const loading = document.getElementById('graphLoading');
-        if (loading) loading.style.display = 'none';
+        hideSpinner();
         const errorEl = document.getElementById('graphError');
         if (errorEl) errorEl.style.display = 'block';
     }
