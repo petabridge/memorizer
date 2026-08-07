@@ -227,12 +227,11 @@ public class MemoryToolsCanonicalUrlTests
     {
         // Arrange
         var workspaceId = Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa");
+        var memory = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1");
+        memory.Similarity = new SimilarityScore(0.9);
         var fakeStorage = new FakeStorage
         {
-            HybridSearchResults = new List<Memory>
-            {
-                CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
-            }
+            HybridSearchResults = new List<Memory> { memory }
         };
         var controller = new MemoryController(fakeStorage, new SimilaritySettings(), new FakeTagCloudService());
 
@@ -275,26 +274,29 @@ public class MemoryToolsCanonicalUrlTests
     }
 
     [Fact]
-    public async Task RestSearchMemories_HybridWithoutMinSimilarity_ReturnsAllResults()
+    public async Task RestSearchMemories_HybridWithoutMinSimilarity_UsesDefaultThreshold()
     {
         // Arrange
-        var scored = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Scored");
-        scored.Similarity = new SimilarityScore(0.4);
-        var noSim = CreateTestMemory(new MemoryId(Guid.Parse("b2c3d4e5-f6a7-8901-bcde-f12345678901")), "No Score");
+        var aboveDefault = CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Above Default");
+        aboveDefault.Similarity = new SimilarityScore(0.4);
+        var belowDefault = CreateTestMemory(new MemoryId(Guid.Parse("b2c3d4e5-f6a7-8901-bcde-f12345678901")), "Below Default");
+        belowDefault.Similarity = new SimilarityScore(0.1);
+        var noSim = CreateTestMemory(new MemoryId(Guid.Parse("c3d4e5f6-a7b8-901c-def1-23456789012a")), "No Score");
 
         var fakeStorage = new FakeStorage
         {
-            HybridSearchResults = new List<Memory> { scored, noSim }
+            HybridSearchResults = new List<Memory> { aboveDefault, belowDefault, noSim }
         };
         var controller = new MemoryController(fakeStorage, new SimilaritySettings(), new FakeTagCloudService());
 
-        // Act - no threshold means all hybrid results are returned (default ADR behavior)
+        // Act - the default threshold (0.25) filters out low/no-score noise
         var result = await controller.SearchMemories("test query");
 
         // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var items = Assert.IsType<List<MemoryListItem>>(ok.Value);
-        Assert.Equal(2, items.Count);
+        var returned = Assert.Single(items);
+        Assert.Equal(aboveDefault.Id.Value, returned.Id);
     }
 
     [Fact]

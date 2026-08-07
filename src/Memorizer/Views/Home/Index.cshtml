@@ -68,11 +68,15 @@
                     <option value="vector">Vector</option>
                 </select>
             </div>
-            <div class="col-md-7">
+            <div class="col-md-5">
                 <input type="text" id="vectorSearchQuery" class="form-control" placeholder="Search memories..." autocomplete="off">
             </div>
-            <div class="col-md-2" id="minSimContainer">
-                <input type="number" id="vectorSearchMinSim" class="form-control" placeholder="Min similarity (optional)" min="0" max="1" step="0.01" value="">
+            <div class="col-md-3" id="minSimContainer">
+                <div class="d-flex align-items-center gap-2">
+                    <input type="range" id="vectorSearchMinSim" class="form-range flex-grow-1" min="0" max="100" step="5" value="25"
+                           oninput="onMinSimChange()" title="Minimum similarity threshold">
+                    <span class="text-muted small text-nowrap" id="minSimValue">25%</span>
+                </div>
             </div>
             <div class="col-md-2">
                 <button type="submit" class="btn btn-success w-100">
@@ -678,6 +682,7 @@ function updateFilterUrl() {
 // Load memories on page load
 document.addEventListener('DOMContentLoaded', function() {
     onSearchModeChange();
+    onMinSimChange();
     parseUrlParams();
     updateFilterContext();
     loadLocationDropdown();
@@ -912,21 +917,22 @@ async function deleteMemory(id) {
     }
 }
 
+function onMinSimChange() {
+    const value = document.getElementById('vectorSearchMinSim').value;
+    document.getElementById('minSimValue').textContent = value + '%';
+}
+
 function onSearchModeChange() {
     const mode = document.getElementById('searchMode').value;
     const buttonLabel = document.getElementById('searchButtonLabel');
     const input = document.getElementById('vectorSearchQuery');
-    const minSimInput = document.getElementById('vectorSearchMinSim');
 
     if (mode === 'vector') {
         buttonLabel.textContent = 'Vector Search';
         input.placeholder = 'Vector search memories...';
-        minSimInput.placeholder = 'Min similarity (0-1)';
-        if (!minSimInput.value) minSimInput.value = '0.7';
     } else {
         buttonLabel.textContent = 'Search';
         input.placeholder = 'Search memories...';
-        minSimInput.placeholder = 'Min similarity (optional)';
     }
 }
 
@@ -944,19 +950,8 @@ async function runSearch(event) {
     isVectorSearch = true;
     document.getElementById('vectorSearchResults').innerHTML = `<div class='d-flex justify-content-center py-5'><div class='spinner-border text-success' role='status'><span class='visually-hidden'>Searching...</span></div></div>`;
     try {
-        const minSimRaw = document.getElementById('vectorSearchMinSim').value.trim();
-        let url = `/api/memory/search?query=${encodeURIComponent(query)}&method=${method}&limit=20`;
-
-        if (method === 'vector') {
-            const minSim = parseFloat(minSimRaw) || 0.7;
-            url += `&minSimilarity=${minSim}`;
-        } else if (minSimRaw !== '') {
-            const minSim = parseFloat(minSimRaw);
-            if (!isNaN(minSim) && minSim > 0) {
-                url += `&minSimilarity=${minSim}`;
-            }
-        }
-
+        const minSim = (parseFloat(document.getElementById('vectorSearchMinSim').value) || 0) / 100;
+        const url = `/api/memory/search?query=${encodeURIComponent(query)}&method=${method}&limit=20&minSimilarity=${minSim}`;
         const response = await fetch(url);
         const results = await response.json();
         displayVectorSearchResults(results, method);

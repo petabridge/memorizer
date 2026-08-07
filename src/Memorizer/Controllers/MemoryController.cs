@@ -567,10 +567,9 @@ public class MemoryController : ControllerBase
     /// 2026-02-14-hybrid-search-rrf.md). Pass method=vector to use metadata-embedding
     /// vector search only.
     ///
-    /// For hybrid search, minSimilarity is an optional post-filter on vector similarity:
-    /// when set (&gt; 0), only results with a vector similarity at or above the threshold are
-    /// returned (full-text-only matches, which have no similarity score, are excluded).
-    /// When omitted, all hybrid results are returned (the default per the ADR).
+    /// For hybrid search, minSimilarity filters results by vector similarity: results at or
+    /// above the threshold are returned (full-text-only matches, which have no similarity
+    /// score, are excluded). Defaults to 0.25 to filter out noise; pass 0 to disable.
     /// For vector search, minSimilarity is the similarity threshold (default 0.7).
     /// </summary>
     [HttpGet("search")]
@@ -600,7 +599,8 @@ public class MemoryController : ControllerBase
         {
             // HybridSearch intentionally does not apply a similarity threshold internally
             // (see ADR 2026-02-14) so short keyword queries still surface full-text matches.
-            // Apply the optional threshold here as a post-filter on vector similarity.
+            // Apply the threshold here as a post-filter on vector similarity, defaulting to
+            // 0.25 to filter out noise.
             var results = await _storage.HybridSearch(
                 query,
                 limit,
@@ -612,7 +612,7 @@ public class MemoryController : ControllerBase
                 includeSystem: false,
                 workspaceId: typedWorkspaceId);
 
-            double threshold = minSimilarity.GetValueOrDefault();
+            double threshold = minSimilarity.GetValueOrDefault(0.25);
             if (threshold > 0)
             {
                 results = results
