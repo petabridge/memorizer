@@ -23,7 +23,20 @@
             </div>
             <span class="text-muted" id="graphLoadingMessage">Loading graph...</span>
         </div>
-        <div id="graphContainer" class="graph-container" style="display: none;"></div>
+        <div id="graphContainerWrapper" class="graph-container-wrap" style="display: none;">
+            <div id="graphContainer" class="graph-container"></div>
+            <div class="graph-zoom-controls">
+                <button type="button" class="btn btn-light btn-sm graph-zoom-btn" onclick="zoomGraph(1.2)" title="Zoom in" aria-label="Zoom in">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button type="button" class="btn btn-light btn-sm graph-zoom-btn" onclick="zoomGraph(1 / 1.2)" title="Zoom out" aria-label="Zoom out">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <button type="button" class="btn btn-light btn-sm graph-zoom-btn" onclick="fitGraph()" title="Fit graph to view" aria-label="Fit graph">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                </button>
+            </div>
+        </div>
         <div id="graphEmpty" class="text-center py-5" style="display: none;">
             <i class="fas fa-project-diagram fa-3x text-muted mb-3"></i>
             <h5 class="text-muted">No relationships yet</h5>
@@ -159,12 +172,12 @@ function renderGraph(data) {
     hideSpinner();
 
     if (!data.nodes || data.nodes.length === 0 || !data.edges || data.edges.length === 0) {
-        document.getElementById('graphContainer').style.display = 'none';
+        document.getElementById('graphContainerWrapper').style.display = 'none';
         if (empty) empty.style.display = 'block';
         return;
     }
 
-    document.getElementById('graphContainer').style.display = 'block';
+    document.getElementById('graphContainerWrapper').style.display = 'block';
 
     const indegrees = computeIndegrees(data.edges);
     const nodes = new vis.DataSet(data.nodes.map(n => {
@@ -197,6 +210,19 @@ function renderGraph(data) {
             window.location.href = `/view/${params.nodes[0]}`;
         }
     });
+}
+
+// Programmatic zoom for users without a mouse wheel.
+function zoomGraph(factor) {
+    if (!network) return;
+    const scale = network.getScale();
+    network.moveTo({ scale: scale * factor });
+}
+
+// Reset the view to fit all nodes.
+function fitGraph() {
+    if (!network) return;
+    network.fit({ animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
 }
 
 async function loadGraph() {
