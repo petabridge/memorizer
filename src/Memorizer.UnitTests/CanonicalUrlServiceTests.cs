@@ -70,7 +70,9 @@ public class CanonicalUrlServiceTests
     {
         var workspaceId = new WorkspaceId(Guid.Parse("b775bb37-4af5-46fe-ad14-7f6fba7889aa"));
         var url = _configuredService.GetWorkspaceUrl(workspaceId);
-        Assert.Equal("https://memory.testlab.petabridge.net/workspace/b775bb37-4af5-46fe-ad14-7f6fba7889aa", url);
+        // Must use the plural "workspaces" segment to match the web UI route
+        // HomeController: [Route("workspaces/{id:guid}")]
+        Assert.Equal("https://memory.testlab.petabridge.net/workspaces/b775bb37-4af5-46fe-ad14-7f6fba7889aa", url);
     }
 
     [Fact]
@@ -86,7 +88,9 @@ public class CanonicalUrlServiceTests
     {
         var projectId = new ProjectId(Guid.Parse("a1874a6b-8a15-4da6-a413-99bf3249d1e4"));
         var url = _configuredService.GetProjectUrl(projectId);
-        Assert.Equal("https://memory.testlab.petabridge.net/project/a1874a6b-8a15-4da6-a413-99bf3249d1e4", url);
+        // Must use the plural "projects" segment to match the web UI route
+        // HomeController: [Route("projects/{id:guid}")]
+        Assert.Equal("https://memory.testlab.petabridge.net/projects/a1874a6b-8a15-4da6-a413-99bf3249d1e4", url);
     }
 
     [Fact]

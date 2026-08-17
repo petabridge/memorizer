@@ -37,7 +37,7 @@ public class CanonicalUrlService : ICanonicalUrlService
         if (!IsConfigured)
             return null;
 
-        return $"{BaseUrl.TrimEnd('/')}/workspace/{workspaceId.Value}";
+        return $"{BaseUrl.TrimEnd('/')}/workspaces/{workspaceId.Value}";
     }
 
     /// <inheritdoc />
@@ -46,6 +46,6 @@ public class CanonicalUrlService : ICanonicalUrlService
         if (!IsConfigured)
             return null;
 
-        return $"{BaseUrl.TrimEnd('/')}/project/{projectId.Value}";
+        return $"{BaseUrl.TrimEnd('/')}/projects/{projectId.Value}";
     }
 }
