@@ -17,6 +17,9 @@
         <PackageReference Include="Npgsql" />
         <PackageReference Include="Pgvector" />
         <PackageReference Include="Testcontainers.PostgreSql" />
+        <!-- Direct reference forces the patched SSH.NET (2026.0.0) over the vulnerable
+             transitive version pulled in by Testcontainers. See GHSA-q939-rpr3-3284. -->
+        <PackageReference Include="SSH.NET" />
         <PackageReference Include="xunit" />
         <PackageReference Include="xunit.runner.visualstudio" />
         <PackageReference Include="Akka.Hosting.TestKit" />
