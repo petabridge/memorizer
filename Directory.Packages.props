@@ -18,11 +18,11 @@
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.0-preview.3" />
     <PackageVersion Include="Npgsql" Version="10.0.1" />
     <PackageVersion Include="OllamaSharp" Version="5.4.12" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
     <PackageVersion Include="pgvector" Version="0.3.2" />
     <PackageVersion Include="Registrator.Net" Version="3.2.4" />
     <PackageVersion Include="coverlet.collector" Version="8.0.1" />
@@ -32,6 +32,9 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
     <PackageVersion Include="Spectre.Console" Version="0.54.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.9.0" />
+    <!-- Security pin: overrides the vulnerable SSH.NET brought in transitively by Testcontainers.
+         SSH.NET <= 2025.1.0 has a high-severity advisory (GHSA-q939-rpr3-3284); fixed in 2026.0.0. -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="Akka.Hosting" Version="1.5.55.1" />
