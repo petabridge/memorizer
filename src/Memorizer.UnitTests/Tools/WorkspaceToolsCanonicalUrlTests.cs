@@ -35,7 +35,7 @@ public class WorkspaceToolsCanonicalUrlTests
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);
-        Assert.Contains("/workspace/b775bb37-4af5-46fe-ad14-7f6fba7889aa", result);
+        Assert.Contains("/workspaces/b775bb37-4af5-46fe-ad14-7f6fba7889aa", result);
         Assert.True(fakeUrlService.GetWorkspaceUrlCalled);
     }
 
@@ -83,7 +83,7 @@ public class WorkspaceToolsCanonicalUrlTests
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);
-        Assert.Contains("/workspace/b775bb37-4af5-46fe-ad14-7f6fba7889aa", result);
+        Assert.Contains("/workspaces/b775bb37-4af5-46fe-ad14-7f6fba7889aa", result);
         Assert.True(fakeUrlService.GetWorkspaceUrlCalled);
     }
 
@@ -132,7 +132,7 @@ public class WorkspaceToolsCanonicalUrlTests
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);
-        Assert.Contains("/project/a1874a6b-8a15-4da6-a413-99bf3249d1e4", result);
+        Assert.Contains("/projects/a1874a6b-8a15-4da6-a413-99bf3249d1e4", result);
         Assert.True(fakeUrlService.GetProjectUrlCalled);
     }
 
@@ -159,7 +159,7 @@ public class WorkspaceToolsCanonicalUrlTests
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);
-        Assert.Contains("/project/a1874a6b-8a15-4da6-a413-99bf3249d1e4", result);
+        Assert.Contains("/projects/a1874a6b-8a15-4da6-a413-99bf3249d1e4", result);
         Assert.True(fakeUrlService.GetProjectUrlCalled);
     }
 

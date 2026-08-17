@@ -24,12 +24,12 @@ internal class FakeCanonicalUrlService : ICanonicalUrlService
     public string? GetWorkspaceUrl(WorkspaceId workspaceId)
     {
         GetWorkspaceUrlCalled = true;
-        return IsConfigured ? $"{BaseUrl.TrimEnd('/')}/workspace/{workspaceId.Value}" : null;
+        return IsConfigured ? $"{BaseUrl.TrimEnd('/')}/workspaces/{workspaceId.Value}" : null;
     }
 
     public string? GetProjectUrl(ProjectId projectId)
     {
         GetProjectUrlCalled = true;
-        return IsConfigured ? $"{BaseUrl.TrimEnd('/')}/project/{projectId.Value}" : null;
+        return IsConfigured ? $"{BaseUrl.TrimEnd('/')}/projects/{projectId.Value}" : null;
     }
 }
