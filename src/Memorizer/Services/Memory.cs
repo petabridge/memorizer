@@ -713,20 +713,25 @@ public class Storage : IStorage
             FROM memories
             WHERE id = @id";
 
-        await using NpgsqlCommand cmd = new(sql, connection);
-        cmd.Parameters.AddWithValue("id", id.Value);
-
-        await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        if (await reader.ReadAsync(cancellationToken))
+        Memorizer.Models.Memory? memory = null;
+        // Read the memory, then dispose the reader before loading relationships on the SAME
+        // connection. Npgsql has no MARS, so the reader must be closed first; reusing this
+        // connection (instead of opening a second one) keeps the call to a single pooled
+        // connection and prevents hold-and-wait pool deadlock under concurrency.
+        await using (NpgsqlCommand cmd = new(sql, connection))
         {
-            var memory = ReadMemoryFromReader(reader, withSimilarity: false);
-            // Fetch relationships for this memory
-            memory.Relationships = await GetRelationships(memory.Id, type: null, includeArchivedTargets: false, cancellationToken);
-            return memory;
+            cmd.Parameters.AddWithValue("id", id.Value);
+            await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                memory = ReadMemoryFromReader(reader, withSimilarity: false);
         }
 
-        return null;
+        if (memory is null)
+            return null;
+
+        // Fetch relationships for this memory on the same connection.
+        memory.Relationships = await GetRelationships(connection, memory.Id, type: null, includeArchivedTargets: false, cancellationToken);
+        return memory;
     }
 
     public async Task<bool> Delete(
@@ -752,21 +757,27 @@ public class Storage : IStorage
             SELECT id, type_legacy, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, owner_type, owner_id, archetype
             FROM memories
             WHERE id = ANY(@ids)";
-        await using NpgsqlCommand cmd = new(sql, connection);
-        cmd.Parameters.AddWithValue("ids", ids.Select(id => id.Value).ToArray());
         List<Memorizer.Models.Memory> memories = [];
         List<MemoryId> memoryIds = new();
-        await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        // Read the memories first, then fully dispose the reader/command before issuing the
+        // relationship query on the SAME connection. Npgsql has no MARS, so the reader must be
+        // closed first; reusing this connection (instead of opening a second one) keeps the call
+        // to a single pooled connection and prevents hold-and-wait pool deadlock under concurrency.
+        await using (NpgsqlCommand cmd = new(sql, connection))
         {
-            var memory = ReadMemoryFromReader(reader, withSimilarity: false);
-            memories.Add(memory);
-            memoryIds.Add(memory.Id);
+            cmd.Parameters.AddWithValue("ids", ids.Select(id => id.Value).ToArray());
+            await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var memory = ReadMemoryFromReader(reader, withSimilarity: false);
+                memories.Add(memory);
+                memoryIds.Add(memory.Id);
+            }
         }
-        // Batch fetch relationships for all found memories - now safe from infinite recursion!
+        // Batch fetch relationships for all found memories on the same connection - safe from recursion.
         if (memoryIds.Count > 0)
         {
-            var relationships = await GetRelationshipsForMany(memoryIds, cancellationToken);
+            var relationships = await GetRelationshipsForMany(connection, memoryIds, cancellationToken);
             var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
             foreach (var memory in memories)
             {
@@ -813,7 +824,14 @@ public class Storage : IStorage
     public async Task<List<MemoryRelationship>> GetRelationships(MemoryId memoryId, string? type = null, bool includeArchivedTargets = false, CancellationToken cancellationToken = default)
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        return await GetRelationships(connection, memoryId, type, includeArchivedTargets, cancellationToken);
+    }
 
+    // Overload that reuses an already-open connection instead of checking out a second one from the
+    // pool. Callers that already hold a connection (e.g. Get) must dispose any open reader before
+    // calling this, since Npgsql has no MARS.
+    private async Task<List<MemoryRelationship>> GetRelationships(NpgsqlConnection connection, MemoryId memoryId, string? type, bool includeArchivedTargets, CancellationToken cancellationToken)
+    {
         // Single query with JOIN to get relationships and related memory titles/types - NO RECURSION!
         // Optionally filter out relationships pointing to archived memories
         string sql = $@"
@@ -1118,7 +1136,14 @@ public class Storage : IStorage
     private async Task<List<MemoryRelationship>> GetRelationshipsForMany(IEnumerable<MemoryId> memoryIds, CancellationToken cancellationToken, bool includeArchivedTargets = false)
     {
         await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
+        return await GetRelationshipsForMany(connection, memoryIds, cancellationToken, includeArchivedTargets);
+    }
 
+    // Overload that reuses an already-open connection instead of checking out a second one from the
+    // pool. Callers that already hold a connection (e.g. GetMany) must dispose any open reader before
+    // calling this, since Npgsql has no MARS.
+    private async Task<List<MemoryRelationship>> GetRelationshipsForMany(NpgsqlConnection connection, IEnumerable<MemoryId> memoryIds, CancellationToken cancellationToken, bool includeArchivedTargets = false)
+    {
         // Single query to get relationships with related memory titles/types - NO RECURSION!
         // Optionally filter out relationships pointing to archived memories
         string sql = $@"

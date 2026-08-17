@@ -516,12 +516,18 @@ public class IntegrationTests : TestKit
             }));
         }
         
-        // Wait for all tasks to complete - should not hang due to infinite recursion
+        // Wait for all tasks to complete - should not hang due to infinite recursion or a
+        // connection-pool deadlock.
+        var allTasks = Task.WhenAll(tasks);
         var timeoutTask = Task.Delay(TimeSpan.FromSeconds(30));
-        var completedTask = await Task.WhenAny(Task.WhenAll(tasks), timeoutTask);
-        
-        Assert.True(completedTask != timeoutTask, 
+        var completedTask = await Task.WhenAny(allTasks, timeoutTask);
+
+        Assert.True(completedTask != timeoutTask,
             "Stress test timed out - possible infinite recursion or connection leak");
+
+        // Observe the worker tasks so a fault (e.g. connection-pool exhaustion) fails the test
+        // loudly instead of being silently swallowed by Task.WhenAny.
+        await allTasks;
     }
 
     [Fact]
