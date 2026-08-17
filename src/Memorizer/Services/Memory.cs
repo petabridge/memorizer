@@ -655,19 +655,23 @@ public class Storage : IStorage
 
         List<Memorizer.Models.Memory> memories = [];
         List<MemoryId> memoryIds = new();
-        await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        // Read the matched memories first, then dispose the reader before the relationship query
+        // runs on the SAME connection (Npgsql has no MARS), keeping this call to a single pooled
+        // connection and preventing hold-and-wait pool deadlock under concurrency.
+        await using (NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken))
         {
-            var memory = ReadMemoryFromReader(reader, withSimilarity: true);
-            memories.Add(memory);
-            memoryIds.Add(memory.Id);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var memory = ReadMemoryFromReader(reader, withSimilarity: true);
+                memories.Add(memory);
+                memoryIds.Add(memory.Id);
+            }
         }
 
-        // Batch fetch relationships for all found memories
+        // Batch fetch relationships for all found memories on the same connection
         if (memoryIds.Count > 0)
         {
-            var relationships = await GetRelationshipsForMany(memoryIds, cancellationToken);
+            var relationships = await GetRelationshipsForMany(connection, memoryIds, cancellationToken);
             var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
             foreach (var memory in memories)
             {
@@ -975,15 +979,18 @@ public class Storage : IStorage
         cmd.Parameters.AddWithValue("offset", (page - 1) * pageSize);
 
         List<Memorizer.Models.Memory> memories = [];
-        await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        // Read all rows and dispose the reader before loading relationships, so the relationship
+        // queries reuse THIS connection instead of each opening a second pooled connection while
+        // the reader is held open (which risks pool exhaustion/deadlock under concurrency).
+        await using (NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken))
         {
-            var memory = ReadMemoryFromReader(reader, withSimilarity: false);
-            // Fetch relationships for this memory
-            memory.Relationships = await GetRelationships(memory.Id, type: null, includeArchivedTargets: false, cancellationToken);
-            memories.Add(memory);
+            while (await reader.ReadAsync(cancellationToken))
+                memories.Add(ReadMemoryFromReader(reader, withSimilarity: false));
         }
+
+        // Fetch relationships for each memory on the same connection.
+        foreach (var memory in memories)
+            memory.Relationships = await GetRelationships(connection, memory.Id, type: null, includeArchivedTargets: false, cancellationToken);
 
         return (memories, (int)totalCount);
     }
@@ -1297,19 +1304,23 @@ public class Storage : IStorage
 
         List<Memorizer.Models.Memory> memories = [];
         List<MemoryId> memoryIds = new();
-        await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        // Read the matched memories first, then dispose the reader before the relationship query
+        // runs on the SAME connection (Npgsql has no MARS), keeping this call to a single pooled
+        // connection and preventing hold-and-wait pool deadlock under concurrency.
+        await using (NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken))
         {
-            var memory = ReadMemoryFromReader(reader, withSimilarity: true);
-            memories.Add(memory);
-            memoryIds.Add(memory.Id);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var memory = ReadMemoryFromReader(reader, withSimilarity: true);
+                memories.Add(memory);
+                memoryIds.Add(memory.Id);
+            }
         }
 
-        // Batch fetch relationships for all found memories
+        // Batch fetch relationships for all found memories on the same connection
         if (memoryIds.Count > 0)
         {
-            var relationships = await GetRelationshipsForMany(memoryIds, cancellationToken);
+            var relationships = await GetRelationshipsForMany(connection, memoryIds, cancellationToken);
             var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
             foreach (var memory in memories)
             {
@@ -1416,19 +1427,23 @@ public class Storage : IStorage
 
         List<Memorizer.Models.Memory> memories = [];
         List<MemoryId> memoryIds = new();
-        await using NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        // Read the matched memories first, then dispose the reader before the relationship query
+        // runs on the SAME connection (Npgsql has no MARS), keeping this call to a single pooled
+        // connection and preventing hold-and-wait pool deadlock under concurrency.
+        await using (NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken))
         {
-            var memory = ReadMemoryFromReader(reader, withSimilarity: true);
-            memories.Add(memory);
-            memoryIds.Add(memory.Id);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var memory = ReadMemoryFromReader(reader, withSimilarity: true);
+                memories.Add(memory);
+                memoryIds.Add(memory.Id);
+            }
         }
 
-        // Batch fetch relationships for all found memories
+        // Batch fetch relationships for all found memories on the same connection
         if (memoryIds.Count > 0)
         {
-            var relationships = await GetRelationshipsForMany(memoryIds, cancellationToken);
+            var relationships = await GetRelationshipsForMany(connection, memoryIds, cancellationToken);
             var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
             foreach (var memory in memories)
             {
@@ -1694,10 +1709,11 @@ public class Storage : IStorage
             memoryIds.Add(memory.Id);
         }
 
-        // Batch fetch relationships for all found memories
+        // Batch fetch relationships for all found memories on the same connection (no reader is
+        // open here; the leg queries above ran in their own scoped blocks).
         if (memoryIds.Count > 0)
         {
-            var relationships = await GetRelationshipsForMany(memoryIds, cancellationToken);
+            var relationships = await GetRelationshipsForMany(connection, memoryIds, cancellationToken);
             var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
             foreach (var memory in memories)
             {
@@ -1741,19 +1757,22 @@ public class Storage : IStorage
 
         var memories = new List<Memorizer.Models.Memory>();
         var memoryIds = new List<MemoryId>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-
-        while (await reader.ReadAsync(cancellationToken))
+        // Read the memories first, then dispose the reader before the relationship query runs on
+        // the SAME connection (Npgsql has no MARS), keeping this call to a single pooled connection.
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
-            var memory = ReadMemoryFromReader(reader, withSimilarity: false);
-            memories.Add(memory);
-            memoryIds.Add(memory.Id);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var memory = ReadMemoryFromReader(reader, withSimilarity: false);
+                memories.Add(memory);
+                memoryIds.Add(memory.Id);
+            }
         }
 
-        // Batch fetch relationships for all found memories
+        // Batch fetch relationships for all found memories on the same connection
         if (memoryIds.Count > 0)
         {
-            var relationships = await GetRelationshipsForMany(memoryIds, cancellationToken);
+            var relationships = await GetRelationshipsForMany(connection, memoryIds, cancellationToken);
             var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
             foreach (var memory in memories)
             {
