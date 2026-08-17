@@ -148,3 +148,6 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.Run();
+
+// Exposed so integration tests can boot the app in-process via WebApplicationFactory<Program>.
+public partial class Program;

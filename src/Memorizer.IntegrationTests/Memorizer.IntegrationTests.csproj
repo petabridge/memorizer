@@ -32,6 +32,7 @@
     <ItemGroup>
       <PackageReference Include="Akka.Persistence.Sql.Hosting" />
       <PackageReference Include="ModelContextProtocol.AspNetCore" />
+      <PackageReference Include="ModelContextProtocol.Core" />
       <PackageReference Include="OllamaSharp" />
         <ProjectReference Include="..\Memorizer\Memorizer.csproj" />
     </ItemGroup>
