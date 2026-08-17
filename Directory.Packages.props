@@ -32,6 +32,9 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
     <PackageVersion Include="Spectre.Console" Version="0.54.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.9.0" />
+    <!-- Security pin: overrides the vulnerable SSH.NET brought in transitively by Testcontainers.
+         SSH.NET <= 2025.1.0 has a high-severity advisory (GHSA-q939-rpr3-3284); fixed in 2026.0.0. -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="Akka.Hosting" Version="1.5.55.1" />
