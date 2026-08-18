@@ -18,6 +18,20 @@ public interface IEmbeddingService
 }
 
 /// <summary>
+/// Thrown when an embedding cannot be generated. This exception is deliberately
+/// allowed to propagate to callers (e.g. StoreMemory) so that a failed embedding
+/// request never results in a garbage/fallback vector being persisted, which would
+/// silently corrupt semantic search for that row.
+/// </summary>
+public sealed class EmbeddingGenerationException : Exception
+{
+    public EmbeddingGenerationException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
 /// Embedding service that uses IOptionsSnapshot for reloadable configuration.
 /// Register as Scoped to get fresh settings on each request scope.
 /// </summary>
@@ -25,7 +39,6 @@ public class EmbeddingService : IEmbeddingService
 {
     private readonly IEmbeddingApiClient _apiClient;
     private readonly IOptionsSnapshot<EmbeddingSettings> _settingsSnapshot;
-    private readonly IEmbeddingDimensionService _dimensionService;
     private readonly ILogger<EmbeddingService> _logger;
 
     private EmbeddingSettings Settings => _settingsSnapshot.Value;
@@ -33,12 +46,10 @@ public class EmbeddingService : IEmbeddingService
     public EmbeddingService(
         IEmbeddingApiClient apiClient,
         IOptionsSnapshot<EmbeddingSettings> settingsSnapshot,
-        IEmbeddingDimensionService dimensionService,
         ILogger<EmbeddingService> logger)
     {
         _apiClient = apiClient;
         _settingsSnapshot = settingsSnapshot;
-        _dimensionService = dimensionService;
         _logger = logger;
     }
 
@@ -57,33 +68,30 @@ public class EmbeddingService : IEmbeddingService
 
             return embedding;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller cancelled: propagate as cancellation, do NOT treat as an
+            // embedding failure and do NOT substitute a fallback vector.
+            throw;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating embedding: {ErrorMessage}", ex.Message);
+            // Fail loudly. Previously this method fell back to a random unit vector,
+            // which was then persisted into the embedding/embedding_metadata columns,
+            // silently poisoning that row for semantic search. We now surface the
+            // failure so the caller (e.g. StoreMemory) aborts instead of storing garbage.
+            // Note: we include the model name and input length for diagnostics but never
+            // the full input text.
+            _logger.LogError(
+                ex,
+                "Failed to generate embedding using model '{Model}' for text of length {TextLength}",
+                Settings.Model,
+                text.Length);
 
-            _logger.LogWarning("Falling back to random embedding generation");
-            var dimensions = await _dimensionService.GetEffectiveDimensionsAsync(cancellationToken);
-
-            Random random = new();
-            float[] embedding = new float[dimensions];
-            for (int i = 0; i < embedding.Length; i++)
-            {
-                embedding[i] = (float)random.NextDouble();
-            }
-
-            float sum = 0;
-            for (int i = 0; i < embedding.Length; i++)
-            {
-                sum += embedding[i] * embedding[i];
-            }
-
-            float magnitude = (float)Math.Sqrt(sum);
-            for (int i = 0; i < embedding.Length; i++)
-            {
-                embedding[i] /= magnitude;
-            }
-
-            return embedding;
+            throw new EmbeddingGenerationException(
+                $"Failed to generate embedding using model '{Settings.Model}' for input of length {text.Length}. " +
+                "Refusing to persist a fallback embedding, which would corrupt semantic search for this record.",
+                ex);
         }
     }
 
