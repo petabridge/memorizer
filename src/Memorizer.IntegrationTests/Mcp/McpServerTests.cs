@@ -111,6 +111,7 @@ public sealed class McpServerTests : IAsyncLifetime
         Assert.Contains("memorizer_overview", names);
         Assert.Contains("store_memory", names);
         Assert.Contains("find_context", names);
+        Assert.Contains("start_project", names);
 
         // Fetch a parameterized prompt and confirm it renders the argument and the tool guidance.
         var result = await mcp.Client.GetPromptAsync(
@@ -122,5 +123,30 @@ public sealed class McpServerTests : IAsyncLifetime
         var text = string.Join("\n", result.Messages.Select(m => (m.Content as TextContentBlock)?.Text ?? ""));
         Assert.Contains("database pooling", text);
         Assert.Contains("search_memories", text);
+    }
+
+    [Fact]
+    public async Task Server_exposes_workspace_tree_resource()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        // The workspace tree resource must appear in the resource list.
+        var resources = await mcp.Client.ListResourcesAsync(cancellationToken: cts.Token);
+        var uris = resources.Select(r => r.Uri).ToHashSet();
+        _output.WriteLine($"Resources: {string.Join(", ", uris)}");
+        Assert.Contains("memorizer://workspaces", uris);
+
+        // Create a workspace via a tool, then confirm the resource reflects it (unique name
+        // to stay isolated from other tests sharing the container).
+        var workspaceName = $"McpResourceTest-{Guid.NewGuid():N}";
+        await mcp.Client.CallToolAsync(
+            "create_workspace",
+            new Dictionary<string, object?> { ["name"] = workspaceName },
+            cancellationToken: cts.Token);
+
+        var read = await mcp.Client.ReadResourceAsync("memorizer://workspaces", cancellationToken: cts.Token);
+        var contents = string.Join("\n", read.Contents.OfType<TextResourceContents>().Select(c => c.Text));
+        Assert.Contains(workspaceName, contents);
     }
 }

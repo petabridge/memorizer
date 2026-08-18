@@ -107,4 +107,21 @@ public class MemorizerPrompts
         4. To restore an archived memory, use the restore_memory tool.
         5. To undo a bad change, revert the memory to an earlier version with the revert_to_version tool.
         """;
+
+    [McpServerPrompt(Name = "start_project", Title = "Start a project correctly"),
+     Description("Give the correct steps to create a new project with a goal and victory conditions.")]
+    public string StartProject(
+        [Description("Optional one-sentence goal of the project.")] string? goal = null) =>
+        $"""
+        Do these steps to create a project{(string.IsNullOrWhiteSpace(goal) ? "" : $" with this goal: {goal}")}.
+
+        1. Choose the workspace for the project. List the workspaces with the get_workspace tool.
+        2. Look at the projects in that workspace. Do not make a duplicate project.
+        3. Choose a short, clear name for the project.
+        4. Write the goal in one sentence.
+        5. Write the victory conditions. State how you know the project is complete.
+        6. Create the project with the create_project tool. Put it in the workspace.
+        7. To make a sub-project, set the parent project.
+        8. Store the first decisions as memories in the project.
+        """;
 }
