@@ -43,7 +43,8 @@ builder.Services.AddMemorizerOtel();
 builder.Services.AddMcpServer()
     .WithHttpTransport(options => options.Stateless = true)
     .WithTools<MemoryTools>()
-    .WithTools<WorkspaceTools>();
+    .WithTools<WorkspaceTools>()
+    .WithPrompts<MemorizerPrompts>();
 
 // Add MVC support for web UI
 builder.Services.AddControllersWithViews()

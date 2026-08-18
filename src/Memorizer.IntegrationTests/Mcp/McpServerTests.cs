@@ -1,6 +1,7 @@
 using Memorizer.IntegrationTests.Mcp;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using ModelContextProtocol.Protocol;
 using Xunit.Abstractions;
 
 namespace Memorizer.IntegrationTests;
@@ -95,5 +96,31 @@ public sealed class McpServerTests : IAsyncLifetime
             var tools = await second.Client.ListToolsAsync(cancellationToken: cts.Token);
             Assert.NotEmpty(tools);
         }
+    }
+
+    [Fact]
+    public async Task Server_advertises_usage_prompts()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        var prompts = await mcp.Client.ListPromptsAsync(cancellationToken: cts.Token);
+        var names = prompts.Select(p => p.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _output.WriteLine($"Advertised prompts ({names.Count}): {string.Join(", ", names.OrderBy(n => n))}");
+
+        Assert.Contains("memorizer_overview", names);
+        Assert.Contains("store_memory", names);
+        Assert.Contains("find_context", names);
+
+        // Fetch a parameterized prompt and confirm it renders the argument and the tool guidance.
+        var result = await mcp.Client.GetPromptAsync(
+            "find_context",
+            new Dictionary<string, object?> { ["topic"] = "database pooling" },
+            cancellationToken: cts.Token);
+
+        Assert.NotEmpty(result.Messages);
+        var text = string.Join("\n", result.Messages.Select(m => (m.Content as TextContentBlock)?.Text ?? ""));
+        Assert.Contains("database pooling", text);
+        Assert.Contains("search_memories", text);
     }
 }
