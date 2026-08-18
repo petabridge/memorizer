@@ -209,4 +209,182 @@ public class MetadataEmbeddingStorageTests : IDisposable
 
         _output.WriteLine($"✅ UpdateMemoryOwner method works correctly for moving between workspace and unfiled");
     }
+
+    /// <summary>
+    /// Regression test for the "no similarity threshold" defect.
+    /// <para>
+    /// A minimum similarity of <c>0.0</c> must mean "no distance filter": the search should return
+    /// the nearest matches regardless of the sign of the cosine similarity, including a memory that
+    /// is (near-)orthogonal/negatively-correlated to the query. Previously <c>minSimilarity: 0.0</c>
+    /// mapped to a distance ceiling of <c>1.0</c>, which still silently dropped every row with cosine
+    /// similarity &lt;= 0 (a real flaky-test trap). A positive threshold must still filter that memory out.
+    /// </para>
+    /// <para>
+    /// Determinism: everything is scoped to a fresh per-run workspace so only the two crafted memories
+    /// are search candidates, and the query is the target memory's exact (GUID-nonced) title, which
+    /// guarantees a top match. The unrelated memory is an intentionally dissimilar topic.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SearchWithMetadataEmbedding_ZeroThreshold_ReturnsLowSimilarityMemory()
+    {
+        var storage = _services.GetRequiredService<IStorage>();
+
+        var nonce = Guid.NewGuid().ToString("N")[..12];
+        var unrelatedNonce = Guid.NewGuid().ToString("N")[..12];
+
+        // Scope everything to a fresh workspace so only our two memories are candidates.
+        var workspace = await storage.CreateWorkspaceAsync(
+            $"ZeroThresholdWs-{nonce}",
+            "Workspace for the no-threshold regression test");
+        var wsOwner = MemoryOwner.ForWorkspace(workspace.Id);
+
+        // Query == target title => guaranteed strong (near-1.0) match.
+        var query = $"quantum orchid saxophone {nonce}";
+
+        Memory? target = null;
+        Memory? unrelated = null;
+        try
+        {
+            target = await storage.StoreMemory(
+                type: "reference",
+                content: "Target memory content for the no-threshold regression test",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: query,
+                owner: wsOwner,
+                cancellationToken: default);
+
+            // Deliberately dissimilar topic with a different nonce => low / near-orthogonal similarity.
+            unrelated = await storage.StoreMemory(
+                type: "reference",
+                content: "Unrelated memory content for the no-threshold regression test",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: $"municipal drainage culvert inspection schedule {unrelatedNonce}",
+                owner: wsOwner,
+                cancellationToken: default);
+
+            // 1) Positive threshold: the unrelated memory is filtered out (proves it is below threshold),
+            //    while the exact-match target still passes.
+            var thresholded = await storage.SearchWithMetadataEmbedding(
+                query: query,
+                limit: 20,
+                minSimilarity: new SimilarityScore(0.6),
+                filterTags: null,
+                projectId: null,
+                includeUnassigned: false,
+                includeArchived: false,
+                includeSystem: false,
+                workspaceId: workspace.Id,
+                cancellationToken: default);
+
+            var thresholdedIds = thresholded.Select(m => m.Id).ToHashSet();
+            _output.WriteLine($"Positive-threshold search returned {thresholded.Count} results");
+            Assert.Contains(target.Id, thresholdedIds);
+            Assert.DoesNotContain(unrelated.Id, thresholdedIds);
+
+            // 2) Zero threshold ("no threshold"): the SAME low-similarity memory IS now returned.
+            var noThreshold = await storage.SearchWithMetadataEmbedding(
+                query: query,
+                limit: 20,
+                minSimilarity: new SimilarityScore(0.0),
+                filterTags: null,
+                projectId: null,
+                includeUnassigned: false,
+                includeArchived: false,
+                includeSystem: false,
+                workspaceId: workspace.Id,
+                cancellationToken: default);
+
+            var noThresholdIds = noThreshold.Select(m => m.Id).ToHashSet();
+            _output.WriteLine($"Zero-threshold search returned {noThreshold.Count} results");
+            Assert.Contains(target.Id, noThresholdIds);
+            Assert.Contains(unrelated.Id, noThresholdIds);
+        }
+        finally
+        {
+            if (target != null) await storage.Delete(target.Id, default);
+            if (unrelated != null) await storage.Delete(unrelated.Id, default);
+            await storage.DeleteWorkspaceAsync(workspace.Id, default);
+        }
+    }
+
+    /// <summary>
+    /// Companion to <see cref="SearchWithMetadataEmbedding_ZeroThreshold_ReturnsLowSimilarityMemory"/>
+    /// covering the content-embedding <see cref="IStorage.SearchWithFullEmbedding"/> path: a zero
+    /// minimum similarity must not apply a distance filter, so a dissimilar memory is still returned
+    /// among the nearest matches, whereas a positive threshold filters it out.
+    /// </summary>
+    [Fact]
+    public async Task SearchWithFullEmbedding_ZeroThreshold_ReturnsLowSimilarityMemory()
+    {
+        var storage = _services.GetRequiredService<IStorage>();
+
+        var nonce = Guid.NewGuid().ToString("N")[..12];
+        var unrelatedNonce = Guid.NewGuid().ToString("N")[..12];
+
+        // Query == target title => guaranteed strong match.
+        var query = $"holographic marmalade turbine {nonce}";
+
+        Memory? target = null;
+        Memory? unrelated = null;
+        try
+        {
+            target = await storage.StoreMemory(
+                type: "reference",
+                content: query,
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: query,
+                owner: null,
+                cancellationToken: default);
+
+            unrelated = await storage.StoreMemory(
+                type: "reference",
+                content: $"quarterly hydroelectric dam sediment removal report {unrelatedNonce}",
+                source: "test",
+                tags: null,
+                confidence: new Confidence(1.0),
+                title: $"quarterly hydroelectric dam sediment removal report {unrelatedNonce}",
+                owner: null,
+                cancellationToken: default);
+
+            // 1) Positive threshold: the unrelated memory is filtered out.
+            var thresholded = await storage.SearchWithFullEmbedding(
+                query: query,
+                limit: 50,
+                minSimilarity: new SimilarityScore(0.6),
+                filterTags: null,
+                includeArchived: false,
+                cancellationToken: default);
+
+            var thresholdedIds = thresholded.Select(m => m.Id).ToHashSet();
+            Assert.Contains(target.Id, thresholdedIds);
+            Assert.DoesNotContain(unrelated.Id, thresholdedIds);
+
+            // 2) Zero threshold ("no threshold"): the unrelated memory IS returned among the nearest,
+            //    proving the distance predicate was omitted. (The target, an exact match, is the very
+            //    nearest, so both land inside a generous limit even on a shared database.)
+            var noThreshold = await storage.SearchWithFullEmbedding(
+                query: query,
+                limit: 1000,
+                minSimilarity: new SimilarityScore(0.0),
+                filterTags: null,
+                includeArchived: false,
+                cancellationToken: default);
+
+            var noThresholdIds = noThreshold.Select(m => m.Id).ToHashSet();
+            Assert.Contains(target.Id, noThresholdIds);
+            Assert.Contains(unrelated.Id, noThresholdIds);
+        }
+        finally
+        {
+            if (target != null) await storage.Delete(target.Id, default);
+            if (unrelated != null) await storage.Delete(unrelated.Id, default);
+        }
+    }
 }
