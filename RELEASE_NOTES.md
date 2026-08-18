@@ -1,3 +1,27 @@
+#### 2.3.0 August 17th 2026 ####
+
+**Features**
+- [Upgrade Model Context Protocol SDK to 2.2.0](https://github.com/petabridge/memorizer/pull/211) - Moves Memorizer onto the stable MCP SDK
+  - The MCP server now runs in stateless Streamable HTTP mode
+  - Adds MCP endpoint integration tests driven by a lightweight SDK client
+- [Expose MCP prompts that teach correct Memorizer usage](https://github.com/petabridge/memorizer/pull/212) - Adds seven guided prompts written in Simplified Technical English
+  - `memorizer_overview`, `store_memory`, `find_context`, `review_project`, `organize_memory`, `maintain_memory`, and `start_project`
+- [Add start_project prompt and a workspace-tree MCP resource](https://github.com/petabridge/memorizer/pull/213) - Exposes the live workspace and project hierarchy as readable MCP context
+  - The `memorizer://workspaces` resource surfaces the current workspace/project tree so agents can orient before acting
+
+**Security**
+- [Pin SSH.NET to 2026.0.0 to fix high-severity advisory (GHSA-q939-rpr3-3284)](https://github.com/petabridge/memorizer/pull/207) - Addresses a high-severity advisory pulled in transitively via Testcontainers
+- [Bump OpenTelemetry packages to 1.17.0 to fix moderate advisories](https://github.com/petabridge/memorizer/pull/208) - Resolves four moderate denial-of-service advisories in `OpenTelemetry.Api` and the OTLP exporter
+
+**Bug Fixes**
+- [Fix canonical URLs for projects and workspaces](https://github.com/petabridge/memorizer/pull/205) - MCP tool responses now link to the correct web UI routes ([#204](https://github.com/petabridge/memorizer/issues/204))
+  - Project and workspace links now use the plural `/projects/{id}` and `/workspaces/{id}` routes
+- [Fix connection-pool self-deadlock in Get/GetMany relationship loading](https://github.com/petabridge/memorizer/pull/209) - Prevents pool exhaustion under concurrency during relationship loading
+  - `Get`, `GetMany`, and the remaining query paths now reuse a single pooled connection instead of holding two ([#210](https://github.com/petabridge/memorizer/pull/210))
+- [Fix embedding search threshold trap and remove random-embedding fallback](https://github.com/petabridge/memorizer/pull/215) - Corrects similarity-threshold behavior and surfaces embedding failures
+  - `minSimilarity: 0.0` now means "no threshold" instead of filtering out all results
+  - Embedding failures now surface loudly instead of silently persisting a random vector
+
 #### 2.2.0 July 3rd 2026 ####
 
 **Features**
