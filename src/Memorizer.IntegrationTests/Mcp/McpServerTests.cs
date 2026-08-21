@@ -163,19 +163,18 @@ public sealed class McpServerTests : IAsyncLifetime
         string.Join("\n", result.Content.OfType<TextContentBlock>().Select(c => c.Text));
 
     [Fact]
-    public async Task Store_without_type_returns_a_correctable_error_not_the_opaque_sdk_error()
+    public async Task Store_without_a_required_field_returns_a_correctable_error_not_the_opaque_sdk_error()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         await using var mcp = await ConnectAsync(cts.Token);
 
-        // 'type' deliberately omitted — the exact shape that failed in the incident.
+        // 'title' omitted — still required (it's the search index). 'type'/'source' now
+        // default, so title is the probe for the boundary's required-field handling.
         var result = await mcp.Client.CallToolAsync(
             "store",
             new Dictionary<string, object?>
             {
                 ["text"] = "hello world",
-                ["source"] = "LLM",
-                ["title"] = "Boundary test",
             },
             cancellationToken: cts.Token);
 
@@ -187,7 +186,7 @@ public sealed class McpServerTests : IAsyncLifetime
         // tells the agent it is required. Without this, the test would still pass if the
         // SDK front-ran us with some other unhelpful message that merely lacks the opaque
         // string.
-        Assert.Contains("type", text);
+        Assert.Contains("title", text);
         Assert.Contains("required", text, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -212,24 +211,45 @@ public sealed class McpServerTests : IAsyncLifetime
         Assert.Contains("not found", text, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public async Task Get_with_unhyphenated_id_returns_a_correctable_error_not_the_opaque_sdk_error()
+    [Theory]
+    [InlineData("dec906c7e5d14abebaf827af5a842ae5")]      // 32-hex, no hyphens (N-format)
+    [InlineData("doc-dec906c7e5d14abebaf827af5a842ae5")]  // recall doc- prefix, N-format
+    public async Task Get_with_lightly_mangled_id_is_normalized_and_resolves(string id)
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         await using var mcp = await ConnectAsync(cts.Token);
 
-        // 32-hex, no hyphens — as a recall doc-id (minus its 'doc-' prefix) would arrive.
+        // Piece 2: ids are parsed loosely, so these resolve to a real UUID and reach the
+        // tool (which returns a graceful "not found" since nothing is stored) instead of
+        // erroring at the boundary. No embedding is generated on a not-found get.
         var result = await mcp.Client.CallToolAsync(
             "get",
-            new Dictionary<string, object?> { ["id"] = "dec906c7e5d14abebaf827af5a842ae5" },
+            new Dictionary<string, object?> { ["id"] = id },
             cancellationToken: cts.Token);
 
         var text = ResultText(result);
         _output.WriteLine(text);
-        Assert.True(result.IsError == true);
+        Assert.NotEqual(true, result.IsError);
         Assert.DoesNotContain(OpaqueSdkError, text);
-        // Corrective: the message must point the agent at the id format it should use.
-        Assert.Contains("UUID", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not found", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Get_with_unparseable_id_returns_a_correctable_message()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        var result = await mcp.Client.CallToolAsync(
+            "get",
+            new Dictionary<string, object?> { ["id"] = "not-a-real-id" },
+            cancellationToken: cts.Token);
+
+        var text = ResultText(result);
+        _output.WriteLine(text);
+        Assert.DoesNotContain(OpaqueSdkError, text);
+        // Tool-body validation returns a plain, corrective string (the existing convention).
+        Assert.Contains("Invalid memory id", text);
     }
 
     [Theory]

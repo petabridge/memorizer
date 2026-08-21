@@ -100,7 +100,7 @@ public class MemoryToolsIntegrationTests : IDisposable
 
         // Act - Check off "Write integration tests"
         var result = await tools.Edit(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             "- [ ] Write integration tests",
             "- [x] Write integration tests",
             replace_all: false);
@@ -147,7 +147,7 @@ Call foo() to start the process.";
 
         // Act - Replace all occurrences of "foo" with "initialize"
         var result = await tools.Edit(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             "foo",
             "initialize",
             replace_all: true);
@@ -185,7 +185,7 @@ Call foo() to start the process.";
 
         // Act - Replace without replace_all (defaults to false)
         var result = await tools.Edit(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             "apple",
             "orange");
 
@@ -218,7 +218,7 @@ Call foo() to start the process.";
 
         // Act - Try to replace text that doesn't exist
         var result = await tools.Edit(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             "Goodbye World",
             "New Text");
 
@@ -240,7 +240,7 @@ Call foo() to start the process.";
 
         // Act
         var result = await tools.Edit(
-            nonExistentId,
+            nonExistentId.ToString(),
             "old text",
             "new text");
 
@@ -276,7 +276,7 @@ that should be replaced.
 
         // Act - Replace multi-line section
         var result = await tools.Edit(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             @"Old paragraph here
 with multiple lines
 that should be replaced.",
@@ -313,9 +313,9 @@ that should be replaced.",
             "Version Test");
 
         // Act - Make multiple edits
-        await tools.Edit(memory.Id.Value, "Version 1", "Version 2");
-        await tools.Edit(memory.Id.Value, "Version 2", "Version 3");
-        await tools.Edit(memory.Id.Value, "Version 3", "Version 4");
+        await tools.Edit(memory.Id.Value.ToString(), "Version 1", "Version 2");
+        await tools.Edit(memory.Id.Value.ToString(), "Version 2", "Version 3");
+        await tools.Edit(memory.Id.Value.ToString(), "Version 3", "Version 4");
 
         // Assert - Check version history
         // Each edit creates a snapshot of the PREVIOUS state, so 3 edits = 3 version snapshots
@@ -348,7 +348,7 @@ that should be replaced.",
 
         // Act - Try to replace with identical text
         var result = await tools.Edit(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             "Same",
             "Same");
 
@@ -384,7 +384,7 @@ that should be replaced.",
 
         // Act
         var result = await tools.UpdateMetadata(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             title: "Updated Title");
 
         _output.WriteLine($"UpdateMetadata result: {result}");
@@ -417,7 +417,7 @@ that should be replaced.",
 
         // Act
         var result = await tools.UpdateMetadata(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             tags: new[] { "new-tag-1", "new-tag-2" });
 
         _output.WriteLine($"UpdateMetadata result: {result}");
@@ -451,7 +451,7 @@ that should be replaced.",
 
         // Act
         var result = await tools.UpdateMetadata(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             type: "published");
 
         _output.WriteLine($"UpdateMetadata result: {result}");
@@ -481,7 +481,7 @@ that should be replaced.",
 
         // Act
         var result = await tools.UpdateMetadata(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             confidence: 0.95);
 
         _output.WriteLine($"UpdateMetadata result: {result}");
@@ -511,7 +511,7 @@ that should be replaced.",
 
         // Act - Update everything at once
         var result = await tools.UpdateMetadata(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             title: "Final Title",
             type: "reference",
             tags: new[] { "final", "tested" },
@@ -551,7 +551,7 @@ that should be replaced.",
 
         // Act - Only update title, everything else should be preserved
         var result = await tools.UpdateMetadata(
-            memory.Id.Value,
+            memory.Id.Value.ToString(),
             title: "Updated Important Memory");
 
         _output.WriteLine($"UpdateMetadata result: {result}");
@@ -577,7 +577,7 @@ that should be replaced.",
 
         // Act
         var result = await tools.UpdateMetadata(
-            nonExistentId,
+            nonExistentId.ToString(),
             title: "New Title");
 
         _output.WriteLine($"UpdateMetadata result: {result}");
@@ -718,7 +718,7 @@ that should be replaced.",
 
         foreach (var (oldText, newText) in tasks)
         {
-            var editResult = await tools.Edit(memoryId, oldText, newText);
+            var editResult = await tools.Edit(memoryId.ToString(), oldText, newText);
             _output.WriteLine($"Edit '{oldText}' -> {editResult}");
             Assert.Contains("Edit successful", editResult);
         }
@@ -760,7 +760,7 @@ that should be replaced.",
         var memoryId = Guid.Parse(idMatch.Groups[1].Value);
 
         // Make a mistake
-        await tools.Edit(memoryId, "original correct", "wrong");
+        await tools.Edit(memoryId.ToString(), "original correct", "wrong");
 
         var wrongMemory = await storage.Get((MemoryId)memoryId);
         Assert.NotNull(wrongMemory);
@@ -768,7 +768,7 @@ that should be replaced.",
         Assert.Equal(new VersionNumber(2), wrongMemory.CurrentVersion);
 
         // Revert to original
-        var revertResult = await tools.RevertToVersion(memoryId, new VersionNumber(1));
+        var revertResult = await tools.RevertToVersion(memoryId.ToString(), new VersionNumber(1));
         _output.WriteLine($"Revert result: {revertResult}");
 
         Assert.Contains("successfully reverted", revertResult);

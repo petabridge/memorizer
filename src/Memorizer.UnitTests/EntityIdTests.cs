@@ -60,6 +60,36 @@ public class EntityIdTests
         Assert.Equal(MemoryId.Empty, id);
     }
 
+    [Theory]
+    [InlineData("dec906c7-e5d1-4abe-baf8-27af5a842ae5")]              // hyphenated (D)
+    [InlineData("dec906c7e5d14abebaf827af5a842ae5")]                  // 32-hex (N)
+    [InlineData("  dec906c7-e5d1-4abe-baf8-27af5a842ae5  ")]          // surrounding whitespace
+    [InlineData("doc-dec906c7e5d14abebaf827af5a842ae5")]              // recall doc- prefix
+    [InlineData("memory-dec906c7-e5d1-4abe-baf8-27af5a842ae5")]       // memory- prefix
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5")] // pasted URL
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5?v=2")] // URL + query
+    public void MemoryId_TryParseLoose_AcceptsAgentShapes(string input)
+    {
+        var ok = MemoryId.TryParseLoose(input, out var id);
+
+        Assert.True(ok);
+        Assert.Equal(Guid.Parse("dec906c7-e5d1-4abe-baf8-27af5a842ae5"), id.Value);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not-a-guid")]
+    [InlineData("doc-not-a-guid")]
+    public void MemoryId_TryParseLoose_RejectsGarbage(string? input)
+    {
+        var ok = MemoryId.TryParseLoose(input, out var id);
+
+        Assert.False(ok);
+        Assert.Equal(MemoryId.Empty, id);
+    }
+
     [Fact]
     public void MemoryId_ExplicitCast_ToGuid_Works()
     {

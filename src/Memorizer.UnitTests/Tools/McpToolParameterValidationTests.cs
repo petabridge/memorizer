@@ -32,33 +32,20 @@ public class McpToolParameterValidationTests
         new FakeCanonicalUrlService { IsConfigured = false });
 
     // ===== Store =====
-
-    [Fact]
-    public async Task Store_WhenTypeMissing_ReturnsErrorNotException()
-    {
-        var result = await CreateMemoryTools().Store(type: "", text: "body", source: "LLM", title: "Title");
-        Assert.Contains("'type' is required", result);
-    }
+    // Only text and title are required now; 'type' and 'source' default (see Store defaults
+    // coverage in MemoryToolsCanonicalUrlTests / ToolArgumentGuardTests).
 
     [Fact]
     public async Task Store_WhenTextMissing_ReturnsErrorNotException()
     {
-        var result = await CreateMemoryTools().Store(type: "reference", text: "   ", source: "LLM", title: "Title");
+        var result = await CreateMemoryTools().Store(text: "   ", title: "Title", type: "reference", source: "LLM");
         Assert.Contains("'text' is required", result);
-    }
-
-    [Fact]
-    public async Task Store_WhenSourceMissing_ReturnsErrorNotException()
-    {
-        // 'source' omitted was observed 4x in production logs.
-        var result = await CreateMemoryTools().Store(type: "reference", text: "body", source: "", title: "Title");
-        Assert.Contains("'source' is required", result);
     }
 
     [Fact]
     public async Task Store_WhenTitleMissing_ReturnsErrorNotException()
     {
-        var result = await CreateMemoryTools().Store(type: "reference", text: "body", source: "LLM", title: "");
+        var result = await CreateMemoryTools().Store(text: "body", title: "", type: "reference", source: "LLM");
         Assert.Contains("'title' is required", result);
     }
 
@@ -68,14 +55,14 @@ public class McpToolParameterValidationTests
     public async Task Edit_WhenOldTextMissing_ReturnsErrorNotException()
     {
         // 'old_text' omitted was observed 8x in production logs.
-        var result = await CreateMemoryTools().Edit(id: Guid.NewGuid(), old_text: "", new_text: "replacement");
+        var result = await CreateMemoryTools().Edit(id: Guid.NewGuid().ToString(), old_text: "", new_text: "replacement");
         Assert.Contains("'old_text' is required", result);
     }
 
     [Fact]
     public async Task Edit_WhenNewTextNull_ReturnsErrorNotException()
     {
-        var result = await CreateMemoryTools().Edit(id: Guid.NewGuid(), old_text: "find me", new_text: null!);
+        var result = await CreateMemoryTools().Edit(id: Guid.NewGuid().ToString(), old_text: "find me", new_text: null!);
         Assert.Contains("'new_text' is required", result);
     }
 
