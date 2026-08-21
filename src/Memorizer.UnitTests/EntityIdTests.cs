@@ -68,6 +68,13 @@ public class EntityIdTests
     [InlineData("memory-dec906c7-e5d1-4abe-baf8-27af5a842ae5")]       // memory- prefix
     [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5")] // pasted URL
     [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5?v=2")] // URL + query
+    [InlineData("DOC-dec906c7e5d14abebaf827af5a842ae5")]             // prefix is case-insensitive
+    [InlineData("Memory-dec906c7-e5d1-4abe-baf8-27af5a842ae5")]      // mixed-case prefix
+    [InlineData("DEC906C7-E5D1-4ABE-BAF8-27AF5A842AE5")]             // uppercase hex (D-format)
+    [InlineData("DEC906C7E5D14ABEBAF827AF5A842AE5")]                 // uppercase hex (N-format)
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5/")]        // trailing slash
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5#details")] // URL fragment
+    [InlineData("{dec906c7-e5d1-4abe-baf8-27af5a842ae5}")]           // braced form (GUID 'B')
     public void MemoryId_TryParseLoose_AcceptsAgentShapes(string input)
     {
         var ok = MemoryId.TryParseLoose(input, out var id);
@@ -82,6 +89,10 @@ public class EntityIdTests
     [InlineData("   ")]
     [InlineData("not-a-guid")]
     [InlineData("doc-not-a-guid")]
+    [InlineData("doc-")]                                              // prefix only, no id
+    [InlineData("doc-memory-dec906c7e5d14abebaf827af5a842ae5")]       // only one prefix is stripped
+    [InlineData("https://memory.testlab.petabridge.net/view/")]       // URL with no id segment
+    [InlineData("12345")]                                             // too short to be a GUID
     public void MemoryId_TryParseLoose_RejectsGarbage(string? input)
     {
         var ok = MemoryId.TryParseLoose(input, out var id);

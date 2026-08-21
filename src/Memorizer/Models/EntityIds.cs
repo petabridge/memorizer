@@ -89,15 +89,17 @@ public readonly record struct MemoryId(Guid Value) : IEntityId, IComparable<Memo
 
         var candidate = s.Trim();
 
-        // Keep only the last segment if a URL/path was pasted.
-        var lastSlash = candidate.LastIndexOf('/');
-        if (lastSlash >= 0)
-            candidate = candidate[(lastSlash + 1)..];
-
-        // Drop any query/fragment tail.
+        // Drop any query/fragment tail (a pasted URL may carry "?v=2" or "#section").
         var tail = candidate.IndexOfAny(['?', '#']);
         if (tail >= 0)
             candidate = candidate[..tail];
+
+        // Ignore trailing slashes, then keep only the last path segment if a URL/path
+        // was pasted (".../view/{id}" or ".../view/{id}/").
+        candidate = candidate.TrimEnd('/');
+        var lastSlash = candidate.LastIndexOf('/');
+        if (lastSlash >= 0)
+            candidate = candidate[(lastSlash + 1)..];
 
         // Strip a known id prefix, if present.
         foreach (var prefix in KnownIdPrefixes)
