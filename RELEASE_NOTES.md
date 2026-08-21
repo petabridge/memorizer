@@ -1,3 +1,15 @@
+#### 2.3.1 August 21st 2026 ####
+
+**Features**
+- [Agent-friendly tool ergonomics: defaults and loose id parsing](https://github.com/petabridge/memorizer/pull/231) - Fewer well-intentioned tool calls fail
+  - `store` now requires only `text` and `title`; `type` defaults to `reference` and `source` to `LLM` (`title` stays required — it is the primary text indexed for search)
+  - Memory id parameters across `get`, `get_many`, `delete`, `edit`, `update_metadata`, `revert_to_version`, `archive`, `restore`, `create_reference`, and `move_memory` now accept ids as returned by store or search — tolerating `doc-`/`memory-` prefixes, the 32-hex form, and pasted `/view/{id}` URLs
+
+**Bug Fixes**
+- [Own the MCP tool-argument error surface](https://github.com/petabridge/memorizer/pull/229) - MCP tools now return a correctable message when a required argument is missing or malformed, instead of the opaque "An error occurred invoking '<tool>'" produced by the 2.2.0 SDK marshaller
+  - A CallTool validation boundary checks arguments against each tool's advertised schema before the SDK marshaller runs, so no opaque error reaches the client
+  - Restores the resilience intent of [#166](https://github.com/petabridge/memorizer/pull/166) and [#184](https://github.com/petabridge/memorizer/pull/184) that the 2.3.0 SDK upgrade had bypassed
+
 #### 2.3.0 August 17th 2026 ####
 
 **Features**
