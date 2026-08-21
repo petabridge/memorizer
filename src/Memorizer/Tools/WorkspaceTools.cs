@@ -836,13 +836,14 @@ public class WorkspaceTools
             return "Error: 'memoryIds' is required. Provide one or more memory GUIDs to move. Use Search or Get to find memory IDs.";
         }
 
-        // Parse memory IDs defensively — MCP clients may send malformed values
+        // Parse memory IDs loosely — accept the shapes agents send (doc-/memory- prefixes,
+        // N-format, pasted URLs), consistent with the memory tools' id handling.
         var parsedIds = new List<Guid>();
         var invalidIds = new List<string>();
         foreach (var idStr in memoryIds)
         {
-            if (Guid.TryParse(idStr, out var parsed))
-                parsedIds.Add(parsed);
+            if (MemoryId.TryParseLoose(idStr, out var parsed))
+                parsedIds.Add(parsed.Value);
             else if (!string.IsNullOrWhiteSpace(idStr))
                 invalidIds.Add(idStr);
         }

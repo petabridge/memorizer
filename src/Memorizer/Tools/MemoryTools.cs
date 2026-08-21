@@ -30,12 +30,12 @@ public class MemoryTools
         _canonicalUrlService = canonicalUrlService;
     }
 
-    [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples. REQUIRED parameters: type, text, source, title - all four MUST be provided.")]
+    [McpServerTool, Description("Store a new memory in the database, optionally creating a relationship to another memory. Use this to save reference material, how-to guides, coding standards, or any information you (the LLM) may want to refer to when completing tasks. Include as much context as possible, such as markdown, code samples, and detailed explanations. Create relationships to link related reference materials or examples. REQUIRED: text and title. 'type' defaults to 'reference' and 'source' to 'LLM' when omitted.")]
     public async Task<string> Store(
-        [Description("REQUIRED. The type of memory (e.g., 'conversation', 'document', 'reference', 'how-to', 'todo-list', etc.). Use 'reference' or 'how-to' for reusable knowledge.")] string type,
         [Description("REQUIRED. Plain text (markdown, code, prose, etc.) to store. Include as much context as possible.")] string text,
-        [Description("REQUIRED. The source of the memory (e.g., 'user', 'system', 'LLM', etc.). Use 'LLM' if you are storing knowledge for your own future use.")] string source,
-        [Description("REQUIRED. Title for the memory. Should be descriptive and searchable.")] string title,
+        [Description("REQUIRED. Title for the memory. This is the primary text indexed for semantic search, so make it specific and descriptive.")] string title,
+        [Description("Optional. The type/category of memory (e.g. 'reference', 'how-to', 'todo-list', 'conversation'). Defaults to 'reference' when omitted.")] string? type = null,
+        [Description("Optional. The source of the memory (e.g. 'user', 'system', 'LLM'). Defaults to 'LLM' when omitted.")] string? source = null,
         [Description("Optional tags to categorize the memory. Use tags like 'coding-standard', 'unit-test', 'reference', 'how-to', 'todo', etc. to make retrieval easier.")] string[]? tags = null,
         [Description("Confidence score for the memory (0.0 to 1.0)")] double confidence = 1.0,
         [Description("Optionally, the ID of a related memory. Use this to link related reference materials, how-tos, or examples.")] string? relatedTo = null,
@@ -46,15 +46,16 @@ public class MemoryTools
         CancellationToken cancellationToken = default
     )
     {
-        // Validate required parameters — MCP clients sometimes omit these entirely
-        if (string.IsNullOrWhiteSpace(type))
-            return "Error: 'type' is required. Provide a memory type such as 'document', 'reference', 'how-to', 'todo-list', or 'conversation'.";
+        // text and title are required; title is the primary text indexed for search.
         if (string.IsNullOrWhiteSpace(text))
             return "Error: 'text' is required. Provide the content to store as plain text (markdown, code, prose, etc.).";
-        if (string.IsNullOrWhiteSpace(source))
-            return "Error: 'source' is required. Provide the source of the memory (e.g., 'user', 'system', or 'LLM').";
         if (string.IsNullOrWhiteSpace(title))
-            return "Error: 'title' is required. Provide a descriptive, searchable title for the memory.";
+            return "Error: 'title' is required. It is the primary text indexed for semantic search, so make it specific and descriptive.";
+
+        // Default the organizational fields when omitted — they are not load-bearing for
+        // search the way title is, so a missing value should not fail the write.
+        type = string.IsNullOrWhiteSpace(type) ? "reference" : type.Trim();
+        source = string.IsNullOrWhiteSpace(source) ? "LLM" : source.Trim();
 
         // Parse archetype string to enum
         var archetypeEnum = ArchetypeEnumExtensions.ParseArchetype(archetype);
@@ -119,7 +120,7 @@ public class MemoryTools
 
     [McpServerTool, Description("Edit an existing memory using find-and-replace. Ideal for checking off to-do items, updating sections, or fixing typos. IMPORTANT: The edit will FAIL if old_text is not found exactly - always use Get first to see current content and copy the exact text to replace. All changes are versioned and can be reverted. REQUIRED parameters: id, old_text, new_text - all three MUST be provided.")]
     public async Task<string> Edit(
-        [Description("REQUIRED. The ID of the memory to edit.")] Guid id,
+        [Description("REQUIRED. The ID of the memory to edit.")] string id,
         [Description("REQUIRED. The exact text to find and replace. Must match exactly (case-sensitive). For multi-line replacements, include the full text including newlines.")] string old_text,
         [Description("REQUIRED. The text to replace it with. Can be different length than old_text.")] string new_text,
         [Description("If true, replaces ALL occurrences of old_text. If false (default), only replaces the first occurrence. Use false for safety when editing unique content.")] bool replace_all = false,
@@ -142,7 +143,8 @@ public class MemoryTools
             {"replace_all", replace_all.ToString()}
         }));
 
-        var memoryId = (MemoryId)id;
+        if (!MemoryId.TryParseLoose(id, out var memoryId))
+            return $"Invalid memory id '{id}'. Use the id exactly as returned by store or search (a UUID, optionally with a 'doc-' prefix).";
 
         // Get existing memory
         var existingMemory = await _storage.Get(memoryId, cancellationToken);
@@ -249,7 +251,7 @@ public class MemoryTools
 
     [McpServerTool, Description("Update a memory's metadata (title, type, tags, confidence) without changing the content or regenerating embeddings. Use Edit tool for content changes. All changes are versioned and can be reverted.")]
     public async Task<string> UpdateMetadata(
-        [Description("The ID of the memory to update.")] Guid id,
+        [Description("The ID of the memory to update.")] string id,
         [Description("Optional: New title for the memory. Pass null to keep existing.")] string? title = null,
         [Description("Optional: New type for the memory. Pass null to keep existing.")] string? type = null,
         [Description("Optional: New tags for the memory. Pass null to keep existing, pass empty array to clear tags.")] string[]? tags = null,
@@ -259,7 +261,8 @@ public class MemoryTools
     {
         using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.UpdateMetadata");
 
-        var memoryId = (MemoryId)id;
+        if (!MemoryId.TryParseLoose(id, out var memoryId))
+            return $"Invalid memory id '{id}'. Use the id exactly as returned by store or search (a UUID, optionally with a 'doc-' prefix).";
 
         // Get existing memory
         var existingMemory = await _storage.Get(memoryId, cancellationToken);
@@ -520,7 +523,7 @@ public class MemoryTools
 
     [McpServerTool, Description("Retrieve a specific memory by ID. Use this to fetch a particular reference, how-to, or example by its unique identifier. Optionally include version history or retrieve a specific past version. By default, also shows similar memories that may be candidates for consolidation or linking.")]
     public async Task<string> Get(
-        [Description("The ID of the memory to retrieve. Use this to fetch a specific piece of reference or how-to information.")] Guid id,
+        [Description("The ID of the memory to retrieve. Use this to fetch a specific piece of reference or how-to information.")] string id,
         [Description("Optional: If true, includes version history summary in the response (recent versions, change count).")] bool includeVersionHistory = false,
         [Description("Optional: Specific version number to retrieve. If provided, returns that version's content instead of current.")] int? versionNumber = null,
         [Description("Optional: Maximum number of versions to include in history (default: 5, max: 20).")] int versionLimit = 5,
@@ -542,7 +545,8 @@ public class MemoryTools
             {"query.includeArchivedRelationships", includeArchivedRelationships.ToString()}
         }));
 
-        var memoryId = (MemoryId)id;
+        if (!MemoryId.TryParseLoose(id, out var memoryId))
+            return $"Invalid memory id '{id}'. Use the id exactly as returned by store or search (a UUID, optionally with a 'doc-' prefix).";
 
         // If requesting a specific version, get that version
         if (versionNumber.HasValue)
@@ -735,18 +739,21 @@ public class MemoryTools
 
     [McpServerTool, Description("Delete a memory by ID. This permanently removes the memory including all version history. Use this to remove outdated or incorrect reference or how-to information.")]
     public async Task<string> Delete(
-        [Description("The ID of the memory to delete. Use this to remove a specific piece of knowledge.")] Guid id,
+        [Description("The ID of the memory to delete. Use this to remove a specific piece of knowledge.")] string id,
         CancellationToken cancellationToken = default
     )
     {
-        bool success = await _storage.Delete((MemoryId)id, cancellationToken);
+        if (!MemoryId.TryParseLoose(id, out var memoryId))
+            return $"Invalid memory id '{id}'. Use the id exactly as returned by store or search (a UUID, optionally with a 'doc-' prefix).";
+
+        bool success = await _storage.Delete(memoryId, cancellationToken);
 
         return success ? $"Memory with ID {id} deleted successfully." : $"Memory with ID {id} not found or could not be deleted.";
     }
 
     [McpServerTool, Description("Fetch multiple memories by their IDs. Use this to retrieve a set of related reference materials, how-tos, or examples.")]
     public async Task<string> GetMany(
-        [Description("The list of memory IDs to fetch. Use this to retrieve multiple related pieces of knowledge at once.")] Guid[] ids,
+        [Description("The list of memory IDs to fetch. Use this to retrieve multiple related pieces of knowledge at once.")] string[] ids,
         CancellationToken cancellationToken = default
     )
     {
@@ -759,7 +766,16 @@ public class MemoryTools
             {"query.count", ids.Length.ToString()}
         }));
 
-        var memoryIds = ids.Select(id => (MemoryId)id).ToArray();
+        // Parse ids loosely; skip any that don't resolve rather than failing the whole call.
+        var parsedIds = new List<MemoryId>();
+        foreach (var raw in ids)
+        {
+            if (MemoryId.TryParseLoose(raw, out var parsed))
+                parsedIds.Add(parsed);
+        }
+        if (parsedIds.Count == 0)
+            return $"No valid memory ids provided. Received: {string.Join(", ", ids)}. Use ids exactly as returned by store or search.";
+        var memoryIds = parsedIds.ToArray();
         var memories = await _storage.GetMany(memoryIds, cancellationToken);
         
         // Log results count
@@ -861,18 +877,18 @@ public class MemoryTools
         if (string.IsNullOrWhiteSpace(type))
             return "Error: 'type' is required. Provide the relationship type (e.g., 'example-of', 'explains', 'related-to').";
 
-        if (!Guid.TryParse(fromId, out var parsedFromId))
+        if (!MemoryId.TryParseLoose(fromId, out var parsedFromId))
             return $"Error: 'fromId' must be a valid GUID. Received: '{fromId}'.";
-        if (!Guid.TryParse(toId, out var parsedToId))
+        if (!MemoryId.TryParseLoose(toId, out var parsedToId))
             return $"Error: 'toId' must be a valid GUID. Received: '{toId}'.";
 
-        var rel = await _storage.CreateRelationship((MemoryId)parsedFromId, (MemoryId)parsedToId, type, cancellationToken);
+        var rel = await _storage.CreateRelationship(parsedFromId, parsedToId, type, cancellationToken);
         return $"Reference created: {rel.Id} from {rel.FromMemoryId} to {rel.ToMemoryId} (type: {rel.Type})";
     }
 
     [McpServerTool, Description("Revert a memory to a previous version. Restores all content and metadata (title, type, tags, confidence) from the specified version. Creates a new version recording the revert operation and regenerates embeddings. Use Get with includeVersionHistory=true to see available versions first.")]
     public async Task<string> RevertToVersion(
-        [Description("The ID of the memory to revert.")] Guid id,
+        [Description("The ID of the memory to revert.")] string id,
         [Description("The version number to revert to. Use Get with includeVersionHistory=true to see available versions.")] int versionNumber,
         [Description("Optional: Identifier of who is requesting the revert (e.g., 'user', 'LLM', 'system').")] string? changedBy = null,
         CancellationToken cancellationToken = default
@@ -887,7 +903,8 @@ public class MemoryTools
             {"changed.by", changedBy ?? "unspecified"}
         }));
 
-        var memoryId = (MemoryId)id;
+        if (!MemoryId.TryParseLoose(id, out var memoryId))
+            return $"Invalid memory id '{id}'. Use the id exactly as returned by store or search (a UUID, optionally with a 'doc-' prefix).";
         var targetVersion = new VersionNumber(versionNumber);
 
         // First check the memory exists
@@ -941,13 +958,14 @@ public class MemoryTools
 
     [McpServerTool, Description("Archive a memory, marking it as obsolete. Archived memories are hidden from default searches and relationship displays but preserved for historical reference and audit trails. Use this when consolidating memories or marking outdated content.")]
     public async Task<string> ArchiveMemory(
-        [Description("The ID of the memory to archive.")] Guid id,
+        [Description("The ID of the memory to archive.")] string id,
         CancellationToken cancellationToken = default
     )
     {
         using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.ArchiveMemory");
 
-        var memoryId = (MemoryId)id;
+        if (!MemoryId.TryParseLoose(id, out var memoryId))
+            return $"Invalid memory id '{id}'. Use the id exactly as returned by store or search (a UUID, optionally with a 'doc-' prefix).";
 
         // First check the memory exists
         var existingMemory = await _storage.Get(memoryId, cancellationToken);
@@ -995,14 +1013,15 @@ public class MemoryTools
 
     [McpServerTool, Description("Restore an archived memory back to active status. The memory will become visible in searches and relationship displays again.")]
     public async Task<string> RestoreMemory(
-        [Description("The ID of the archived memory to restore.")] Guid id,
+        [Description("The ID of the archived memory to restore.")] string id,
         [Description("The archetype to restore to: 'document' for living, editable content or 'record' for historical, immutable records. Default is 'document'.")] string restoreAs = "document",
         CancellationToken cancellationToken = default
     )
     {
         using var activity = TelemetryConfig.ActivitySource.StartActivity("MemoryTools.RestoreMemory");
 
-        var memoryId = (MemoryId)id;
+        if (!MemoryId.TryParseLoose(id, out var memoryId))
+            return $"Invalid memory id '{id}'. Use the id exactly as returned by store or search (a UUID, optionally with a 'doc-' prefix).";
 
         // Parse the restore archetype
         var targetArchetype = ArchetypeEnumExtensions.ParseArchetype(restoreAs);

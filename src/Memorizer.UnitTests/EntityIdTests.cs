@@ -60,6 +60,68 @@ public class EntityIdTests
         Assert.Equal(MemoryId.Empty, id);
     }
 
+    [Theory]
+    [InlineData("dec906c7-e5d1-4abe-baf8-27af5a842ae5")]              // hyphenated (D)
+    [InlineData("dec906c7e5d14abebaf827af5a842ae5")]                  // 32-hex (N)
+    [InlineData("  dec906c7-e5d1-4abe-baf8-27af5a842ae5  ")]          // surrounding whitespace
+    [InlineData("doc-dec906c7e5d14abebaf827af5a842ae5")]              // recall doc- prefix
+    [InlineData("memory-dec906c7-e5d1-4abe-baf8-27af5a842ae5")]       // memory- prefix
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5")] // pasted URL
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5?v=2")] // URL + query
+    [InlineData("DOC-dec906c7e5d14abebaf827af5a842ae5")]             // prefix is case-insensitive
+    [InlineData("Memory-dec906c7-e5d1-4abe-baf8-27af5a842ae5")]      // mixed-case prefix
+    [InlineData("DEC906C7-E5D1-4ABE-BAF8-27AF5A842AE5")]             // uppercase hex (D-format)
+    [InlineData("DEC906C7E5D14ABEBAF827AF5A842AE5")]                 // uppercase hex (N-format)
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5/")]        // trailing slash
+    [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5#details")] // URL fragment
+    [InlineData("{dec906c7-e5d1-4abe-baf8-27af5a842ae5}")]           // braced form (GUID 'B')
+    public void MemoryId_TryParseLoose_AcceptsAgentShapes(string input)
+    {
+        var ok = MemoryId.TryParseLoose(input, out var id);
+
+        Assert.True(ok);
+        Assert.Equal(Guid.Parse("dec906c7-e5d1-4abe-baf8-27af5a842ae5"), id.Value);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not-a-guid")]
+    [InlineData("doc-not-a-guid")]
+    [InlineData("doc-")]                                              // prefix only, no id
+    [InlineData("doc-memory-dec906c7e5d14abebaf827af5a842ae5")]       // only one prefix is stripped
+    [InlineData("https://memory.testlab.petabridge.net/view/")]       // URL with no id segment
+    [InlineData("12345")]                                             // too short to be a GUID
+    public void MemoryId_TryParseLoose_RejectsGarbage(string? input)
+    {
+        var ok = MemoryId.TryParseLoose(input, out var id);
+
+        Assert.False(ok);
+        Assert.Equal(MemoryId.Empty, id);
+    }
+
+    [Fact]
+    public void MemoryId_TryParseLoose_NeverMisreadsAValidGuid()
+    {
+        // Collision guard: normalization must never turn one valid GUID into a different
+        // one. It only strips non-hex wrappers, and every strip-prefix (doc-/memory-/mem-)
+        // begins with a non-hex letter while a canonical GUID string begins with a hex
+        // digit — so no valid id can be mis-stripped. Verified over many random GUIDs in
+        // both D and N forms; if a future prefix could ever lead a GUID, a round-trip here
+        // would fail (either a mismatch or a rejected parse).
+        for (var i = 0; i < 500; i++)
+        {
+            var g = Guid.NewGuid();
+
+            Assert.True(MemoryId.TryParseLoose(g.ToString("D"), out var d));
+            Assert.Equal(g, d.Value);
+
+            Assert.True(MemoryId.TryParseLoose(g.ToString("N"), out var n));
+            Assert.Equal(g, n.Value);
+        }
+    }
+
     [Fact]
     public void MemoryId_ExplicitCast_ToGuid_Works()
     {

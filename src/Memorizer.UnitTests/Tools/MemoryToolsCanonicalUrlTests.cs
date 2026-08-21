@@ -310,7 +310,7 @@ public class MemoryToolsCanonicalUrlTests
         var tools = CreateTools(fakeStorage, fakeUrlService);
 
         // Act
-        var result = await tools.Get(memoryId.Value, includeSimilar: false);
+        var result = await tools.Get(memoryId.Value.ToString(), includeSimilar: false);
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);
@@ -339,7 +339,7 @@ public class MemoryToolsCanonicalUrlTests
         var tools = CreateTools(fakeStorage, fakeUrlService);
 
         // Act
-        var result = await tools.GetMany(memoryIds);
+        var result = await tools.GetMany(memoryIds.Select(x => x.ToString()).ToArray());
 
         // Assert
         Assert.Contains(TestCanonicalUrl, result);

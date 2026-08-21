@@ -70,6 +70,50 @@ public readonly record struct MemoryId(Guid Value) : IEntityId, IComparable<Memo
     /// </summary>
     public static MemoryId Parse(string s) => new(Guid.Parse(s));
 
+    // Prefixes that recall/other subsystems attach to a raw GUID (e.g. "doc-{guid}").
+    private static readonly string[] KnownIdPrefixes = ["doc-", "memory-", "mem-"];
+
+    /// <summary>
+    /// Attempts to parse a string as a MemoryId, tolerating the shapes agents actually
+    /// send instead of a bare GUID: surrounding whitespace, a pasted URL or path
+    /// (".../view/{id}"), a query/fragment tail, and the "doc-"/"memory-"/"mem-" prefixes
+    /// that recall subsystems attach. Accepts both the hyphenated ("D") and 32-hex ("N")
+    /// GUID forms. Use this for MCP tool id parameters so a lightly-mangled id resolves
+    /// instead of erroring.
+    /// </summary>
+    public static bool TryParseLoose(string? s, out MemoryId result)
+    {
+        result = Empty;
+        if (string.IsNullOrWhiteSpace(s))
+            return false;
+
+        var candidate = s.Trim();
+
+        // Drop any query/fragment tail (a pasted URL may carry "?v=2" or "#section").
+        var tail = candidate.IndexOfAny(['?', '#']);
+        if (tail >= 0)
+            candidate = candidate[..tail];
+
+        // Ignore trailing slashes, then keep only the last path segment if a URL/path
+        // was pasted (".../view/{id}" or ".../view/{id}/").
+        candidate = candidate.TrimEnd('/');
+        var lastSlash = candidate.LastIndexOf('/');
+        if (lastSlash >= 0)
+            candidate = candidate[(lastSlash + 1)..];
+
+        // Strip a known id prefix, if present.
+        foreach (var prefix in KnownIdPrefixes)
+        {
+            if (candidate.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                candidate = candidate[prefix.Length..];
+                break;
+            }
+        }
+
+        return TryParse(candidate, out result);
+    }
+
     public int CompareTo(MemoryId other) => Value.CompareTo(other.Value);
 
     public override string ToString() => Value.ToString();
