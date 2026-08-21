@@ -45,7 +45,10 @@ builder.Services.AddMcpServer()
     .WithTools<MemoryTools>()
     .WithTools<WorkspaceTools>()
     .WithPrompts<MemorizerPrompts>()
-    .WithResources<MemorizerResources>();
+    .WithResources<MemorizerResources>()
+    // Own the error surface: validate tool arguments at the CallTool boundary and
+    // return correctable messages instead of the SDK's opaque marshaller errors.
+    .AddToolArgumentValidation();
 
 // Add MVC support for web UI
 builder.Services.AddControllersWithViews()

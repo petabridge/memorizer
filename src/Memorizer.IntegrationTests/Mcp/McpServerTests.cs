@@ -149,4 +149,99 @@ public sealed class McpServerTests : IAsyncLifetime
         var contents = string.Join("\n", read.Contents.OfType<TextResourceContents>().Select(c => c.Text));
         Assert.Contains(workspaceName, contents);
     }
+
+    // ---- Argument-validation boundary (Piece 1) ----
+    //
+    // These drive the real server the way a confused agent does. Before the 2.3.0 SDK
+    // bump these calls returned the opaque "An error occurred invoking '<tool>'"; the
+    // CallTool boundary must now return a correctable message instead. The negative
+    // assertion on OpaqueSdkError is the standing tripwire for the next SDK bump.
+
+    private const string OpaqueSdkError = "An error occurred invoking";
+
+    private static string ResultText(CallToolResult result) =>
+        string.Join("\n", result.Content.OfType<TextContentBlock>().Select(c => c.Text));
+
+    [Fact]
+    public async Task Store_without_type_returns_a_correctable_error_not_the_opaque_sdk_error()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        // 'type' deliberately omitted — the exact shape that failed in the incident.
+        var result = await mcp.Client.CallToolAsync(
+            "store",
+            new Dictionary<string, object?>
+            {
+                ["text"] = "hello world",
+                ["source"] = "LLM",
+                ["title"] = "Boundary test",
+            },
+            cancellationToken: cts.Token);
+
+        var text = ResultText(result);
+        _output.WriteLine(text);
+        Assert.True(result.IsError == true);
+        Assert.DoesNotContain(OpaqueSdkError, text);
+        Assert.Contains("type", text);
+    }
+
+    [Fact]
+    public async Task Valid_id_passes_the_filter_and_reaches_the_tool()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        // A well-formed, hyphenated UUID must pass straight through the filter to the
+        // tool body — the positive counterpart to the N-format case. A nonexistent id
+        // returns a graceful "not found" without touching the embedding backend, so the
+        // assertion stays independent of Class B (embedding) behaviour.
+        var result = await mcp.Client.CallToolAsync(
+            "get",
+            new Dictionary<string, object?> { ["id"] = "00000000-0000-0000-0000-000000000001" },
+            cancellationToken: cts.Token);
+
+        var text = ResultText(result);
+        _output.WriteLine(text);
+        Assert.NotEqual(true, result.IsError);
+        Assert.Contains("not found", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Get_with_unhyphenated_id_returns_a_correctable_error_not_the_opaque_sdk_error()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        // 32-hex, no hyphens — as a recall doc-id (minus its 'doc-' prefix) would arrive.
+        var result = await mcp.Client.CallToolAsync(
+            "get",
+            new Dictionary<string, object?> { ["id"] = "dec906c7e5d14abebaf827af5a842ae5" },
+            cancellationToken: cts.Token);
+
+        var text = ResultText(result);
+        _output.WriteLine(text);
+        Assert.True(result.IsError == true);
+        Assert.DoesNotContain(OpaqueSdkError, text);
+    }
+
+    [Theory]
+    [InlineData("store")]
+    [InlineData("get")]
+    [InlineData("edit")]
+    public async Task Omitting_required_parameters_never_yields_the_opaque_sdk_error(string tool)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        var result = await mcp.Client.CallToolAsync(
+            tool,
+            new Dictionary<string, object?>(), // no arguments at all
+            cancellationToken: cts.Token);
+
+        var text = ResultText(result);
+        _output.WriteLine($"{tool}: {text}");
+        Assert.True(result.IsError == true);
+        Assert.DoesNotContain(OpaqueSdkError, text);
+    }
 }
