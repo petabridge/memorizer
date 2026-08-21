@@ -32,11 +32,8 @@ public class ProviderSettingsSyncTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Clean up provider_settings table before each test
-        await using var dataSource = NpgsqlDataSource.Create(_fixture.PostgresConnectionString);
-        await using var conn = await dataSource.OpenConnectionAsync();
-        await using var cmd = new NpgsqlCommand("DELETE FROM provider_settings", conn);
-        await cmd.ExecuteNonQueryAsync();
+        // Clean up provider_settings before each test (in case a prior run leaked rows).
+        await CleanProviderSettingsAsync();
     }
 
     public async Task DisposeAsync()
@@ -46,6 +43,22 @@ public class ProviderSettingsSyncTests : IAsyncLifetime
             await _host.StopAsync();
             _host.Dispose();
         }
+
+        // Symmetric cleanup — this class shares the Postgres container with the rest of
+        // the collection and writes ACTIVE provider_settings rows to prove DB settings
+        // override config. Without removing them on teardown, the last row (e.g. the
+        // nonexistent 'custom-embedding-model') survives into other tests: their full-app
+        // startup (InitializationService) applies it, so their embedding calls target a
+        // model Ollama has not pulled and fail. Clean on the way out, not just in.
+        await CleanProviderSettingsAsync();
+    }
+
+    private async Task CleanProviderSettingsAsync()
+    {
+        await using var dataSource = NpgsqlDataSource.Create(_fixture.PostgresConnectionString);
+        await using var conn = await dataSource.OpenConnectionAsync();
+        await using var cmd = new NpgsqlCommand("DELETE FROM provider_settings", conn);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private IHost CreateHost(Dictionary<string, string?> configOverrides)
