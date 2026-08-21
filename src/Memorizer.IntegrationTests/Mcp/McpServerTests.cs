@@ -183,7 +183,12 @@ public sealed class McpServerTests : IAsyncLifetime
         _output.WriteLine(text);
         Assert.True(result.IsError == true);
         Assert.DoesNotContain(OpaqueSdkError, text);
+        // Positively assert the message is actually corrective — names the field and
+        // tells the agent it is required. Without this, the test would still pass if the
+        // SDK front-ran us with some other unhelpful message that merely lacks the opaque
+        // string.
         Assert.Contains("type", text);
+        Assert.Contains("required", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -223,6 +228,8 @@ public sealed class McpServerTests : IAsyncLifetime
         _output.WriteLine(text);
         Assert.True(result.IsError == true);
         Assert.DoesNotContain(OpaqueSdkError, text);
+        // Corrective: the message must point the agent at the id format it should use.
+        Assert.Contains("UUID", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -243,5 +250,8 @@ public sealed class McpServerTests : IAsyncLifetime
         _output.WriteLine($"{tool}: {text}");
         Assert.True(result.IsError == true);
         Assert.DoesNotContain(OpaqueSdkError, text);
+        // Every tool with required params must name one as missing — a corrective message,
+        // not merely the absence of the opaque one.
+        Assert.Contains("required", text, StringComparison.OrdinalIgnoreCase);
     }
 }
