@@ -102,6 +102,27 @@ public class EntityIdTests
     }
 
     [Fact]
+    public void MemoryId_TryParseLoose_NeverMisreadsAValidGuid()
+    {
+        // Collision guard: normalization must never turn one valid GUID into a different
+        // one. It only strips non-hex wrappers, and every strip-prefix (doc-/memory-/mem-)
+        // begins with a non-hex letter while a canonical GUID string begins with a hex
+        // digit — so no valid id can be mis-stripped. Verified over many random GUIDs in
+        // both D and N forms; if a future prefix could ever lead a GUID, a round-trip here
+        // would fail (either a mismatch or a rejected parse).
+        for (var i = 0; i < 500; i++)
+        {
+            var g = Guid.NewGuid();
+
+            Assert.True(MemoryId.TryParseLoose(g.ToString("D"), out var d));
+            Assert.Equal(g, d.Value);
+
+            Assert.True(MemoryId.TryParseLoose(g.ToString("N"), out var n));
+            Assert.Equal(g, n.Value);
+        }
+    }
+
+    [Fact]
     public void MemoryId_ExplicitCast_ToGuid_Works()
     {
         var guid = Guid.NewGuid();
