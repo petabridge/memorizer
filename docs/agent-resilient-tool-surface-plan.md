@@ -159,17 +159,35 @@ Streamable HTTP). Assert graceful, correctable results — not exceptions:
 
 ### Piece 4 — Embedding-failure handling in the store path (Class B)
 
-Separate track; the boundary does not cover this. Catch
-`EmbeddingGenerationException` in the store path and return an actionable,
-retryable result instead of an opaque failure. Decide the real policy:
+**Decision (implemented): reply to the caller with an honest error in both
+cases** (text-too-long and backend-down). No truncation, no background queue, no
+changed write semantics — consistent with #215's "never persist a memory that is
+invisible to search."
 
-- chunk/truncate over-long text before embedding, and/or
-- queue a re-embed and store flagged-degraded, and/or
-- surface a clear "embedding backend unavailable, memory not stored" that the
-  agent can retry.
+- `EmbeddingApiClient` now reads the backend's error body on a non-success
+  response (instead of discarding it via `EnsureSuccessStatusCode`), so the real
+  reason (e.g. Ollama's "the input length exceeds the context length") survives.
+- `EmbeddingGenerationException` carries `Model` and `InputLength`.
+- The CallTool boundary detects an `EmbeddingGenerationException` (walking the
+  exception chain) and returns `ToolErrorMessages.EmbeddingUnavailable`: states
+  plainly that nothing was saved and why, reports the input length, classifies
+  too-long vs. backend-unavailable from the backend's text, and passes the
+  backend's own reason through. It no longer gives the misleading "check the
+  arguments" advice for this case.
 
-Also audit: memories written **before** 2.3.0 may carry random-fallback
-embeddings and be unfindable by semantic search — candidate for a re-embed pass.
+On "how far over the limit": we cannot tokenize in-process, so we surface the
+input's character count (always available) and the backend's own error text
+(which reports the limit when it chooses to). A tokenizer-based estimate was
+considered and rejected as not consistently reliable across backends.
+
+**Deferred follow-up — one-time re-embed audit.** Memories written *before* 2.3.0
+may carry random-fallback embeddings (from the fallback #215 removed) and be
+unfindable by semantic search. The fallback was silent, so we cannot tell which
+rows are affected from a flag; detection options are (a) re-embed each row and
+compare to the stored vector (low cosine ⇒ was garbage), which costs the same as
+just re-embedding, or (b) bulk re-embed everything predating the 2.3.0 deploy via
+the existing regeneration path. Decision deferred until this write-failure
+surface has shipped.
 
 ## Sequencing
 
