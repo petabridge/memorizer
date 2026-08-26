@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Memorizer.Services;
 using Memorizer.Tools;
 
 namespace Memorizer.Extensions;
@@ -47,13 +48,22 @@ public static class McpToolValidationExtensions
                 }
                 catch (Exception ex)
                 {
-                    // Backstop: something threw past validation (an argument shape we did
-                    // not anticipate, or a failure inside the tool body). Own the message
-                    // rather than let the SDK emit its opaque one.
-                    context.Services?.GetService<ILoggerFactory>()
-                        ?.CreateLogger("Memorizer.Tools.Validation")
-                        .LogError(ex, "Tool {Tool} threw after argument validation", toolName);
+                    var logger = context.Services?.GetService<ILoggerFactory>()
+                        ?.CreateLogger("Memorizer.Tools.Validation");
 
+                    // A write that could not generate its search embedding is an expected,
+                    // honest failure (see #215): tell the caller plainly it was not saved
+                    // and why, instead of the generic "check the arguments" message.
+                    if (FindEmbeddingFailure(ex) is { } embeddingFailure)
+                    {
+                        logger?.LogWarning(ex, "Tool {Tool} could not generate an embedding", toolName);
+                        return ErrorResult(ToolErrorMessages.EmbeddingUnavailable(toolName, embeddingFailure));
+                    }
+
+                    // Backstop: something else threw past validation (an argument shape we
+                    // did not anticipate, or another failure in the tool body). Own the
+                    // message rather than let the SDK emit its opaque one.
+                    logger?.LogError(ex, "Tool {Tool} threw after argument validation", toolName);
                     return ErrorResult(
                         $"{toolName}: the call could not be completed ({ex.Message}). "
                         + "Check the arguments against the tool's schema and retry.");
@@ -62,6 +72,15 @@ public static class McpToolValidationExtensions
         });
 
         return builder;
+    }
+
+    // Walk the exception chain — the SDK invocation layer may wrap the tool's exception.
+    private static EmbeddingGenerationException? FindEmbeddingFailure(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+            if (e is EmbeddingGenerationException embedding)
+                return embedding;
+        return null;
     }
 
     private static CallToolResult ErrorResult(string message) => new()

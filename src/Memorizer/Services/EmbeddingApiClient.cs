@@ -56,7 +56,7 @@ public sealed class EmbeddingApiClient : IEmbeddingApiClient
 
         _logger.LogDebug("Sending Ollama embedding request to {ApiUrl}", Settings.ApiUrl);
         var response = await _httpClient.PostAsJsonAsync("api/embeddings", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, cancellationToken);
 
         var result = await response.Content.ReadFromJsonAsync<EmbeddingResponse>(cancellationToken: cancellationToken);
         if (result?.Embedding is null || result.Embedding.Length == 0)
@@ -83,7 +83,7 @@ public sealed class EmbeddingApiClient : IEmbeddingApiClient
 
         _logger.LogDebug("Sending OpenAI-compatible embedding request to {ApiUrl}", Settings.ApiUrl);
         var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, cancellationToken);
 
         var result = await response.Content.ReadFromJsonAsync<OpenAIEmbeddingResponse>(cancellationToken: cancellationToken);
         var first = result?.Data.FirstOrDefault();
@@ -93,5 +93,37 @@ public sealed class EmbeddingApiClient : IEmbeddingApiClient
         }
 
         return first.Embedding;
+    }
+
+    /// <summary>
+    /// Like <see cref="HttpResponseMessage.EnsureSuccessStatusCode"/>, but reads the
+    /// response body on failure and includes it in the thrown exception. Embedding
+    /// backends put the real reason there (e.g. Ollama's "the input length exceeds the
+    /// context length"); the default helper discards it, leaving only a bare status code.
+    /// Preserving it lets tools give the caller an honest, actionable failure.
+    /// </summary>
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        string body;
+        try
+        {
+            body = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+        }
+        catch
+        {
+            body = string.Empty;
+        }
+
+        if (body.Length > 500)
+            body = body[..500] + "…";
+
+        var detail = string.IsNullOrEmpty(body) ? string.Empty : $": {body}";
+        throw new HttpRequestException(
+            $"Embedding request failed with status {(int)response.StatusCode} ({response.StatusCode}){detail}",
+            inner: null,
+            statusCode: response.StatusCode);
     }
 }

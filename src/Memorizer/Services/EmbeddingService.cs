@@ -25,9 +25,17 @@ public interface IEmbeddingService
 /// </summary>
 public sealed class EmbeddingGenerationException : Exception
 {
-    public EmbeddingGenerationException(string message, Exception innerException)
+    /// <summary>The embedding model that failed.</summary>
+    public string Model { get; }
+
+    /// <summary>Length, in characters, of the input we tried to embed.</summary>
+    public int InputLength { get; }
+
+    public EmbeddingGenerationException(string message, Exception innerException, string model, int inputLength)
         : base(message, innerException)
     {
+        Model = model;
+        InputLength = inputLength;
     }
 }
 
@@ -91,7 +99,7 @@ public class EmbeddingService : IEmbeddingService
             throw new EmbeddingGenerationException(
                 $"Failed to generate embedding using model '{Settings.Model}' for input of length {text.Length}. " +
                 "Refusing to persist a fallback embedding, which would corrupt semantic search for this record.",
-                ex);
+                ex, Settings.Model, text.Length);
         }
     }
 

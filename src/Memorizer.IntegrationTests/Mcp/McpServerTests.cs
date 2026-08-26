@@ -274,4 +274,32 @@ public sealed class McpServerTests : IAsyncLifetime
         // not merely the absence of the opaque one.
         Assert.Contains("required", text, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Store_with_text_too_long_to_embed_fails_honestly_never_opaque_or_misleading()
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        await using var mcp = await ConnectAsync(cts.Token);
+
+        // A body far beyond the embedding model's context window. Depending on the backend
+        // it may reject the embedding (fail) or truncate (succeed); either way the caller
+        // must never see the opaque SDK error or the misleading "check the arguments"
+        // advice, and if it fails it must be the honest "not saved" embedding message.
+        var longText = string.Concat(Enumerable.Repeat("context and detail. ", 600)); // ~12 KB
+        var result = await mcp.Client.CallToolAsync(
+            "store",
+            new Dictionary<string, object?>
+            {
+                ["text"] = longText,
+                ["title"] = "Very long memory",
+            },
+            cancellationToken: cts.Token);
+
+        var text = ResultText(result);
+        _output.WriteLine(text.Length > 300 ? text[..300] : text);
+        Assert.DoesNotContain(OpaqueSdkError, text);
+        Assert.DoesNotContain("Check the arguments", text);
+        if (result.IsError == true)
+            Assert.Contains("not saved", text, StringComparison.OrdinalIgnoreCase);
+    }
 }
