@@ -140,7 +140,8 @@ public class SearchEvalController : ControllerBase
             var searchMethods = new (string Name, Func<string, int, SimilarityScore, CancellationToken, Task<List<Memory>>> Execute)[]
             {
                 ("Search", (q, limit, sim, ct) => _storage.Search(q, limit, sim, cancellationToken: ct)),
-                ("SearchWithFullEmbedding", (q, limit, sim, ct) => _storage.SearchWithFullEmbedding(q, limit, sim, cancellationToken: ct)),
+                // SearchWithFullEmbedding delegates to Search (see Memory.cs) and is intentionally
+                // omitted here so the eval doesn't compare a method to itself.
                 ("SearchWithMetadataEmbedding", (q, limit, sim, ct) => _storage.SearchWithMetadataEmbedding(q, limit, sim, cancellationToken: ct)),
                 ("HybridSearch", (q, limit, sim, ct) => _storage.HybridSearch(q, limit, sim, cancellationToken: ct)),
             };
