@@ -7,6 +7,6 @@
       "**/Services/SearchQualityMetrics.cs"
     ],
     "reporters": ["html", "progress", "json"],
-    "thresholds": { "high": 80, "low": 60, "break": 0 }
+    "thresholds": { "high": 100, "low": 90, "break": 90 }
   }
 }

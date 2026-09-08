@@ -39,12 +39,13 @@ jobs:
       # Scoped mutation run over the pure-computation code (see
       # src/Memorizer.UnitTests/stryker-config.json). Runs from the unit-test project
       # directory so Stryker mutates against the fast unit suite only, not the
-      # Docker-backed integration tests. --break-at fails the job on regressions.
+      # Docker-backed integration tests. The break threshold lives in
+      # stryker-config.json (thresholds.break) and fails the job on regressions.
       - name: "dotnet stryker"
         shell: bash
         run: |
           cd src/Memorizer.UnitTests
-          dotnet stryker --reporter html --reporter markdown --reporter cleartext --break-at 90
+          dotnet stryker --reporter html --reporter markdown --reporter cleartext
 
       - name: "Publish mutation report to job summary"
         if: always()
