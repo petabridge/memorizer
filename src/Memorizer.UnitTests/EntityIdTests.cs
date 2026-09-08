@@ -75,6 +75,8 @@ public class EntityIdTests
     [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5/")]        // trailing slash
     [InlineData("https://memory.testlab.petabridge.net/view/dec906c7-e5d1-4abe-baf8-27af5a842ae5#details")] // URL fragment
     [InlineData("{dec906c7-e5d1-4abe-baf8-27af5a842ae5}")]           // braced form (GUID 'B')
+    [InlineData("/dec906c7e5d14abebaf827af5a842ae5")]                // leading slash only (lastSlash == 0 boundary)
+    [InlineData("mem-dec906c7e5d14abebaf827af5a842ae5")]             // mem- prefix (third known prefix)
     public void MemoryId_TryParseLoose_AcceptsAgentShapes(string input)
     {
         var ok = MemoryId.TryParseLoose(input, out var id);
@@ -290,6 +292,111 @@ public class EntityIdTests
         var id2 = ProjectId.New();
 
         Assert.NotEqual(id1, id2);
+    }
+
+    #endregion
+
+    #region TryParse coverage for all id types
+
+    // Every id type exposes the same TryParse contract. These exercise both the
+    // Guid.TryParse-success branch (return true) and the failure branch (return false,
+    // out = Empty) so the negation and both return paths are asserted, not just executed.
+
+    [Fact]
+    public void RelationshipId_TryParse_ValidAndInvalid()
+    {
+        var guid = Guid.NewGuid();
+        Assert.True(RelationshipId.TryParse(guid.ToString(), out var ok));
+        Assert.Equal(guid, ok.Value);
+
+        Assert.False(RelationshipId.TryParse("not-a-guid", out var bad));
+        Assert.Equal(RelationshipId.Empty, bad);
+
+        Assert.False(RelationshipId.TryParse(null, out var nul));
+        Assert.Equal(RelationshipId.Empty, nul);
+    }
+
+    [Fact]
+    public void VersionId_TryParse_ValidAndInvalid()
+    {
+        var guid = Guid.NewGuid();
+        Assert.True(VersionId.TryParse(guid.ToString(), out var ok));
+        Assert.Equal(guid, ok.Value);
+
+        Assert.False(VersionId.TryParse("not-a-guid", out var bad));
+        Assert.Equal(VersionId.Empty, bad);
+
+        Assert.False(VersionId.TryParse("", out var empty));
+        Assert.Equal(VersionId.Empty, empty);
+    }
+
+    [Fact]
+    public void EventId_TryParse_ValidAndInvalid()
+    {
+        var guid = Guid.NewGuid();
+        Assert.True(EventId.TryParse(guid.ToString(), out var ok));
+        Assert.Equal(guid, ok.Value);
+
+        Assert.False(EventId.TryParse("not-a-guid", out var bad));
+        Assert.Equal(EventId.Empty, bad);
+
+        Assert.False(EventId.TryParse(null, out var nul));
+        Assert.Equal(EventId.Empty, nul);
+    }
+
+    [Fact]
+    public void ProviderSettingsId_TryParse_ValidAndInvalid()
+    {
+        var guid = Guid.NewGuid();
+        Assert.True(ProviderSettingsId.TryParse(guid.ToString(), out var ok));
+        Assert.Equal(guid, ok.Value);
+
+        Assert.False(ProviderSettingsId.TryParse("not-a-guid", out var bad));
+        Assert.Equal(ProviderSettingsId.Empty, bad);
+
+        Assert.False(ProviderSettingsId.TryParse(null, out var nul));
+        Assert.Equal(ProviderSettingsId.Empty, nul);
+    }
+
+    [Fact]
+    public void WorkspaceId_TryParse_ValidAndInvalid()
+    {
+        var guid = Guid.NewGuid();
+        Assert.True(WorkspaceId.TryParse(guid.ToString(), out var ok));
+        Assert.Equal(guid, ok.Value);
+
+        Assert.False(WorkspaceId.TryParse("not-a-guid", out var bad));
+        Assert.Equal(WorkspaceId.Empty, bad);
+
+        Assert.False(WorkspaceId.TryParse(null, out var nul));
+        Assert.Equal(WorkspaceId.Empty, nul);
+    }
+
+    [Fact]
+    public void ProjectId_TryParse_ValidAndInvalid()
+    {
+        var guid = Guid.NewGuid();
+        Assert.True(ProjectId.TryParse(guid.ToString(), out var ok));
+        Assert.Equal(guid, ok.Value);
+
+        Assert.False(ProjectId.TryParse("not-a-guid", out var bad));
+        Assert.Equal(ProjectId.Empty, bad);
+
+        Assert.False(ProjectId.TryParse(null, out var nul));
+        Assert.Equal(ProjectId.Empty, nul);
+    }
+
+    // Round-trip Parse for the non-Memory id types (Parse delegates to Guid.Parse).
+    [Fact]
+    public void OtherIdTypes_Parse_RoundTrips()
+    {
+        var g = Guid.NewGuid();
+        Assert.Equal(g, RelationshipId.Parse(g.ToString()).Value);
+        Assert.Equal(g, VersionId.Parse(g.ToString()).Value);
+        Assert.Equal(g, EventId.Parse(g.ToString()).Value);
+        Assert.Equal(g, ProviderSettingsId.Parse(g.ToString()).Value);
+        Assert.Equal(g, WorkspaceId.Parse(g.ToString()).Value);
+        Assert.Equal(g, ProjectId.Parse(g.ToString()).Value);
     }
 
     #endregion
