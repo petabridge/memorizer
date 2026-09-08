@@ -463,7 +463,7 @@ flowchart TB
     subgraph Core[""Core Services""]
         Storage[IStorage]
         Embedding[EmbeddingService]
-        LLM[LlmService]
+        LLM[OllamaMemorizerAgentProvider]
     end
 
     subgraph Actors[""Akka.NET Actors""]
