@@ -1,0 +1,66 @@
+name: mutation
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+      - main
+  pull_request:
+    branches:
+      - master
+      - dev
+      - main
+
+jobs:
+  stryker:
+    name: Mutation-${{matrix.os}}
+    runs-on: ${{matrix.os}}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v6
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: "Install .NET SDK"
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: "./global.json"
+
+      - name: "Restore .NET tools"
+        run: dotnet tool restore
+
+      # Scoped mutation run over the pure-computation code (see
+      # src/Memorizer.UnitTests/stryker-config.json). Runs from the unit-test project
+      # directory so Stryker mutates against the fast unit suite only, not the
+      # Docker-backed integration tests. --break-at fails the job on regressions.
+      - name: "dotnet stryker"
+        shell: bash
+        run: |
+          cd src/Memorizer.UnitTests
+          dotnet stryker --reporter html --reporter markdown --reporter cleartext --break-at 90
+
+      - name: "Publish mutation report to job summary"
+        if: always()
+        shell: bash
+        run: |
+          report=$(find src/Memorizer.UnitTests/StrykerOutput -name 'mutation-report.md' | head -n 1)
+          if [ -n "$report" ]; then
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No markdown mutation report found." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: "Upload HTML mutation report"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: src/Memorizer.UnitTests/StrykerOutput/**/reports/mutation-report.html
+          if-no-files-found: warn

@@ -45,6 +45,35 @@ public class ValueTypeTests
         Assert.Equal(default, ui);
     }
 
+    [Theory]
+    [InlineData(0.0)] // lower bound is inclusive: guards `value >= 0.0` against `> 0.0`
+    [InlineData(1.0)] // upper bound is inclusive: guards `value <= 1.0` against `< 1.0`
+    public void UnitInterval_TryCreate_BoundariesAreInclusive(double value)
+    {
+        var result = UnitInterval.TryCreate(value, out var ui);
+
+        Assert.True(result);
+        Assert.Equal(value, ui.Value);
+    }
+
+    [Theory]
+    [InlineData(-0.0001)] // just below the lower bound
+    [InlineData(1.0001)]  // just above the upper bound
+    public void UnitInterval_TryCreate_JustOutsideBounds_ReturnsFalse(double value)
+    {
+        var result = UnitInterval.TryCreate(value, out var ui);
+
+        Assert.False(result);
+        Assert.Equal(default, ui);
+    }
+
+    [Fact]
+    public void UnitInterval_Constructor_BoundariesAreInclusive()
+    {
+        Assert.Equal(0.0, new UnitInterval(0.0).Value);
+        Assert.Equal(1.0, new UnitInterval(1.0).Value);
+    }
+
     [Fact]
     public void UnitInterval_Clamp_ClampsToRange()
     {
@@ -120,6 +149,25 @@ public class ValueTypeTests
     }
 
     [Fact]
+    public void Confidence_TryCreate_ValidValue_ReturnsTrue()
+    {
+        var result = Confidence.TryCreate(0.5, out var conf);
+
+        Assert.True(result);
+        Assert.Equal(0.5, conf.Value);
+    }
+
+    [Fact]
+    public void Confidence_TryCreate_InvalidValue_ReturnsFalse()
+    {
+        // Exercises the false-return branch (out = default) when the value is out of range.
+        var result = Confidence.TryCreate(1.5, out var conf);
+
+        Assert.False(result);
+        Assert.Equal(default, conf);
+    }
+
+    [Fact]
     public void Confidence_ImplicitConversionToDouble_Works()
     {
         var conf = new Confidence(0.8);
@@ -163,6 +211,25 @@ public class ValueTypeTests
         Assert.Equal(1.0, SimilarityScore.Identical.Value);
         Assert.Equal(0.0, SimilarityScore.None.Value);
         Assert.Equal(0.7, SimilarityScore.DefaultThreshold.Value);
+    }
+
+    [Fact]
+    public void SimilarityScore_TryCreate_ValidValue_ReturnsTrue()
+    {
+        var result = SimilarityScore.TryCreate(0.5, out var score);
+
+        Assert.True(result);
+        Assert.Equal(0.5, score.Value);
+    }
+
+    [Fact]
+    public void SimilarityScore_TryCreate_InvalidValue_ReturnsFalse()
+    {
+        // Exercises the false-return branch (out = default) when the value is out of range.
+        var result = SimilarityScore.TryCreate(-0.1, out var score);
+
+        Assert.False(result);
+        Assert.Equal(default, score);
     }
 
     [Fact]
@@ -262,6 +329,26 @@ public class ValueTypeTests
     }
 
     [Fact]
+    public void VersionNumber_TryCreate_MinimumOne_IsInclusive()
+    {
+        // 1 is the smallest valid version: guards `value >= 1` against `value > 1`.
+        var result = VersionNumber.TryCreate(1, out var version);
+
+        Assert.True(result);
+        Assert.Equal(1, version.Value);
+    }
+
+    [Fact]
+    public void VersionNumber_TryParse_MinimumOne_IsInclusive()
+    {
+        // Same lower-bound guard on the TryParse path.
+        var result = VersionNumber.TryParse("1", out var version);
+
+        Assert.True(result);
+        Assert.Equal(1, version.Value);
+    }
+
+    [Fact]
     public void VersionNumber_TryParse_ValidString_ReturnsTrue()
     {
         var result = VersionNumber.TryParse("5", out var version);
@@ -320,6 +407,35 @@ public class ValueTypeTests
         Assert.True(v2 >= v1);
         Assert.True(v2 <= v2Again);
         Assert.True(v2 >= v2Again);
+    }
+
+    [Fact]
+    public void VersionNumber_StrictOperators_AreFalseWhenEqual()
+    {
+        // On equal values `<` and `>` must be false. This distinguishes `<` from `<=`
+        // and `>` from `>=` (the strict operators must NOT hold at equality).
+        var v2 = new VersionNumber(2);
+        var v2Again = new VersionNumber(2);
+
+        Assert.False(v2 < v2Again);
+        Assert.False(v2 > v2Again);
+    }
+
+    [Fact]
+    public void VersionNumber_Operators_AtAdjacentValues()
+    {
+        // Adjacent values pin the direction of every comparison operator.
+        var v2 = new VersionNumber(2);
+        var v3 = new VersionNumber(3);
+
+        Assert.True(v2 < v3);
+        Assert.False(v3 < v2);
+        Assert.True(v3 > v2);
+        Assert.False(v2 > v3);
+        Assert.True(v2 <= v3);
+        Assert.False(v3 <= v2);
+        Assert.True(v3 >= v2);
+        Assert.False(v2 >= v3);
     }
 
     [Fact]
