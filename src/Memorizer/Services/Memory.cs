@@ -1267,7 +1267,7 @@ public class Storage : IStorage
     }
 
     // Dual embedding comparison methods for PoC
-    public async Task<List<Memorizer.Models.Memory>> SearchWithFullEmbedding(
+    public Task<List<Memorizer.Models.Memory>> SearchWithFullEmbedding(
         string query,
         int limit = 10,
         SimilarityScore? minSimilarity = null,
@@ -1276,92 +1276,10 @@ public class Storage : IStorage
         CancellationToken cancellationToken = default
     )
     {
-        var effectiveMinSimilarity = minSimilarity ?? SimilarityScore.DefaultThreshold;
-
-        // Generate embedding for the query
-        float[] queryEmbedding = await _embeddingService.Generate(
-            query,
-            cancellationToken
-        );
-
-        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(cancellationToken);
-
-        // Always fetch up to 2x the requested limit for post-filtering/boosting
-        int fetchLimit = limit * 2;
-
-        // Build archetype filter - exclude System always, exclude Archived by default
-        // ArchetypeEnum values: Document=0, Record=1, Archived=2, System=3, System=3
-        // System memories are internal index entries and should never appear in user searches
-        string archetypeFilter = includeArchived
-            ? "AND archetype != 3"  // Exclude only System
-            : "AND archetype IN (0, 1)";  // Only Document and Record
-
-        // minSimilarity 0.0 == no threshold: omit the distance predicate (see BuildDistanceFilter).
-        string distanceFilter = BuildDistanceFilter(effectiveMinSimilarity, "embedding <=> @embedding");
-
-        string sql =
-            $@"
-            SELECT id, type_legacy, content, text, source, embedding, embedding_metadata, tags, confidence, created_at, updated_at, title, current_version, owner_type, owner_id, archetype, embedding <=> @embedding AS similarity
-            FROM memories
-            WHERE embedding IS NOT NULL
-            {distanceFilter}
-            {archetypeFilter}
-            ORDER BY embedding <=> @embedding LIMIT @limit";
-
-        await using NpgsqlCommand cmd = new(sql, connection);
-        cmd.Parameters.AddWithValue("embedding", new Vector(queryEmbedding));
-        cmd.Parameters.AddWithValue("maxDistance", effectiveMinSimilarity.ToDistance());
-        cmd.Parameters.AddWithValue("limit", fetchLimit);
-
-        List<Memorizer.Models.Memory> memories = [];
-        List<MemoryId> memoryIds = new();
-        // Read the matched memories first, then dispose the reader before the relationship query
-        // runs on the SAME connection (Npgsql has no MARS), keeping this call to a single pooled
-        // connection and preventing hold-and-wait pool deadlock under concurrency.
-        await using (NpgsqlDataReader reader = await cmd.ExecuteReaderAsync(cancellationToken))
-        {
-            while (await reader.ReadAsync(cancellationToken))
-            {
-                var memory = ReadMemoryFromReader(reader, withSimilarity: true);
-                memories.Add(memory);
-                memoryIds.Add(memory.Id);
-            }
-        }
-
-        // Batch fetch relationships for all found memories on the same connection
-        if (memoryIds.Count > 0)
-        {
-            var relationships = await GetRelationshipsForMany(connection, memoryIds, cancellationToken);
-            var relLookup = relationships.GroupBy(r => r.FromMemoryId).ToDictionary(g => g.Key, g => g.ToList());
-            foreach (var memory in memories)
-            {
-                if (relLookup.TryGetValue(memory.Id, out var rels))
-                    memory.Relationships = rels;
-                else
-                    memory.Relationships = new List<MemoryRelationship>();
-            }
-        }
-
-        // Tag normalization helper
-        static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant();
-        var normalizedFilterTags = filterTags?.Select(NormalizeTag).ToHashSet() ?? new HashSet<string>();
-        const double tagBoost = 0.05; // 5% boost for tag match
-
-        // Apply soft tag boost and sort
-        var scored = memories.Select(m => {
-            double score = m.Similarity.HasValue ? (double)m.Similarity.Value : 0.0;
-            bool tagMatch = false;
-            if (normalizedFilterTags.Count > 0 && m.Tags != null)
-            {
-                tagMatch = m.Tags.Select(NormalizeTag).Any(t => normalizedFilterTags.Contains(t));
-                if (tagMatch) score += tagBoost; // Higher similarity = better match
-            }
-            return (Memory: m, Score: score, TagMatch: tagMatch);
-        });
-
-        // Sort by boosted score (higher is better), then by original similarity
-        var sorted = scored.OrderByDescending(x => x.Score).ThenByDescending(x => x.Memory.Similarity.HasValue ? (double)x.Memory.Similarity.Value : 0.0).Take(limit).Select(x => x.Memory).ToList();
-        return sorted;
+        // The dual-embedding PoC never diverged from Search: both query the content
+        // `embedding` column with identical SQL, fetch limit, and tag boost. Delegate
+        // instead of maintaining a second, byte-for-byte copy of the same logic.
+        return Search(query, limit, minSimilarity, filterTags, includeArchived, cancellationToken);
     }
 
     public async Task<List<Memorizer.Models.Memory>> SearchWithMetadataEmbedding(
