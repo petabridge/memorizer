@@ -1,0 +1,12 @@
+{
+  "stryker-config": {
+    "project": "Memorizer.csproj",
+    "mutate": [
+      "**/Models/ValueTypes/*.cs",
+      "**/Models/EntityIds.cs",
+      "**/Services/SearchQualityMetrics.cs"
+    ],
+    "reporters": ["html", "progress", "json"],
+    "thresholds": { "high": 80, "low": 60, "break": 0 }
+  }
+}
