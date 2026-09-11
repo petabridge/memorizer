@@ -92,8 +92,8 @@
 }
 
 .card-header {
-    background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%);
-    color: var(--text-on-brand);
+    background-color: var(--surface-card-alt);
+    color: var(--text-primary);
     border-radius: 0.75rem 0.75rem 0 0 !important;
 }
 
@@ -592,4 +592,43 @@ footer a:hover {
     background-color: #1a3a5c;
     color: #93c5fd;
     border-color: #2d5a8e;
+}
+
+/* =================================================================
+   TAG CLOUD
+   Uses theme variables so light and dark modes are both covered.
+   ================================================================= */
+.tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.9rem;
+    line-height: 1.6;
+}
+
+.tag-cloud-item {
+    color: var(--md-link);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.tag-cloud-item:hover,
+.tag-cloud-item:focus {
+    color: var(--brand-primary-hover);
+    text-decoration: underline;
+}
+
+.tag-cloud-toggle {
+    display: inline-block;
+    margin-left: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.tag-cloud-toggle:hover,
+.tag-cloud-toggle:focus {
+    color: var(--md-link);
+    text-decoration: underline;
 }
