@@ -143,6 +143,38 @@ public static class Routes
             }
         });
 
+        // SSE endpoint for markdown export progress
+        app.MapGet("/tools/markdown-export-progress",
+            async (IActorRegistry actorRegistry, CancellationToken ct) =>
+        {
+            var markdownExportActor = await actorRegistry.GetAsync<MarkdownExportActorKey>(ct);
+            var subscriberId = Guid.NewGuid().ToString();
+
+            var subscription = await markdownExportActor.Ask<ProgressSubscription>(
+                new SubscribeToProgress(subscriberId),
+                ct);
+
+            return TypedResults.ServerSentEvents(StreamProgress());
+
+            async IAsyncEnumerable<SseItem<ProgressEvent>> StreamProgress()
+            {
+                try
+                {
+                    await foreach (var progress in subscription.Reader.ReadAllAsync(ct))
+                    {
+                        yield return new SseItem<ProgressEvent>(progress, "progress")
+                        {
+                            EventId = Guid.NewGuid().ToString()
+                        };
+                    }
+                }
+                finally
+                {
+                    markdownExportActor.Tell(new UnsubscribeFromProgress(subscriberId), ActorRefs.NoSender);
+                }
+            }
+        });
+
         return app;
     }
 }
