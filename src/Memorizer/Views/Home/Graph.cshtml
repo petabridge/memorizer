@@ -1,0 +1,303 @@
+@{
+    ViewData["Title"] = "Knowledge Graph";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 mb-1">
+            <i class="fas fa-project-diagram me-2 text-primary"></i>
+            Knowledge Graph
+        </h1>
+        <p class="text-muted mb-0">Visualize memories and their relationships. Node size reflects the number of incoming relationships.</p>
+    </div>
+    <a href="/memories" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back to Memories
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div id="graphLoading" class="d-flex justify-content-center align-items-center py-5">
+            <div class="spinner-border text-primary me-2" role="status">
+                <span class="visually-hidden">Loading graph...</span>
+            </div>
+            <span class="text-muted" id="graphLoadingMessage">Loading graph...</span>
+        </div>
+        <div id="graphContainerWrapper" class="graph-container-wrap" style="display: none;">
+            <div id="graphContainer" class="graph-container"></div>
+            <div class="graph-zoom-controls">
+                <button type="button" class="btn btn-light btn-sm graph-zoom-btn" onclick="zoomGraph(1.2)" title="Zoom in" aria-label="Zoom in">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button type="button" class="btn btn-light btn-sm graph-zoom-btn" onclick="zoomGraph(1 / 1.2)" title="Zoom out" aria-label="Zoom out">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <button type="button" class="btn btn-light btn-sm graph-zoom-btn" onclick="fitGraph()" title="Fit graph to view" aria-label="Fit graph">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                </button>
+            </div>
+        </div>
+        <div id="graphEmpty" class="text-center py-5" style="display: none;">
+            <i class="fas fa-project-diagram fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">No relationships yet</h5>
+            <p class="text-muted">Create relationships between memories to visualize them here.</p>
+            <a href="/memories" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Browse Memories</a>
+        </div>
+        <div id="graphError" class="text-center py-5" style="display: none;">
+            <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+            <h5 class="text-muted">Failed to load the knowledge graph</h5>
+            <p class="text-muted">Please try again.</p>
+        </div>
+    </div>
+</div>
+
+<div class="mt-3">
+    <small class="text-muted">
+        <i class="fas fa-info-circle me-1"></i>
+        Click a node to open the memory. Edges are colored by relationship type:
+        <span class="graph-legend" id="graphLegend"></span>
+        <span id="scopeHint" style="display: none;"></span>
+    </small>
+</div>
+
+@section Scripts {
+<script>
+    // Hard fail-safe: never let the loading spinner spin indefinitely.
+    window.setTimeout(function() {
+        const loading = document.getElementById('graphLoading');
+        // The spinner stays visible while the d-flex class is present (it sets
+        // display:flex !important), so hide it by removing that class.
+        if (loading && loading.classList.contains('d-flex')) {
+            loading.classList.remove('d-flex');
+            loading.style.display = 'none';
+            const error = document.getElementById('graphError');
+            if (error) error.style.display = 'block';
+        }
+    }, 60000);
+</script>
+<script src="~/js/vis-network.min.js"></script>
+<script>
+let network = null;
+
+const queryParams = new URLSearchParams(window.location.search);
+const scopeWorkspaceId = queryParams.get('workspaceId');
+const scopeProjectId = queryParams.get('projectId');
+
+const typePalette = [
+    { background: '#667eea', border: '#4c63d4', highlight: '#764ba2' },
+    { background: '#10b981', border: '#059669', highlight: '#047857' },
+    { background: '#f59e0b', border: '#d97706', highlight: '#b45309' },
+    { background: '#ef4444', border: '#dc2626', highlight: '#991b1b' },
+    { background: '#06b6d4', border: '#0891b2', highlight: '#0e7490' },
+    { background: '#8b5cf6', border: '#7c3aed', highlight: '#6d28d9' },
+    { background: '#ec4899', border: '#db2777', highlight: '#be185d' },
+    { background: '#84cc16', border: '#65a30d', highlight: '#4d7c0f' }
+];
+
+const relationshipColors = {
+    'explains': '#0dcaf0', 'explanation-of': '#0dcaf0',
+    'example-of': '#198754', 'example': '#198754',
+    'related-to': '#0d6efd', 'related': '#0d6efd',
+    'supersedes': '#ffc107', 'replaces': '#ffc107',
+    'depends-on': '#dc3545', 'requires': '#dc3545',
+    'chunk-of': '#6c757d', 'part-of': '#6c757d'
+};
+
+function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
+function typeColor(type) {
+    const s = String(type || '');
+    let hash = 0;
+    for (let i = 0; i < s.length; i++) hash = ((hash << 5) - hash + s.charCodeAt(i)) | 0;
+    return typePalette[Math.abs(hash) % typePalette.length];
+}
+
+function edgeColor(type) {
+    return relationshipColors[(type || 'related').toLowerCase()] || '#6c757d';
+}
+
+function buildOptions() {
+    const dark = currentTheme() === 'dark';
+    return {
+        autoResize: true,
+        // improvedLayout can fail to position the graph; disable it to fall back to
+        // the classic (reliable) layout. The canvas background is the theme-aware
+        // .graph-container CSS background, not a vis option.
+        layout: { improvedLayout: false },
+        nodes: {
+            shape: 'dot',
+            borderWidth: 2,
+            font: { color: dark ? '#e2e8f0' : '#212529', size: 16 },
+            scaling: { min: 8, max: 40 },
+            shadow: { enabled: true, size: 8 }
+        },
+        edges: {
+            font: { size: 11, color: dark ? '#94a3b8' : '#6c757d', strokeWidth: 0, align: 'middle' },
+            arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+            smooth: { type: 'continuous' }
+        },
+        interaction: { hover: true, tooltipDelay: 100 },
+        physics: {
+            enabled: true,
+            barnesHut: { gravitationalConstant: -3000, springLength: 120, springConstant: 0.05 }
+        }
+    };
+}
+
+function computeIndegrees(edges) {
+    const indegree = {};
+    edges.forEach(e => {
+        indegree[e.to] = (indegree[e.to] || 0) + 1;
+    });
+    return indegree;
+}
+
+// Hide the loading spinner. The d-flex class sets display:flex !important, which
+// overrides inline styles, so the class must be removed for display:none to work.
+function hideSpinner() {
+    const el = document.getElementById('graphLoading');
+    if (!el) return;
+    el.classList.remove('d-flex');
+    el.style.display = 'none';
+}
+
+function renderGraph(data) {
+    // Reset all state surfaces before rendering.
+    const error = document.getElementById('graphError');
+    const empty = document.getElementById('graphEmpty');
+    if (error) error.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    hideSpinner();
+
+    if (!data.nodes || data.nodes.length === 0 || !data.edges || data.edges.length === 0) {
+        document.getElementById('graphContainerWrapper').style.display = 'none';
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+
+    document.getElementById('graphContainerWrapper').style.display = 'block';
+
+    const indegrees = computeIndegrees(data.edges);
+    const nodes = new vis.DataSet(data.nodes.map(n => {
+        const color = typeColor(n.type);
+        return {
+            id: n.id,
+            // No visible label - titles only show on hover to keep the graph uncluttered.
+            title: `${n.title || 'Untitled'} (${n.type || 'unknown'})`,
+            value: (indegrees[n.id] || 0) + 3,
+            color: {
+                background: color.background,
+                border: color.border,
+                highlight: { background: color.highlight, border: color.border },
+                hover: { background: color.background, border: color.border }
+            }
+        };
+    }));
+
+    const edges = new vis.DataSet(data.edges.map(e => ({
+        from: e.from,
+        to: e.to,
+        label: e.type,
+        color: { color: edgeColor(e.type), highlight: edgeColor(e.type), hover: edgeColor(e.type) }
+    })));
+
+    network = new vis.Network(document.getElementById('graphContainer'), { nodes, edges }, buildOptions());
+
+    network.on('click', function(params) {
+        if (params.nodes && params.nodes.length > 0) {
+            window.location.href = `/view/${params.nodes[0]}`;
+        }
+    });
+}
+
+// Programmatic zoom for users without a mouse wheel.
+function zoomGraph(factor) {
+    if (!network) return;
+    const scale = network.getScale();
+    network.moveTo({ scale: scale * factor });
+}
+
+// Reset the view to fit all nodes.
+function fitGraph() {
+    if (!network) return;
+    network.fit({ animation: { duration: 300, easingFunction: 'easeInOutQuad' } });
+}
+
+async function loadGraph() {
+    if (scopeWorkspaceId || scopeProjectId) {
+        const hint = document.getElementById('scopeHint');
+        hint.textContent = 'Graph is scoped to a workspace or project.';
+        hint.style.display = 'inline';
+    }
+
+    const params = new URLSearchParams();
+    if (scopeWorkspaceId) params.set('workspaceId', scopeWorkspaceId);
+    if (scopeProjectId) params.set('projectId', scopeProjectId);
+    const qs = params.toString();
+
+    // After a few seconds, let the user know the graph is still loading so the
+    // spinner doesn't look stuck on large libraries or a slow server.
+    const noteTimer = setTimeout(function() {
+        const msg = document.getElementById('graphLoadingMessage');
+        if (msg) msg.textContent = 'Still loading graph... this can take a moment on large libraries.';
+    }, 10000);
+
+    // Hard timeout on the request so the spinner can never spin forever.
+    const controller = new AbortController();
+    const fetchTimeout = setTimeout(function() { controller.abort(); }, 60000);
+
+    try {
+        const response = await fetch(`/api/graph${qs ? '?' + qs : ''}`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Failed to load graph');
+        const data = await response.json();
+        clearTimeout(noteTimer);
+        clearTimeout(fetchTimeout);
+        renderGraph(data);
+    } catch (error) {
+        clearTimeout(noteTimer);
+        clearTimeout(fetchTimeout);
+        console.error('Error loading graph:', error);
+        hideSpinner();
+        const errorEl = document.getElementById('graphError');
+        if (errorEl) errorEl.style.display = 'block';
+    }
+}
+
+// Build the legend of relationship-type colors
+function renderLegend() {
+    const legend = document.getElementById('graphLegend');
+    const seen = {};
+    Object.entries(relationshipColors).forEach(([key, color]) => {
+        if (seen[color]) return;
+        seen[color] = true;
+        const span = document.createElement('span');
+        span.className = 'graph-legend-item';
+        span.style.color = color;
+        span.textContent = key;
+        legend.appendChild(span);
+    });
+}
+
+// Re-style on theme switch without reloading the graph
+const themeObserver = new MutationObserver(function() {
+    if (network) {
+        network.setOptions(buildOptions());
+    }
+});
+themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// Initialize the graph once the library is available. If the CDN failed to load,
+// the onerror handler already surfaced the error, so bail out here.
+function initGraph() {
+    if (typeof vis === 'undefined') {
+        return;
+    }
+    renderLegend();
+    loadGraph();
+}
+
+document.addEventListener('DOMContentLoaded', initGraph);
+</script>
+}
