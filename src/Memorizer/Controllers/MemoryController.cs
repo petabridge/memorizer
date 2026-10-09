@@ -17,11 +17,13 @@ public class MemoryController : ControllerBase
 {
     private readonly IStorage _storage;
     private readonly SimilaritySettings _similaritySettings;
+    private readonly ITagCloudService _tagCloudService;
 
-    public MemoryController(IStorage storage, SimilaritySettings similaritySettings)
+    public MemoryController(IStorage storage, SimilaritySettings similaritySettings, ITagCloudService tagCloudService)
     {
         _storage = storage;
         _similaritySettings = similaritySettings;
+        _tagCloudService = tagCloudService;
     }
 
     /// <summary>
@@ -134,6 +136,36 @@ public class MemoryController : ControllerBase
 
         var tags = await _storage.GetDistinctTagsAsync(owner);
         return Ok(tags);
+    }
+
+    /// <summary>
+    /// Get tag counts for a tag cloud. Scope to a workspace subtree or a single project
+    /// with the optional query parameters, or omit both for global counts across all
+    /// non-archived memories. Workspace scope aggregates across the entire subtree.
+    /// </summary>
+    [HttpGet("tags/cloud")]
+    public async Task<ActionResult<List<TagCount>>> GetTagCloud(
+        [FromQuery] Guid? workspaceId = null,
+        [FromQuery] Guid? projectId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (projectId.HasValue && workspaceId.HasValue)
+            return BadRequest("projectId and workspaceId are mutually exclusive tag cloud scopes.");
+
+        if (projectId.HasValue)
+        {
+            var counts = await _tagCloudService.GetProjectTagCountsAsync(new ProjectId(projectId.Value), cancellationToken);
+            return Ok(counts);
+        }
+
+        if (workspaceId.HasValue)
+        {
+            var counts = await _tagCloudService.GetWorkspaceSubtreeTagCountsAsync(new WorkspaceId(workspaceId.Value), cancellationToken);
+            return Ok(counts);
+        }
+
+        var globalCounts = await _tagCloudService.GetGlobalTagCountsAsync(cancellationToken);
+        return Ok(globalCounts);
     }
 
     /// <summary>
@@ -530,18 +562,27 @@ public class MemoryController : ControllerBase
     }
 
     /// <summary>
-    /// Vector search for memories using metadata embeddings (optimized for keyword queries)
+    /// Search for memories. Defaults to hybrid search (vector + full-text search via RRF),
+    /// which performs significantly better for short keyword queries (see ADR
+    /// 2026-02-14-hybrid-search-rrf.md). Pass method=vector to use metadata-embedding
+    /// vector search only.
+    ///
+    /// For hybrid search, minSimilarity filters results by vector similarity: results at or
+    /// above the threshold are returned (full-text-only matches, which have no similarity
+    /// score, are excluded). Defaults to 0.25 to filter out noise; pass 0 to disable.
+    /// For vector search, minSimilarity is the similarity threshold (default 0.7).
     /// </summary>
     [HttpGet("search")]
     public async Task<ActionResult<List<MemoryListItem>>> SearchMemories(
         [FromQuery] string query,
-        [FromQuery] double minSimilarity = 0.7,
+        [FromQuery] double? minSimilarity = null,
         [FromQuery] int limit = 10,
         [FromQuery] string[]? filterTags = null,
         [FromQuery] Guid? projectId = null,
         [FromQuery] bool includeUnassigned = false,
         [FromQuery] bool includeArchived = false,
-        [FromQuery] Guid? workspaceId = null)
+        [FromQuery] Guid? workspaceId = null,
+        [FromQuery] string? method = "hybrid")
     {
         if (string.IsNullOrWhiteSpace(query))
             return BadRequest("Query is required.");
@@ -552,18 +593,48 @@ public class MemoryController : ControllerBase
         ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
         WorkspaceId? typedWorkspaceId = workspaceId.HasValue ? new WorkspaceId(workspaceId.Value) : null;
 
-        // Use metadata embeddings by default for better keyword query performance
-        var results = await _storage.SearchWithMetadataEmbedding(
+        bool useHybrid = string.IsNullOrWhiteSpace(method) || method.Equals("hybrid", StringComparison.OrdinalIgnoreCase);
+
+        if (useHybrid)
+        {
+            // HybridSearch intentionally does not apply a similarity threshold internally
+            // (see ADR 2026-02-14) so short keyword queries still surface full-text matches.
+            // Apply the threshold here as a post-filter on vector similarity, defaulting to
+            // 0.25 to filter out noise.
+            var results = await _storage.HybridSearch(
+                query,
+                limit,
+                minSimilarity: null,
+                filterTags,
+                typedProjectId,
+                includeUnassigned,
+                includeArchived,
+                includeSystem: false,
+                workspaceId: typedWorkspaceId);
+
+            double threshold = minSimilarity.GetValueOrDefault(0.25);
+            if (threshold > 0)
+            {
+                results = results
+                    .Where(m => m.Similarity.HasValue && m.Similarity.Value >= threshold)
+                    .ToList();
+            }
+
+            return Ok(results.Select(MemoryListItem.FromMemory).ToList());
+        }
+
+        var vectorResults = await _storage.SearchWithMetadataEmbedding(
             query,
             limit,
-            new SimilarityScore(minSimilarity),
+            new SimilarityScore(minSimilarity ?? 0.7),
             filterTags,
             typedProjectId,
             includeUnassigned,
             includeArchived,
             includeSystem: false,
             workspaceId: typedWorkspaceId);
-        return Ok(results.Select(MemoryListItem.FromMemory).ToList());
+
+        return Ok(vectorResults.Select(MemoryListItem.FromMemory).ToList());
     }
 
     /// <summary>
