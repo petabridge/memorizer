@@ -17,11 +17,13 @@ public class MemoryController : ControllerBase
 {
     private readonly IStorage _storage;
     private readonly SimilaritySettings _similaritySettings;
+    private readonly ITagCloudService _tagCloudService;
 
-    public MemoryController(IStorage storage, SimilaritySettings similaritySettings)
+    public MemoryController(IStorage storage, SimilaritySettings similaritySettings, ITagCloudService tagCloudService)
     {
         _storage = storage;
         _similaritySettings = similaritySettings;
+        _tagCloudService = tagCloudService;
     }
 
     /// <summary>
@@ -134,6 +136,36 @@ public class MemoryController : ControllerBase
 
         var tags = await _storage.GetDistinctTagsAsync(owner);
         return Ok(tags);
+    }
+
+    /// <summary>
+    /// Get tag counts for a tag cloud. Scope to a workspace subtree or a single project
+    /// with the optional query parameters, or omit both for global counts across all
+    /// non-archived memories. Workspace scope aggregates across the entire subtree.
+    /// </summary>
+    [HttpGet("tags/cloud")]
+    public async Task<ActionResult<List<TagCount>>> GetTagCloud(
+        [FromQuery] Guid? workspaceId = null,
+        [FromQuery] Guid? projectId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (projectId.HasValue && workspaceId.HasValue)
+            return BadRequest("projectId and workspaceId are mutually exclusive tag cloud scopes.");
+
+        if (projectId.HasValue)
+        {
+            var counts = await _tagCloudService.GetProjectTagCountsAsync(new ProjectId(projectId.Value), cancellationToken);
+            return Ok(counts);
+        }
+
+        if (workspaceId.HasValue)
+        {
+            var counts = await _tagCloudService.GetWorkspaceSubtreeTagCountsAsync(new WorkspaceId(workspaceId.Value), cancellationToken);
+            return Ok(counts);
+        }
+
+        var globalCounts = await _tagCloudService.GetGlobalTagCountsAsync(cancellationToken);
+        return Ok(globalCounts);
     }
 
     /// <summary>
