@@ -107,21 +107,21 @@
             <div class="card h-100">
                 <div class="card-body">
                     <h5 class="card-title">
-                        <i class="fas fa-chart-bar me-2"></i>
-                        Performance Analytics
+                        <i class="fas fa-file-export me-2"></i>
+                        Markdown Export
                     </h5>
                     <p class="card-text">
-                        View analytics and performance metrics for automated tools.
+                        Export memories as Markdown files with YAML frontmatter.
                     </p>
                     <p class="text-muted small">
-                        Coming soon: Track how tools perform, success rates, and processing times.
+                        Export all memories to the filesystem as .md files organized by workspace and project hierarchy.
                     </p>
                 </div>
                 <div class="card-footer">
-                    <button class="btn btn-secondary" disabled>
-                        <i class="fas fa-clock me-1"></i>
-                        Coming Soon
-                    </button>
+                    <a href="@Url.Action("MarkdownExport", "Tools")" class="btn btn-primary">
+                        <i class="fas fa-file-export me-1"></i>
+                        Export Memories
+                    </a>
                 </div>
             </div>
         </div>

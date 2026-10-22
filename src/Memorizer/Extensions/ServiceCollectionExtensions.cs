@@ -24,6 +24,8 @@ public static class ServiceCollectionExtensions
         services.AddSimilaritySettings();
         services.AddSearchSettings();
         services.AddCanonicalUrlService();
+        services.AddMarkdownExportSettings();
+        services.AddMarkdownExportService();
         if(initialize)
             services.AddHostedService<InitializationService>();
         services.AutoRegisterTypesInAssemblies(typeof(Storage).Assembly);
@@ -101,6 +103,11 @@ public static class ServiceCollectionExtensions
                 var dimensionMigrationActorProps = resolver.Props<DimensionMigrationActor>();
                 var dimensionMigrationActor = system.ActorOf(dimensionMigrationActorProps, "dimension-migration");
                 registry.Register<DimensionMigrationActorKey>(dimensionMigrationActor);
+
+                // Create and register the MarkdownExportActor
+                var markdownExportActorProps = resolver.Props<MarkdownExportActor>();
+                var markdownExportActor = system.ActorOf(markdownExportActorProps, "markdown-export");
+                registry.Register<MarkdownExportActorKey>(markdownExportActor);
             });
 
             // TODO: Configure Akka.Persistence.Sql with PostgreSQL
@@ -180,6 +187,23 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services)
     {
         services.AddSingleton<ICanonicalUrlService, CanonicalUrlService>();
+        return services;
+    }
+
+    public static IServiceCollection AddMarkdownExportSettings(
+        this IServiceCollection services)
+    {
+        services.AddSingleton<MarkdownExportSettings>(sp =>
+            sp.GetRequiredService<IConfiguration>().GetSection("MarkdownExport").Get<MarkdownExportSettings>() ??
+            new MarkdownExportSettings());
+
+        return services;
+    }
+
+    public static IServiceCollection AddMarkdownExportService(
+        this IServiceCollection services)
+    {
+        services.AddScoped<IMarkdownExportService, MarkdownExportService>();
         return services;
     }
 
