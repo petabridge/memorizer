@@ -46,6 +46,9 @@ public sealed class InitializationService : BackgroundService
 
         // Seed sample data for local development if enabled
         await SeedSampleDataAsync(stoppingToken);
+
+        // Auto-sync markdown export if enabled
+        await AutoSyncMarkdownExportAsync(stoppingToken);
     }
 
     private async Task SeedSampleDataAsync(CancellationToken ct = default)
@@ -662,6 +665,35 @@ This demonstrates how Mermaid diagrams render in both light and dark themes!";
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to check or trigger embedding migration: {Message}", ex.Message);
+        }
+    }
+
+    private async Task AutoSyncMarkdownExportAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var markdownSettings = _services.GetRequiredService<MarkdownExportSettings>();
+            if (!markdownSettings.AutoSyncOnStartup || string.IsNullOrWhiteSpace(markdownSettings.RootPath))
+            {
+                _logger.LogDebug("Markdown export auto-sync disabled or not configured, skipping");
+                return;
+            }
+
+            _logger.LogInformation("Auto-syncing markdown export to {RootPath}", markdownSettings.RootPath);
+
+            using var scope = _services.CreateScope();
+            var exportService = scope.ServiceProvider.GetRequiredService<IMarkdownExportService>();
+
+            var result = await exportService.ExportAllAsync(ct: ct);
+
+            _logger.LogInformation(
+                "Markdown export auto-sync completed: {Exported} exported, {Failed} failed, {Skipped} skipped",
+                result.TotalExported, result.TotalFailed, result.TotalSkipped);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to auto-sync markdown export: {Message}", ex.Message);
+            // Don't fail startup
         }
     }
 

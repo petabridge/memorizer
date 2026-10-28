@@ -91,6 +91,8 @@ services:
       - MEMORIZER_LLM__Chunking__MinCharactersForChunking=2000
       - MEMORIZER_LLM__Chunking__TargetChunkSize=1500
       - MEMORIZER_Server__CanonicalUrl=http://localhost:5000
+      - MEMORIZER_MarkdownExport__RootPath=/data/markdown
+      - MEMORIZER_MarkdownExport__AutoSyncOnStartup=false
       - ASPNETCORE_ENVIRONMENT=Development
     ports:
       - "5000:8080"
