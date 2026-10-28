@@ -12,12 +12,14 @@ public class HomeController : Controller
     private readonly IMemoryStatsService _statsService;
     private readonly IStorage _storage;
     private readonly ServerSettings _serverSettings;
+    private readonly IGraphService _graphService;
 
-    public HomeController(IMemoryStatsService statsService, IStorage storage, ServerSettings serverSettings)
+    public HomeController(IMemoryStatsService statsService, IStorage storage, ServerSettings serverSettings, IGraphService graphService)
     {
         _statsService = statsService;
         _storage = storage;
         _serverSettings = serverSettings;
+        _graphService = graphService;
     }
 
     /// <summary>
@@ -81,6 +83,38 @@ public class HomeController : Controller
     {
         var stats = await _statsService.GetStatsAsync();
         return View(stats);
+    }
+
+    /// <summary>
+    /// Knowledge graph page - visualizes memories and their relationships.
+    /// Optional ?workspaceId= / ?projectId= query params scope the graph.
+    /// </summary>
+    [HttpGet]
+    [Route("graph")]
+    public IActionResult Graph()
+    {
+        return View();
+    }
+
+    /// <summary>
+    /// API endpoint returning the knowledge graph (nodes + edges), optionally scoped
+    /// to a workspace subtree or a single project.
+    /// </summary>
+    [HttpGet]
+    [Route("api/graph")]
+    public async Task<IActionResult> GetGraph(
+        [FromQuery] Guid? workspaceId = null,
+        [FromQuery] Guid? projectId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (projectId.HasValue && workspaceId.HasValue)
+            return BadRequest(new { message = "projectId and workspaceId are mutually exclusive graph scopes." });
+
+        WorkspaceId? typedWorkspaceId = workspaceId.HasValue ? new WorkspaceId(workspaceId.Value) : null;
+        ProjectId? typedProjectId = projectId.HasValue ? new ProjectId(projectId.Value) : null;
+
+        var graph = await _graphService.GetKnowledgeGraphAsync(typedWorkspaceId, typedProjectId, cancellationToken);
+        return Json(graph);
     }
 
     /// <summary>
