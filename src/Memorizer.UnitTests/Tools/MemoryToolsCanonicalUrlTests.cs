@@ -234,7 +234,7 @@ public class MemoryToolsCanonicalUrlTests
                 CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
             }
         };
-        var controller = new MemoryController(fakeStorage, new SimilaritySettings());
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings(), new FakeTagCloudService());
 
         // Act
         var result = await controller.SearchMemories("test query", workspaceId: workspaceId);
@@ -260,7 +260,7 @@ public class MemoryToolsCanonicalUrlTests
                 CreateTestMemory(new MemoryId(Guid.Parse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")), "Memory 1")
             }
         };
-        var controller = new MemoryController(fakeStorage, new SimilaritySettings());
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings(), new FakeTagCloudService());
 
         // Act
         var result = await controller.SearchWithMetadataEmbedding("test query", workspaceId: workspaceId);
@@ -279,7 +279,7 @@ public class MemoryToolsCanonicalUrlTests
     {
         // Arrange
         var fakeStorage = new FakeStorage();
-        var controller = new MemoryController(fakeStorage, new SimilaritySettings());
+        var controller = new MemoryController(fakeStorage, new SimilaritySettings(), new FakeTagCloudService());
 
         // Act
         var result = await controller.SearchMemories(
@@ -373,6 +373,23 @@ public class MemoryToolsCanonicalUrlTests
             Archetype = ArchetypeEnum.Document,
             CurrentVersion = new VersionNumber(1)
         };
+    }
+
+    /// <summary>
+    /// Minimal ITagCloudService stub for controller constructor tests.
+    /// </summary>
+    private class FakeTagCloudService : ITagCloudService
+    {
+        public Task<List<TagCount>> GetWorkspaceSubtreeTagCountsAsync(
+            WorkspaceId workspaceId, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<TagCount>());
+
+        public Task<List<TagCount>> GetProjectTagCountsAsync(
+            ProjectId projectId, CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<TagCount>());
+
+        public Task<List<TagCount>> GetGlobalTagCountsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(new List<TagCount>());
     }
 
     /// <summary>
