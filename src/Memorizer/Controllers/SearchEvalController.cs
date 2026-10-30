@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Memorizer.Controllers;
 
 [ApiController]
+[SearchEvalGate]
 [Route("api/search-eval")]
 public class SearchEvalController : ControllerBase
 {
