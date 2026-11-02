@@ -1,3 +1,12 @@
+#### 2.3.3 November 2nd 2026 ####
+
+**Bug Fixes**
+- [Disable search evaluation endpoints unless explicitly enabled](https://github.com/petabridge/memorizer/pull/261) - The internal `/api/search-eval` endpoints are now off by default
+  - Previously all six evaluation routes were reachable in every environment without authentication: they could seed or delete a synthetic corpus and trigger compute-heavy embedding work
+  - A new `SearchEval:Enabled` setting defaults to `false`; while disabled the endpoints return 404 so they are not advertised
+  - The gate runs as a resource filter, before model binding and controller activation, so malformed requests cannot reach storage or start embeddings
+  - Enable locally with `MEMORIZER_SearchEval__Enabled=true`; keep it disabled in production
+
 #### 2.3.2 October 21st 2026 ####
 
 **Bug Fixes**
