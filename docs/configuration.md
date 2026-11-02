@@ -67,6 +67,16 @@ MEMORIZER_Search__ReturnFullContent=false
 >    - Creating new columns with the desired dimensions and migrating data
 >    - Re-embedding all existing content with the new model
 
+### Search Evaluation
+
+The internal `/api/search-eval` endpoints are disabled by default and return HTTP 404. To enable the evaluation tools for local development, set `SearchEval:Enabled` to `true` in configuration or set this environment variable:
+
+```bash
+MEMORIZER_SearchEval__Enabled=true
+```
+
+This enables corpus seeding, deletion, status, evaluation runs, and search comparisons. Keep the setting disabled in production: these endpoints can write test data and make compute-intensive search requests.
+
 ### MCP Configuration
 
 The server now provides an endpoint to get the MCP configuration JSON at `/ui/mcp-config`. This endpoint uses the `MEMORIZER_Server__CanonicalUrl` setting to generate the proper transport URL for MCP clients.
