@@ -103,6 +103,24 @@
 
                     <hr class="my-3" style="border-color: var(--sidebar-divider);">
 
+                    <!-- Sidebar Tags (global tag navigation) -->
+                    <div id="sidebar-tags-container">
+                        <button type="button" class="sidebar-tags-header" onclick="SidebarTags.toggle()" aria-expanded="false" title="Toggle tags">
+                            <span class="sidebar-tags-toggle"><i class="fas fa-chevron-right"></i></span>
+                            <i class="fas fa-tags"></i>
+                            Tags
+                            <span class="sidebar-tags-count" id="sidebarTagsTotal" style="display: none;">0</span>
+                        </button>
+                        <div class="sidebar-tags-body">
+                            <div class="sidebar-tags-loading">
+                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                <span>Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-3" style="border-color: var(--sidebar-divider);">
+
                     <!-- Theme Toggle -->
                     <div class="d-flex justify-content-center align-items-center mb-3">
                         <i class="fas fa-sun text-white-50 me-2"></i>
@@ -194,6 +212,7 @@
     <script src="~/js/memory-utils.js" asp-append-version="true"></script>
     <script src="~/js/progress-stream.js" asp-append-version="true"></script>
     <script src="~/js/workspace-tree.js" asp-append-version="true"></script>
+    <script src="~/js/sidebar-tags.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
